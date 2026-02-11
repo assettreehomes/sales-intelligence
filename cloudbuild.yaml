@@ -4,14 +4,26 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
+      - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
       - '-f'
       - 'backend/Dockerfile'
-      - './backend'
+      - '.'
+
   # Push the Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
+      - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/gke-deploy'
+    args:
+      - run
+      - services
+      - update
+      - sales-intelligence
+      - '--platform=managed'
+      - '--region=asia-south1'
+
 images:
-  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
+  - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
