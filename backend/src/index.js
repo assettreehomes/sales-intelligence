@@ -22,13 +22,25 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',')
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'https://sales-intelligence-opal.vercel.app'];
+    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
 
 app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+
+        // Allow localhost in development
+        if (process.env.NODE_ENV === 'development') {
+            return callback(null, true);
+        }
+
+        // Allow all Vercel deployments (*.vercel.app)
+        if (origin.endsWith('.vercel.app')) {
+            return callback(null, true);
+        }
+
+        // Check against allowed origins list
+        if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
