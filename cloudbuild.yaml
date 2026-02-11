@@ -1,19 +1,19 @@
 steps:
-  # Build the Docker image
+  # Build and push the Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
-      - '-t'
-      - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
-      - '-f'
-      - 'backend/Dockerfile'
-      - '.'
+      - '--tag=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:$COMMIT_SHA'
+      - '--tag=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
+      - '--file=backend/Dockerfile'
+      - 'backend'
 
-  # Push the Docker image to Artifact Registry
+  # Push both tags
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
+      - '--all-tags'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -22,10 +22,11 @@ steps:
       - 'run'
       - 'deploy'
       - 'sales-intelligence'
-      - '--image=asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
+      - '--image=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:$COMMIT_SHA'
       - '--region=asia-south1'
       - '--platform=managed'
       - '--allow-unauthenticated'
 
 images:
-  - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:$COMMIT_SHA'
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
