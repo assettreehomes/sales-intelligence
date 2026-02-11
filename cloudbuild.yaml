@@ -4,7 +4,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/mystical-melody-486113-p0:latest'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
       - '-f'
       - 'backend/Dockerfile'
       - './backend'
@@ -12,6 +12,6 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/mystical-melody-486113-p0:latest'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
 images:
-  - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/mystical-melody-486113-p0:latest'
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:latest'
