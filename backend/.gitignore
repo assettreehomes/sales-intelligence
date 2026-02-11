@@ -28,6 +28,4 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Docker
-.dockerignore
-Dockerfile
-deploy.sh
+# (Removed Dockerfile, .dockerignore, deploy.sh - needed for Cloud Build)
