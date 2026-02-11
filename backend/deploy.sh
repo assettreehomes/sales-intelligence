@@ -4,8 +4,8 @@
 set -e
 
 # Configuration
-SERVICE_NAME="ticketintel-backend"
-REGION="us-central1"
+SERVICE_NAME="sales-intelligence"
+REGION="asia-south1"
 
 # Check for required tools
 if ! command -v gcloud &> /dev/null; then
