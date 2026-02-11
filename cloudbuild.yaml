@@ -16,14 +16,16 @@ steps:
       - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
 
   # Deploy to Cloud Run
-  - name: 'gcr.io/cloud-builders/gke-deploy'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
     args:
-      - run
-      - services
-      - update
-      - sales-intelligence
-      - '--platform=managed'
+      - 'run'
+      - 'deploy'
+      - 'sales-intelligence'
+      - '--image=asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
       - '--region=asia-south1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
 
 images:
   - 'asia-south1-docker.pkg.dev/mystical-melody-486113-p0/cloud-run-source-deploy/sales-intelligence:latest'
