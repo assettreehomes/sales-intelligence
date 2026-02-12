@@ -93,6 +93,7 @@ app.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║        ANTIGRAVITY - Sales Audio Intelligence      ║
+║        v2.1 - Force Deploy for Comparison Fix      ║
 ╠═══════════════════════════════════════════════════╣
 ║  Server: http://localhost:${PORT}                      ║
 ║  Environment: ${(process.env.NODE_ENV || 'development').padEnd(32)}║
