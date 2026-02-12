@@ -106,10 +106,20 @@ Return a valid JSON object with this exact structure:
   if (previous_analysis && visit_number > 1) {
     prompt += `,
   "comparison_with_previous": {
-    "improvements": ["Areas that improved since last visit"],
-    "regressions": ["Areas that got worse since last visit"],
-    "unchanged": ["Areas that remained the same"],
-    "delta_score": <number, positive if better, negative if worse>
+    "overall_narrative": "A 2-3 sentence summary comparing this visit to the previous one, highlighting overall trajectory (improved, declined, or same)",
+    "score_changes": {
+      "rapport_building": {"previous": ${previous_analysis.scores?.rapport_building || 0}, "current": <current score>, "change": <+/- number>},
+      "needs_discovery": {"previous": ${previous_analysis.scores?.needs_discovery || 0}, "current": <current score>, "change": <+/- number>},
+      "objection_handling": {"previous": ${previous_analysis.scores?.objection_handling || 0}, "current": <current score>, "change": <+/- number>},
+      "closing_techniques": {"previous": ${previous_analysis.scores?.closing_techniques || 0}, "current": <current score>, "change": <+/- number>},
+      "product_knowledge": {"previous": ${previous_analysis.scores?.product_knowledge || 0}, "current": <current score>, "change": <+/- number>},
+      "professionalism": {"previous": ${previous_analysis.scores?.professionalism || 0}, "current": <current score>, "change": <+/- number>}
+    },
+    "improvements": ["Specific areas that improved since last visit, with concrete examples"],
+    "regressions": ["Specific areas that got worse since last visit, with concrete examples"],
+    "unchanged": ["Specific areas that remained consistent"],
+    "delta_score": <positive number if better, negative if worse, 0 if same>,
+    "key_differences": ["Major behavioral or tactical changes between visits"]
   }`;
   }
 
