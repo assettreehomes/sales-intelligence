@@ -909,23 +909,34 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(400).json({ error: 'Audio file not found for this ticket' });
         }
 
-        // Update status to processing
-        await supabaseAdmin
-            .from('tickets')
-            .update({ status: 'processing' })
-            .eq('id', id);
+
+
+        // Helper to get visit number (handle inconsistent DB naming)
+        let visitNumber = ticket.visit_number || ticket.visitnumber || 1;
+        console.log(`🔍 DEBUG: Derived Visit Number: ${visitNumber} (Raw: visit_number=${ticket.visit_number}, visitnumber=${ticket.visitnumber})`);
+
+        // EMERGENCY FIX: If visit is 1 but previous ticket exists, FORCE it to 2 to enable comparison
+        const prevTicketIdRaw = ticket.previous_visit_ticket_id || ticket.previousvisitticketid;
+        if (visitNumber === 1 && prevTicketIdRaw) {
+            console.log("ℹ️ Auto-correcting visit number to 2 based on previous ticket existence.");
+            visitNumber = 2;
+        }
 
         // Get previous analysis for comparison if available
         let previousAnalysis = null;
-        if (ticket.previous_visit_ticket_id) {
-            previousAnalysis = await getPreviousAnalysis(ticket.previous_visit_ticket_id);
+        const prevTicketId = ticket.previous_visit_ticket_id || ticket.previousvisitticketid;
+        if (prevTicketId) {
+            previousAnalysis = await getPreviousAnalysis(prevTicketId);
+            console.log(`📊 Found previous analysis for comparison (Visit #${visitNumber - 1})`);
+            console.log('🔍 DEBUG: Previous analysis object:', JSON.stringify(previousAnalysis, null, 2));
+            console.log('🔍 DEBUG: Previous scores:', previousAnalysis?.scores);
         }
 
         // Run analysis
         const analysis = await analyzeAudio(id, {
             client_id: ticket.client_id,
             client_name: ticket.clientname,
-            visit_number: ticket.visit_number,
+            visit_number: visitNumber,
             previous_analysis: previousAnalysis
         });
 

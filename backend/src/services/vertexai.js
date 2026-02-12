@@ -40,14 +40,18 @@ Analyze this audio recording and provide a comprehensive assessment.
 - Visit Number: ${visit_number || 1}
 `;
 
+
   // Add previous visit context if available
   if (previous_analysis && visit_number > 1) {
+    console.log('🔍 Previous analysis data:', JSON.stringify(previous_analysis, null, 2));
     prompt += `
 ## Previous Visit Analysis (Visit #${visit_number - 1})
 - Previous Rating: ${previous_analysis.rating || 'N/A'}/10
 - Previous Summary: ${previous_analysis.summary || 'N/A'}
 - Previous Improvement Suggestions: ${JSON.stringify(previous_analysis.improvement_suggestions || [])}
 - Previous Objections: ${JSON.stringify(previous_analysis.objections || [])}
+- Previous Scores: ${JSON.stringify(previous_analysis.scores || {})}
+
 
 ## Important: Compare Against Previous Visit
 Since this is a repeat visit, you MUST:
@@ -100,12 +104,8 @@ Return a valid JSON object with this exact structure:
   ],
   "recommendations": [
     "Specific improvement suggestion for future calls"
-  ]`;
-
-  // Add comparison section for repeat visits
-  if (previous_analysis && visit_number > 1) {
-    prompt += `,
-  "comparison_with_previous": {
+  ],
+  "comparison_with_previous": ${previous_analysis && visit_number > 1 ? `{
     "overall_narrative": "A 2-3 sentence summary comparing this visit to the previous one, highlighting overall trajectory (improved, declined, or same)",
     "score_changes": {
       "rapport_building": {"previous": ${previous_analysis.scores?.rapport_building || 0}, "current": <current score>, "change": <+/- number>},
@@ -120,13 +120,25 @@ Return a valid JSON object with this exact structure:
     "unchanged": ["Specific areas that remained consistent"],
     "delta_score": <positive number if better, negative if worse, 0 if same>,
     "key_differences": ["Major behavioral or tactical changes between visits"]
-  }`;
-  }
-
-  prompt += `
+  }` : 'null // VALID ONLY FOR VISIT #1. FOR VISIT #2+, THIS MUST BE A FULL OBJECT'}
 }
 
 IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.`;
+
+  // Add mandatory comparison reminder for repeat visits
+  if (previous_analysis && visit_number > 1) {
+    prompt += `
+
+CRITICAL FOR VISIT #${visit_number}: The "comparison_with_previous" field is MANDATORY and must be fully populated with real comparison data. You are analyzing Visit #${visit_number}, which is a REPEAT VISIT.
+    
+    FORBIDDEN OUTPUT: "comparison_with_previous": null
+    REQUIRED OUTPUT: "comparison_with_previous": { ... full object ... }
+    
+    If you return null, the system will fail. You MUST generate the comparison.`;
+  }
+
+  console.log('🔍 DEBUG: Full prompt being sent to Gemini (first 2000 chars):', prompt.substring(0, 2000));
+  console.log('🔍 DEBUG: Prompt includes comparison?', prompt.includes('comparison_with_previous'));
 
   return prompt;
 }
