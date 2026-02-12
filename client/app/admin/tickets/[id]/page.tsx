@@ -54,6 +54,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         duration,
 
         fetchTicket,
+        fetchAudioUrl,
         reanalyze,
         setReanalyzeModalOpen,
         setIsPlaying,
@@ -62,25 +63,44 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     } = useTicketDetailStore();
 
     // Refs for auto-scrolling key moments
+    const audioRef = useRef<HTMLAudioElement | null>(null);
     const momentsContainerRef = useRef<HTMLDivElement>(null);
     const momentRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const [audioError, setAudioError] = useState<string | null>(null);
     const [actionCompletion, setActionCompletion] = useState<Record<string, boolean>>({});
     const [customActionInput, setCustomActionInput] = useState('');
     const [customActions, setCustomActions] = useState<Array<{ id: string; text: string; completed: boolean }>>([]);
     const [showCustomInput, setShowCustomInput] = useState(false);
 
-    // Function to parse "MM:SS" to seconds
-    const parseTime = (timeStr?: string): number => {
-        if (!timeStr || !timeStr.includes(':')) return 0;
-        const [minutes, seconds] = timeStr.split(':').map(Number);
-        if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) return 0;
-        return minutes * 60 + seconds;
+    // Parse timestamps from multiple formats (MM:SS, HH:MM:SS, seconds, or milliseconds)
+    const parseTime = (value?: string | number | null): number => {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return value > 10000 ? value / 1000 : value;
+        }
+
+        if (typeof value !== 'string') return 0;
+        const raw = value.trim();
+        if (!raw) return 0;
+
+        if (/^\d+(\.\d+)?$/.test(raw)) {
+            const numeric = Number(raw);
+            return Number.isFinite(numeric) ? (numeric > 10000 ? numeric / 1000 : numeric) : 0;
+        }
+
+        const parts = raw.split(':').map((part) => Number(part.trim()));
+        if (parts.some((part) => !Number.isFinite(part))) return 0;
+
+        if (parts.length === 3) {
+            const [hours, minutes, seconds] = parts;
+            return hours * 3600 + minutes * 60 + seconds;
+        }
+        if (parts.length === 2) {
+            const [minutes, seconds] = parts;
+            return minutes * 60 + seconds;
+        }
+        return parts[0] ?? 0;
     };
 
-    // Use a custom duration fallback or store duration
-    const customDuration = duration > 0 ? duration : 3600; // Fallback if duration 0
-
-    // Calculate active moment index
     const sortedMoments = analysis?.keymoments
         ? [...analysis.keymoments].sort((a, b) => {
             const aTime = a.time || a.timestamp || '00:00';
@@ -94,7 +114,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         const startTime = parseTime(m.time || m.timestamp || '00:00');
         const nextTime = i < sortedMoments.length - 1
             ? parseTime(sortedMoments[i + 1].time || sortedMoments[i + 1].timestamp || '00:00')
-            : customDuration || Infinity;
+            : Infinity;
         return currentTime >= startTime && currentTime < nextTime;
     });
 
@@ -110,20 +130,128 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
 
     useEffect(() => {
-        fetchTicket(id);
-    }, [id, fetchTicket]);
+        let active = true;
 
-    useEffect(() => {
-        setActionCompletion({});
-        setCustomActionInput('');
-        setCustomActions([]);
-        setShowCustomInput(false);
-    }, [id]);
+        const loadTicket = async () => {
+            await fetchTicket(id);
+            if (!active) return;
+            await fetchAudioUrl(id, true);
+        };
+
+        void loadTicket();
+        return () => { active = false; };
+    }, [id, fetchTicket, fetchAudioUrl]);
 
     const formatTime = (time: number) => {
+        if (!Number.isFinite(time) || time < 0) return '00:00';
         const mins = Math.floor(time / 60);
         const secs = Math.floor(time % 60);
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const ensureSignedAudioUrl = async (forceRefresh = false) => {
+        const resolvedUrl = await fetchAudioUrl(id, forceRefresh || !audioUrl);
+        if (!resolvedUrl) {
+            setAudioError('Backend could not generate a signed audio URL for this ticket.');
+            return null;
+        }
+        setAudioError(null);
+        return resolvedUrl;
+    };
+
+    const togglePlayback = async () => {
+        const signedUrl = await ensureSignedAudioUrl(false);
+        if (!signedUrl) return;
+
+        const audio = audioRef.current;
+        if (!audio) {
+            setAudioError('Audio player is still initializing. Please try again.');
+            return;
+        }
+
+        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+            audio.src = signedUrl;
+            audio.load();
+        }
+
+        if (audio.paused) {
+            try {
+                await audio.play();
+                setAudioError(null);
+                setIsPlaying(true);
+            } catch (err) {
+                console.error('Audio play failed:', err);
+                const refreshedUrl = await ensureSignedAudioUrl(true);
+                if (refreshedUrl) {
+                    try {
+                        audio.src = refreshedUrl;
+                        audio.load();
+                        await audio.play();
+                        setAudioError(null);
+                        setIsPlaying(true);
+                        return;
+                    } catch (retryError) {
+                        console.error('Audio retry failed:', retryError);
+                    }
+                }
+                setAudioError('Unable to play this recording.');
+                setIsPlaying(false);
+            }
+            return;
+        }
+
+        audio.pause();
+        setIsPlaying(false);
+    };
+
+    const seekBy = async (deltaSeconds: number) => {
+        const signedUrl = await ensureSignedAudioUrl(false);
+        if (!signedUrl) return;
+
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+            audio.src = signedUrl;
+            audio.load();
+        }
+
+        const max = Number.isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : Math.max(duration, 0);
+        const unclamped = audio.currentTime + deltaSeconds;
+        const next = Math.max(0, max > 0 ? Math.min(unclamped, max) : unclamped);
+
+        audio.currentTime = next;
+        setCurrentTime(next);
+    };
+
+    const seekToMoment = async (momentTime: string | number | null | undefined) => {
+        const seconds = Math.max(0, parseTime(momentTime));
+        const signedUrl = await ensureSignedAudioUrl(false);
+        if (!signedUrl) return;
+
+        const audio = audioRef.current;
+
+        setCurrentTime(seconds);
+
+        if (!audio) return;
+
+        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+            audio.src = signedUrl;
+            audio.load();
+        }
+
+        audio.currentTime = seconds;
+        try {
+            await audio.play();
+            setAudioError(null);
+            setIsPlaying(true);
+        } catch (err) {
+            console.error('Moment playback failed:', err);
+            setAudioError('Unable to jump to selected key moment.');
+            setIsPlaying(false);
+        }
     };
 
     const getSentimentColor = (sentiment: string) => {
@@ -489,14 +617,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             <div className="relative z-10 flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <button
-                                        onClick={() => {
-                                            const audio = document.getElementById('ticket-audio') as HTMLAudioElement;
-                                            if (audio) {
-                                                if (isPlaying) audio.pause();
-                                                else audio.play();
-                                                setIsPlaying(!isPlaying);
-                                            }
-                                        }}
+                                        onClick={togglePlayback}
                                         className="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center hover:bg-purple-500 transition-colors shadow-lg hover:shadow-purple-500/30"
                                     >
                                         {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
@@ -506,6 +627,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         <p className="text-sm text-gray-400">
                                             {ticket.clientname} • Visit #{ticket.visitnumber}
                                         </p>
+                                        {audioError && (
+                                            <p className="text-xs text-red-300 mt-1">{audioError}</p>
+                                        )}
+                                        {!audioUrl && (
+                                            <p className="text-xs text-amber-200 mt-1">Requesting signed playback URL from backend…</p>
+                                        )}
                                     </div>
                                 </div>
 
@@ -514,21 +641,48 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <span className="text-gray-500">/</span>
                                     <span className="font-mono text-gray-400">{formatTime(duration)}</span>
                                     <div className="w-px h-4 bg-gray-700 mx-2" />
-                                    <button className="hover:text-purple-400 transition-colors"><RotateCcw className="w-4 h-4" /></button>
-                                    <button className="hover:text-purple-400 transition-colors"><RotateCw className="w-4 h-4" /></button>
+                                    <button
+                                        onClick={() => { void seekBy(-10); }}
+                                        className="hover:text-purple-400 transition-colors"
+                                        aria-label="Rewind 10 seconds"
+                                    >
+                                        <RotateCcw className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => { void seekBy(10); }}
+                                        className="hover:text-purple-400 transition-colors"
+                                        aria-label="Forward 10 seconds"
+                                    >
+                                        <RotateCw className="w-4 h-4" />
+                                    </button>
                                 </div>
                             </div>
 
-                            {audioUrl && (
-                                <audio
-                                    id="ticket-audio"
-                                    src={audioUrl}
-                                    className="hidden"
-                                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                                    onEnded={() => setIsPlaying(false)}
-                                />
-                            )}
+                            <audio
+                                ref={audioRef}
+                                src={audioUrl || undefined}
+                                className="hidden"
+                                preload="metadata"
+                                crossOrigin="anonymous"
+                                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                                onLoadedMetadata={(e) => {
+                                    const audioDuration = Number.isFinite(e.currentTarget.duration)
+                                        ? e.currentTarget.duration
+                                        : 0;
+                                    setDuration(audioDuration);
+                                    setAudioError(null);
+                                }}
+                                onPlay={() => setIsPlaying(true)}
+                                onPause={() => setIsPlaying(false)}
+                                onEnded={() => {
+                                    setIsPlaying(false);
+                                    setCurrentTime(0);
+                                }}
+                                onError={() => {
+                                    setAudioError('Failed to load recording URL.');
+                                    setIsPlaying(false);
+                                }}
+                            />
                         </div>
 
                         {/* Metrics Grid */}
@@ -729,16 +883,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                     <div
                                                         key={i}
                                                         ref={el => { momentRefs.current[i] = el; }}
-                                                        onClick={() => {
-                                                            const seconds = parseTime(momentTime);
-                                                            setCurrentTime(seconds);
-                                                            const audio = document.getElementById('ticket-audio') as HTMLAudioElement;
-                                                            if (audio) {
-                                                                audio.currentTime = seconds;
-                                                                if (!isPlaying) audio.play();
-                                                                if (!isPlaying) setIsPlaying(true);
-                                                            }
-                                                        }}
+                                                        onClick={() => seekToMoment(momentTime)}
                                                         className={`relative pl-10 group cursor-pointer p-3 rounded-xl transition-all duration-300 border ${isActive
                                                             ? 'bg-purple-50 border-purple-200 shadow-sm scale-[1.02]'
                                                             : 'hover:bg-gray-50 border-transparent'

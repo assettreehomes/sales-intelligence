@@ -109,6 +109,38 @@ function buildComparison(currentAnalysis, previousAnalysis) {
     };
 }
 
+function extractGcsObjectPath(ticket) {
+    if (!ticket) return null;
+
+    const rawPath = ticket.gcs_path || ticket.gcspath || null;
+    if (!rawPath || typeof rawPath !== 'string') return null;
+
+    if (rawPath.startsWith('gs://')) {
+        const parts = rawPath.replace('gs://', '').split('/');
+        if (parts.length < 2) return null;
+        parts.shift(); // remove bucket name
+        return parts.join('/');
+    }
+
+    return rawPath;
+}
+
+async function generateTicketAudioUrl(ticketId, ticket = null) {
+    const objectPath = extractGcsObjectPath(ticket);
+
+    if (objectPath) {
+        const [exists] = await buckets.uploads.file(objectPath).exists();
+        if (exists) {
+            return await generatePlaybackUrl('uploads', objectPath);
+        }
+    }
+
+    const { exists, extension } = await checkAudioExists(ticketId);
+    if (!exists || !extension) return null;
+
+    return await generatePlaybackUrl('uploads', `${ticketId}.${extension}`);
+}
+
 // ============================================
 // EMPLOYEE ROUTES (Upload Only)
 // ============================================
@@ -633,6 +665,40 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
 });
 
 /**
+ * GET /tickets/:id/audio-url
+ * Generate a fresh signed URL for audio playback
+ * Role: admin
+ */
+router.get('/:id/audio-url', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { data: ticket, error: ticketError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, gcs_path, gcspath')
+            .eq('id', id)
+            .single();
+
+        if (ticketError || !ticket) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        const audioUrl = await generateTicketAudioUrl(id, ticket);
+        if (!audioUrl) {
+            return res.status(404).json({ error: 'Audio file not found for this ticket' });
+        }
+
+        res.json({
+            audio_url: audioUrl,
+            expires_in_seconds: 86400
+        });
+    } catch (error) {
+        console.error('Audio URL generation error:', error);
+        res.status(500).json({ error: 'Failed to generate audio playback URL' });
+    }
+});
+
+/**
  * GET /tickets/:id
  * Get single ticket with full details
  * Role: admin
@@ -733,10 +799,7 @@ router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
         // Generate playback URL if audio exists
         let audioUrl = null;
         try {
-            const { exists, extension } = await checkAudioExists(id);
-            if (exists) {
-                audioUrl = await generatePlaybackUrl('uploads', `${id}.${extension}`);
-            }
+            audioUrl = await generateTicketAudioUrl(id, ticket);
         } catch (audioError) {
             console.error('Error generating audio URL:', audioError.message);
             // Continue without audio URL

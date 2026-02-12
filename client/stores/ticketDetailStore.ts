@@ -113,6 +113,7 @@ interface TicketDetailState {
 
     // Actions
     fetchTicket: (id: string) => Promise<void>;
+    fetchAudioUrl: (id: string, forceRefresh?: boolean) => Promise<string | null>;
     reanalyze: (id: string) => Promise<void>;
     setReanalyzeModalOpen: (open: boolean) => void;
     setIsPlaying: (playing: boolean) => void;
@@ -161,13 +162,42 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
                     comparison: data.comparison || null,
                     actionItemsDb: data.action_items_db || [],
                     excuses: data.excuses || [],
-                    audioUrl: data.audio_url,
+                    audioUrl: null,
                 });
             }
         } catch (error) {
             console.error('Failed to fetch ticket details:', error);
         } finally {
             set({ loading: false });
+        }
+    },
+
+    fetchAudioUrl: async (id: string, forceRefresh = false) => {
+        if (!forceRefresh && get().audioUrl) {
+            return get().audioUrl;
+        }
+
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/tickets/${id}/audio-url`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('Failed to fetch signed audio URL:', errorData?.error || response.statusText);
+                set({ audioUrl: null });
+                return null;
+            }
+
+            const data = await response.json();
+            const url = typeof data.audio_url === 'string' ? data.audio_url : null;
+            set({ audioUrl: url });
+            return url;
+        } catch (error) {
+            console.error('Failed to fetch signed audio URL:', error);
+            set({ audioUrl: null });
+            return null;
         }
     },
 
