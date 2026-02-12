@@ -87,52 +87,25 @@ export async function generateUploadUrl(ticketId, filename) {
  */
 export async function generatePlaybackUrl(bucketName, filePath) {
     try {
-        // Try standard signing first (if keys exist)
         const targetBucket = bucketName === 'training' ? buckets.training : buckets.uploads;
-        const [url] = await targetBucket.file(filePath).getSignedUrl({
+
+        // Use query parameter authentication instead of signed URLs
+        // This works because Cloud Run service account already has storage.objectViewer
+        const file = targetBucket.file(filePath);
+
+        // Make the file temporarily accessible with a signed URL
+        // The Cloud Run service account can sign on behalf of itself
+        const options = {
             version: 'v4',
             action: 'read',
-            expires: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
-        });
+            expires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+        };
+
+        const [url] = await file.getSignedUrl(options);
         return url;
     } catch (error) {
-        // Fallback to impersonation if standard signing fails (e.g. ADC without keys)
-        if (error.message.includes('client_email') || error.message.includes('SigningError')) {
-            console.log('Standard signing failed, attempting impersonation...');
-
-            const serviceAccountEmail = process.env.GCS_SERVICE_ACCOUNT_EMAIL ||
-                'sales-audio-backend@mystical-melody-486113-p0.iam.gserviceaccount.com';
-
-            const { GoogleAuth, Impersonated } = await import('google-auth-library');
-            const auth = new GoogleAuth();
-            const sourceClient = await auth.getClient();
-
-            const impersonatedCredentials = new Impersonated({
-                sourceClient: sourceClient,
-                targetPrincipal: serviceAccountEmail,
-                lifetime: 3600,
-                delegates: [],
-                targetScopes: ['https://www.googleapis.com/auth/devstorage.read_only']
-            });
-
-            const { Storage } = await import('@google-cloud/storage');
-            const impersonatedStorage = new Storage({
-                projectId: process.env.GCS_PROJECT_ID || 'sales-audio-intelligence',
-                authClient: impersonatedCredentials
-            });
-
-            const targetBucketName = bucketName === 'training' ?
-                (process.env.GCS_BUCKET_TRAINING || 'sales-audio-training-library-2025') :
-                (process.env.GCS_BUCKET_UPLOADS || 'sales-audio-uploads-2025');
-
-            const [url] = await impersonatedStorage.bucket(targetBucketName).file(filePath).getSignedUrl({
-                version: 'v4',
-                action: 'read',
-                expires: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
-            });
-            return url;
-        }
-        throw error;
+        console.error('Signed URL generation failed:', error.message);
+        throw new Error(`Failed to generate playback URL: ${error.message}`);
     }
 }
 
