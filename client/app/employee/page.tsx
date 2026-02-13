@@ -602,7 +602,7 @@ function EmployeeDashboardContent() {
 
 export default function EmployeePage() {
     return (
-        <ProtectedRoute allowedRoles={['employee', 'superadmin', 'admin']}>
+        <ProtectedRoute allowedRoles={['employee']}>
             <EmployeeDashboardContent />
         </ProtectedRoute>
     );

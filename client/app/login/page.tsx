@@ -7,7 +7,7 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
     const router = useRouter();
-    const { signIn, user, profile, loading: authLoading } = useAuth();
+    const { signIn, user, profile, loading: authLoading, profileLoading } = useAuth();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -18,14 +18,14 @@ export default function LoginPage() {
 
     // Redirect if already logged in
     useEffect(() => {
-        if (!authLoading && user) {
+        if (!authLoading && !profileLoading && user && profile) {
             if (profile?.role === 'superadmin' || profile?.role === 'admin') {
                 router.replace('/admin');
             } else {
                 router.replace('/employee');
             }
         }
-    }, [user, profile, authLoading, router]);
+    }, [user, profile, authLoading, profileLoading, router]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -145,7 +145,7 @@ export default function LoginPage() {
                         {/* Submit Button */}
                         <button
                             type="submit"
-                            disabled={loading || authLoading}
+                            disabled={loading || authLoading || profileLoading}
                             className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? (

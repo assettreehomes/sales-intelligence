@@ -6,11 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function Home() {
   const router = useRouter();
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, profileLoading } = useAuth();
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !profileLoading) {
       if (user) {
+        if (!profile) return;
+
         // User is logged in - redirect based on role
         if (profile?.role === 'superadmin' || profile?.role === 'admin') {
           router.replace('/admin');
@@ -23,7 +25,7 @@ export default function Home() {
         router.replace('/login');
       }
     }
-  }, [user, profile, loading, router]);
+  }, [user, profile, loading, profileLoading, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">

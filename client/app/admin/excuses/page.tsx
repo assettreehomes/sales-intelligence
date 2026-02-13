@@ -1,18 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AdminShell } from '@/components/AdminShell';
 import { API_URL, getToken } from '@/stores/authStore';
 import {
-    Radio,
-    BarChart3,
-    AlertCircle,
-    Users,
-    User,
-    LogOut,
     Search,
     Check,
     X,
@@ -59,9 +51,6 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 function ExcusesPageContent() {
-    const router = useRouter();
-    const { profile, signOut } = useAuth();
-
     const [excuses, setExcuses] = useState<ExcuseItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -167,66 +156,16 @@ function ExcusesPageContent() {
     };
 
     return (
-        <div className="flex min-h-screen bg-gray-50">
-            <aside className="w-60 bg-white border-r border-gray-200 flex flex-col">
-                <div className="p-6">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white text-lg">✦</span>
-                        </div>
-                        <span className="font-bold text-lg text-gray-900">TicketIntel</span>
-                    </div>
-                </div>
-
-                <nav className="flex-1 px-3">
-                    <Link href="/admin/tickets" className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100 transition-all">
-                        <Radio className="w-5 h-5" />
-                        <span className="font-medium">Tickets</span>
-                    </Link>
-                    <button type="button" className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100 transition-all">
-                        <BarChart3 className="w-5 h-5" />
-                        <span className="font-medium">Analytics</span>
-                    </button>
-                    <Link href="/admin/excuses" className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 bg-purple-600 text-white transition-all">
-                        <AlertCircle className="w-5 h-5" />
-                        <span className="font-medium">Excuses</span>
-                    </Link>
-                    <Link href="/admin/assign" className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100 transition-all">
-                        <Users className="w-5 h-5" />
-                        <span className="font-medium">Assign</span>
-                    </Link>
-                </nav>
-
-                <div className="p-4 border-t border-gray-200">
-                    <div className="mt-4 flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                            <User className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{profile?.fullname}</p>
-                            <p className="text-xs text-gray-500 truncate">{profile?.email}</p>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={async () => { await signOut(); router.push('/login'); }}
-                        className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        Sign Out
-                    </button>
-                </div>
-            </aside>
-
-            <main className="flex-1 p-8">
+        <AdminShell activeSection="excuses">
+            <main className="p-5 md:p-8">
                 <div className="max-w-6xl mx-auto">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
                         <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Excuse Approval Queue</h1>
-                            <p className="text-gray-500">{filteredCountText}</p>
+                            <h1 className="text-2xl font-semibold text-gray-900">Excuse Approval Queue</h1>
+                            <p className="text-sm text-gray-500">{filteredCountText}</p>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
@@ -234,13 +173,13 @@ function ExcusesPageContent() {
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="Search tickets..."
-                                    className="pl-10 pr-4 py-2 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                    className="pl-10 pr-4 py-2.5 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
                                 />
                             </div>
                             <select
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value as ExcuseStatusFilter)}
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             >
                                 <option value="pending">Pending</option>
                                 <option value="resolved">Resolved</option>
@@ -252,7 +191,7 @@ function ExcusesPageContent() {
                     </div>
 
                     {error && (
-                        <div className="mb-4 p-4 rounded-lg border border-red-200 bg-red-50 text-red-700">
+                        <div className="mb-4 p-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
                             {error}
                         </div>
                     )}
@@ -272,14 +211,14 @@ function ExcusesPageContent() {
                                 const decisionPending = actionLoadingId?.startsWith(`${excuse.id}:`);
 
                                 return (
-                                    <div key={excuse.id} className="bg-white rounded-2xl border border-gray-200 p-6">
+                                    <div key={excuse.id} className="bg-white rounded-2xl border border-gray-200 p-5 md:p-6">
                                         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                                             <div>
-                                                <h2 className="text-2xl font-semibold text-gray-900">
+                                                <h2 className="text-xl font-semibold text-gray-900">
                                                     {excuse.reason_details?.trim() || formatReason(excuse.reason)}
                                                 </h2>
                                                 <p className="text-sm text-gray-500 mt-1">
-                                                    {formatReason(excuse.reason)} • {excuse.employee?.fullname || 'Unknown employee'} • Ticket #{excuse.ticket_id.slice(0, 8)}
+                                                    {formatReason(excuse.reason)} - {excuse.employee?.fullname || 'Unknown employee'} - Ticket #{excuse.ticket_id.slice(0, 8)}
                                                 </p>
                                             </div>
                                             <span className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusClass(excuse.status)}`}>
@@ -299,7 +238,7 @@ function ExcusesPageContent() {
                                         </div>
 
                                         <div className="mt-2 text-sm text-gray-500">
-                                            Client: {excuse.ticket?.client_name || 'Unknown'}{excuse.ticket?.client_id ? ` (${excuse.ticket.client_id})` : ''} • Visit #{excuse.ticket?.visit_number || 1}
+                                            Client: {excuse.ticket?.client_name || 'Unknown'}{excuse.ticket?.client_id ? ` (${excuse.ticket.client_id})` : ''} - Visit #{excuse.ticket?.visit_number || 1}
                                         </div>
 
                                         {excuse.admin_notes && (
@@ -351,7 +290,7 @@ function ExcusesPageContent() {
                     )}
                 </div>
             </main>
-        </div>
+        </AdminShell>
     );
 }
 

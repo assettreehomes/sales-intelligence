@@ -1,18 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AdminShell } from '@/components/AdminShell';
 import { getToken, API_URL } from '@/stores/authStore';
 import {
-    Radio,
-    BarChart3,
-    AlertCircle,
-    Users,
-    User,
-    LogOut,
     Loader2,
     CheckCircle2
 } from 'lucide-react';
@@ -42,9 +35,6 @@ const visitTypes: { value: VisitType; label: string; }[] = [
 ];
 
 function AssignPageContent() {
-    const router = useRouter();
-    const { profile, signOut } = useAuth();
-
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loadingEmployees, setLoadingEmployees] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -141,78 +131,16 @@ function AssignPageContent() {
     };
 
     return (
-        <div className="flex min-h-screen bg-gray-50">
-            <aside className="w-60 bg-white border-r border-gray-200 flex flex-col">
-                <div className="p-6">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white text-lg">✦</span>
-                        </div>
-                        <span className="font-bold text-lg text-gray-900">TicketIntel</span>
-                    </div>
-                </div>
-
-                <nav className="flex-1 px-3">
-                    <Link
-                        href="/admin/tickets"
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100 transition-all"
-                    >
-                        <Radio className="w-5 h-5" />
-                        <span className="font-medium">Tickets</span>
-                    </Link>
-                    <button
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100 transition-all"
-                        type="button"
-                    >
-                        <BarChart3 className="w-5 h-5" />
-                        <span className="font-medium">Analytics</span>
-                    </button>
-                    <Link
-                        href="/admin/excuses"
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100 transition-all"
-                    >
-                        <AlertCircle className="w-5 h-5" />
-                        <span className="font-medium">Excuses</span>
-                    </Link>
-                    <Link
-                        href="/admin/assign"
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 bg-purple-600 text-white transition-all"
-                    >
-                        <Users className="w-5 h-5" />
-                        <span className="font-medium">Assign</span>
-                    </Link>
-                </nav>
-
-                <div className="p-4 border-t border-gray-200">
-                    <div className="mt-4 flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                            <User className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{profile?.fullname}</p>
-                            <p className="text-xs text-gray-500 truncate">{profile?.email}</p>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={async () => { await signOut(); router.push('/login'); }}
-                        className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        Sign Out
-                    </button>
-                </div>
-            </aside>
-
-            <main className="flex-1 p-8">
+        <AdminShell activeSection="assign">
+            <main className="p-5 md:p-8">
                 <div className="max-w-3xl mx-auto">
                     <div className="mb-6">
-                        <h1 className="text-2xl font-bold text-gray-900">Assign Ticket Draft</h1>
-                        <p className="text-gray-500">Create a draft ticket for an employee. It will appear in their employee dashboard for later audio upload.</p>
+                        <h1 className="text-2xl font-semibold text-gray-900">Assign Ticket Draft</h1>
+                        <p className="text-sm text-gray-500">Create a draft ticket for an employee. It appears in their dashboard for later audio upload.</p>
                     </div>
 
                     {error && (
-                        <div className="mb-4 p-4 rounded-lg border border-red-200 bg-red-50 text-red-700">
+                        <div className="mb-4 p-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
                             {error}
                         </div>
                     )}
@@ -224,14 +152,14 @@ function AssignPageContent() {
                                 <div>
                                     <p className="font-semibold">Draft assigned successfully.</p>
                                     <p className="text-sm mt-1">
-                                        Draft #{successDraft.id.slice(0, 8)} • {successDraft.client_name} • Visit #{successDraft.visit_number} • {successDraft.assigned_to}
+                                        Draft #{successDraft.id.slice(0, 8)} - {successDraft.client_name} - Visit #{successDraft.visit_number} - {successDraft.assigned_to}
                                     </p>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <form onSubmit={handleAssignDraft} className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-5">
+                    <form onSubmit={handleAssignDraft} className="bg-white rounded-2xl border border-gray-200 p-5 md:p-6 shadow-sm space-y-5">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Assign To Employee <span className="text-red-500">*</span>
@@ -348,7 +276,7 @@ function AssignPageContent() {
                     </form>
                 </div>
             </main>
-        </div>
+        </AdminShell>
     );
 }
 

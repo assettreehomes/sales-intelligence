@@ -17,42 +17,57 @@ interface AuthContextType {
     session: Session | null;
     profile: UserProfile | null;
     loading: boolean;
+    profileLoading: boolean;
     signIn: (email: string, password: string) => Promise<{ error?: string }>;
     signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Timeout helper
-const timeoutPromise = (ms: number) => new Promise<null>((r) => setTimeout(() => r(null), ms));
+const PROFILE_TIMEOUT_MS = 15000;
+
+function isAbortError(err: unknown): boolean {
+    return err instanceof Error && err.name === 'AbortError';
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [profileLoading, setProfileLoading] = useState(false);
 
     const supabase = useMemo(() => createClient(), []);
 
-    // Fetch user profile from users table - with timeout
+    // Fetch user profile from users table with explicit request timeout.
     const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), PROFILE_TIMEOUT_MS);
+
         try {
-            const query = supabase
+            const { data, error } = await supabase
                 .from('users')
                 .select('id, email, fullname, role, status')
                 .eq('id', userId)
+                .abortSignal(controller.signal)
                 .single();
 
-            const result = await Promise.race([query, timeoutPromise(5000)]);
-
-            if (!result || 'error' in result && result.error) {
-                console.error('Profile fetch error:', result && 'error' in result ? result.error : 'timeout');
+            if (error) {
+                console.error('Profile fetch error:', error.message || error);
                 return null;
             }
-            return 'data' in result ? result.data as UserProfile : null;
+
+            return data as UserProfile;
         } catch (err) {
+            if (isAbortError(err)) {
+                console.error(`Profile fetch error: timeout after ${PROFILE_TIMEOUT_MS}ms`);
+                return null;
+            }
+
             console.error('Profile fetch exception:', err);
             return null;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }, [supabase]);
 
@@ -62,9 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const initAuth = async () => {
             try {
-                // Get session with timeout
-                const sessionQuery = supabase.auth.getSession();
-                const sessionResult = await Promise.race([sessionQuery, timeoutPromise(5000)]);
+                const sessionResult = await supabase.auth.getSession();
 
                 if (!mounted) return;
 
@@ -79,11 +92,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (currentSession?.user) {
                     setSession(currentSession);
                     setUser(currentSession.user);
+                    setProfileLoading(true);
 
-                    // Fetch profile asynchronously - don't block loading
-                    fetchProfile(currentSession.user.id).then((userProfile) => {
-                        if (mounted) setProfile(userProfile);
-                    });
+                    // Fetch profile asynchronously - don't block app initialization.
+                    fetchProfile(currentSession.user.id)
+                        .then((userProfile) => {
+                            if (mounted) setProfile(userProfile);
+                        })
+                        .finally(() => {
+                            if (mounted) setProfileLoading(false);
+                        });
+                } else {
+                    setProfileLoading(false);
                 }
 
                 // Always set loading to false after checking session
@@ -106,12 +126,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(newSession?.user ?? null);
 
                 if (newSession?.user) {
+                    setProfileLoading(true);
+
                     // Fetch profile in background
-                    fetchProfile(newSession.user.id).then((userProfile) => {
-                        if (mounted) setProfile(userProfile);
-                    });
+                    fetchProfile(newSession.user.id)
+                        .then((userProfile) => {
+                            if (mounted) setProfile(userProfile);
+                        })
+                        .finally(() => {
+                            if (mounted) setProfileLoading(false);
+                        });
                 } else {
                     setProfile(null);
+                    setProfileLoading(false);
                 }
 
                 setLoading(false);
@@ -139,10 +166,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (data.session) {
                 setSession(data.session);
                 setUser(data.user);
+                setProfileLoading(true);
 
                 // Fetch profile
                 const userProfile = await fetchProfile(data.user.id);
                 setProfile(userProfile);
+                setProfileLoading(false);
 
                 if (userProfile?.status !== 'active') {
                     await supabase.auth.signOut();
@@ -163,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setSession(null);
         setProfile(null);
+        setProfileLoading(false);
     }, [supabase]);
 
     const value = useMemo(() => ({
@@ -170,9 +200,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         profile,
         loading,
+        profileLoading,
         signIn,
         signOut,
-    }), [user, session, profile, loading, signIn, signOut]);
+    }), [user, session, profile, loading, profileLoading, signIn, signOut]);
 
     return (
         <AuthContext.Provider value={value}>

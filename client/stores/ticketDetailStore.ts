@@ -32,6 +32,13 @@ interface Analysis {
         regressions?: string[];
         unchanged?: string[];
         delta_score?: number;
+        key_differences?: string[];
+        overall_narrative?: string;
+        score_changes?: Record<string, {
+            current?: number;
+            previous?: number;
+            change?: number;
+        }>;
     } | null;
 }
 

@@ -1,16 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AdminShell } from '@/components/AdminShell';
 import { useTicketsStore } from '@/stores/ticketsStore';
 import {
-    Radio,
-    BarChart3,
     AlertCircle,
-    Users,
     Search,
     SlidersHorizontal,
     Bell,
@@ -19,18 +15,12 @@ import {
     Star,
     ChevronLeft,
     ChevronRight,
-    MoreVertical,
-    User,
-    LogOut
+    MoreVertical
 } from 'lucide-react';
-
-type NavItem = 'live' | 'analytics' | 'excuses' | 'assign';
 
 function AdminDashboardContent() {
     const router = useRouter();
-    const { profile, signOut } = useAuth();
 
-    // Zustand store — replaces all useState
     const {
         tickets,
         employees,
@@ -47,13 +37,6 @@ function AdminDashboardContent() {
         setPage,
     } = useTicketsStore();
 
-    const navItems = [
-        { id: 'live' as NavItem, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
-        { id: 'analytics' as NavItem, label: 'Analytics', icon: BarChart3, href: '#' },
-        { id: 'excuses' as NavItem, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
-        { id: 'assign' as NavItem, label: 'Assign', icon: Users, href: '/admin/assign' },
-    ];
-
     const statusOptions = [
         { value: 'all', label: 'All Status' },
         { value: 'pending', label: 'Pending' },
@@ -69,12 +52,10 @@ function AdminDashboardContent() {
         { value: 'all', label: 'All Time' },
     ];
 
-    // Fetch tickets whenever filters or page change
     useEffect(() => {
         fetchTickets();
     }, [filters, currentPage, fetchTickets]);
 
-    // Fetch employees once
     useEffect(() => {
         if (!employeesLoaded) {
             fetchEmployees();
@@ -132,7 +113,7 @@ function AdminDashboardContent() {
             month: 'short',
             day: 'numeric',
             year: 'numeric'
-        }) + ' • ' + date.toLocaleTimeString('en-US', {
+        }) + ' - ' + date.toLocaleTimeString('en-US', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: true
@@ -163,11 +144,11 @@ function AdminDashboardContent() {
 
     const getVisitTypeLabel = (type: string) => {
         const labels: Record<string, string> = {
-            'site_visit': 'Site Visit',
-            'follow_up': 'Follow Up',
-            'closing': 'Closing',
-            'inquiry': 'Inquiry',
-            'other': 'Other'
+            site_visit: 'Site Visit',
+            follow_up: 'Follow Up',
+            closing: 'Closing',
+            inquiry: 'Inquiry',
+            other: 'Other'
         };
         return labels[type] || type;
     };
@@ -175,85 +156,24 @@ function AdminDashboardContent() {
     const totalPages = Math.ceil(totalTickets / ticketsPerPage);
 
     return (
-        <div className="flex min-h-screen bg-gray-50">
-            {/* Sidebar */}
-            <aside className="w-60 bg-white border-r border-gray-200 flex flex-col">
-                {/* Logo */}
-                <div className="p-6">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white text-lg">✦</span>
-                        </div>
-                        <span className="font-bold text-lg text-gray-900">TicketIntel</span>
-                    </div>
-                </div>
-
-                {/* Navigation */}
-                <nav className="flex-1 px-3">
-                    {navItems.map((item) => (
-                        <Link
-                            key={item.id}
-                            href={item.href}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-all ${item.id === 'live'
-                                ? 'bg-purple-600 text-white'
-                                : 'text-gray-600 hover:bg-gray-100'
-                                }`}
-                        >
-                            <item.icon className="w-5 h-5" />
-                            <span className="font-medium">{item.label}</span>
-                        </Link>
-                    ))}
-                </nav>
-
-                {/* Profile Section */}
-                <div className="p-4 border-t border-gray-200">
-                    <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Current Plan</p>
-                        <div className="flex items-center justify-between">
-                            <span className="font-semibold text-gray-900">Enterprise</span>
-                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                            <User className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{profile?.fullname}</p>
-                            <p className="text-xs text-gray-500 truncate">{profile?.email}</p>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={async () => { await signOut(); router.push('/login'); }}
-                        className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        Sign Out
-                    </button>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <main className="flex-1 flex flex-col">
-                {/* Header */}
-                <header className="bg-white border-b border-gray-200 px-8 py-6">
-                    <div className="flex items-center justify-between mb-6">
+        <AdminShell activeSection="tickets">
+            <div className="flex min-h-screen flex-col">
+                <header className="bg-white border-b border-gray-200 px-5 py-5 md:px-7 sticky top-0 z-20">
+                    <div className="flex items-center justify-between mb-5 gap-4">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Ticket Repository</h1>
-                            <p className="text-gray-500">Manage and monitor customer intelligence flow</p>
+                            <h1 className="text-xl md:text-2xl font-semibold text-gray-900">Ticket Repository</h1>
+                            <p className="text-sm text-gray-500">Manage and monitor customer intelligence flow</p>
                         </div>
 
-                        <div className="flex items-center gap-4">
-                            <div className="relative">
+                        <div className="flex items-center gap-3">
+                            <div className="relative hidden md:block">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
                                     type="text"
                                     placeholder="Search tickets..."
                                     value={filters.searchQuery}
                                     onChange={(e) => setFilter('searchQuery', e.target.value)}
-                                    className="pl-10 pr-4 py-2 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                    className="pl-10 pr-4 py-2.5 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
                                 />
                             </div>
                             <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
@@ -265,28 +185,34 @@ function AdminDashboardContent() {
                         </div>
                     </div>
 
-                    {/* Filters */}
-                    <div className="flex items-center gap-4">
-                        {/* Live Only Toggle */}
-                        <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <div className="relative md:hidden mb-3">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search tickets..."
+                            value={filters.searchQuery}
+                            onChange={(e) => setFilter('searchQuery', e.target.value)}
+                            className="pl-10 pr-4 py-2.5 w-full border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                        />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
                             <div
                                 onClick={() => setFilter('showLiveOnly', !filters.showLiveOnly)}
-                                className={`w-10 h-5 rounded-full transition-colors ${filters.showLiveOnly ? 'bg-purple-600' : 'bg-gray-300'
-                                    } relative`}
+                                className={`w-10 h-5 rounded-full transition-colors ${filters.showLiveOnly ? 'bg-purple-600' : 'bg-gray-300'} relative`}
                             >
-                                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${filters.showLiveOnly ? 'translate-x-5' : 'translate-x-0.5'
-                                    }`} />
+                                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${filters.showLiveOnly ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </div>
                             <span className="text-sm font-medium text-gray-700">Show Live Only</span>
                         </label>
 
-                        {/* Status Filter */}
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
                             <span className="text-xs text-gray-500 uppercase">Status</span>
                             <select
                                 value={filters.statusFilter}
                                 onChange={(e) => setFilter('statusFilter', e.target.value)}
-                                className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
+                                className="text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none cursor-pointer"
                             >
                                 {statusOptions.map((opt) => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -294,13 +220,12 @@ function AdminDashboardContent() {
                             </select>
                         </div>
 
-                        {/* Date Filter */}
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
                             <span className="text-xs text-gray-500 uppercase">Date</span>
                             <select
                                 value={filters.dateFilter}
                                 onChange={(e) => setFilter('dateFilter', e.target.value)}
-                                className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
+                                className="text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none cursor-pointer"
                             >
                                 {dateOptions.map((opt) => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -308,13 +233,12 @@ function AdminDashboardContent() {
                             </select>
                         </div>
 
-                        {/* Agent Filter */}
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
                             <span className="text-xs text-gray-500 uppercase">Agent</span>
                             <select
                                 value={filters.agentFilter}
                                 onChange={(e) => setFilter('agentFilter', e.target.value)}
-                                className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
+                                className="text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none cursor-pointer"
                             >
                                 <option value="all">All Agents</option>
                                 {employees.map((emp) => (
@@ -325,15 +249,14 @@ function AdminDashboardContent() {
 
                         <button
                             onClick={clearFilters}
-                            className="ml-auto text-purple-600 hover:text-purple-700 text-sm font-medium"
+                            className="ml-auto text-purple-600 hover:text-purple-700 text-sm font-medium px-2 py-1"
                         >
                             Clear Filters
                         </button>
                     </div>
                 </header>
 
-                {/* Ticket Grid */}
-                <div className="flex-1 p-8 overflow-auto">
+                <div className="flex-1 p-5 md:p-7 overflow-auto">
                     {loading ? (
                         <div className="flex items-center justify-center h-64">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -345,14 +268,13 @@ function AdminDashboardContent() {
                             <p className="text-sm">Try adjusting your filters</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                             {tickets.map((ticket) => (
                                 <div
                                     key={ticket.id}
                                     className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-shadow cursor-pointer"
-                                    onClick={() => window.location.href = `/admin/tickets/${ticket.id}`}
+                                    onClick={() => router.push(`/admin/tickets/${ticket.id}`)}
                                 >
-                                    {/* Card Header */}
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-gray-500 font-medium">
@@ -365,33 +287,29 @@ function AdminDashboardContent() {
                                         </button>
                                     </div>
 
-                                    {/* Client Info */}
-                                    <h3 className="font-semibold text-gray-900 mb-1">
+                                    <h3 className="font-semibold text-gray-900 mb-1 text-base">
                                         {ticket.clientname || `Client ${ticket.client_id}`}
                                     </h3>
                                     <p className="text-sm text-gray-500 mb-3">
                                         {getVisitTypeLabel(ticket.visittype)} - {ticket.client_id}
                                     </p>
 
-                                    {/* Rating */}
                                     <div className="mb-4">
                                         {renderStars(ticket.rating)}
                                     </div>
 
                                     <div className="border-t border-gray-100 pt-4">
-                                        {/* Duration & Visit */}
                                         <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
                                             <div className="flex items-center gap-1">
                                                 <Clock className="w-4 h-4" />
                                                 <span>{formatDuration(ticket.durationseconds)}</span>
                                             </div>
                                             <div className="flex items-center gap-1">
-                                                <span className="text-gray-400">📋</span>
+                                                <span className="text-gray-400">V</span>
                                                 <span>Visit #{ticket.visitnumber}</span>
                                             </div>
                                         </div>
 
-                                        {/* Date */}
                                         <div className="flex items-center gap-1 text-sm text-gray-500">
                                             <Calendar className="w-4 h-4" />
                                             <span>{formatDate(ticket.createdat)}</span>
@@ -403,8 +321,7 @@ function AdminDashboardContent() {
                     )}
                 </div>
 
-                {/* Pagination */}
-                <footer className="bg-white border-t border-gray-200 px-8 py-4 flex items-center justify-between">
+                <footer className="bg-white border-t border-gray-200 px-5 py-4 md:px-7 flex items-center justify-between">
                     <p className="text-sm text-gray-500">
                         Showing <span className="font-medium">{((currentPage - 1) * ticketsPerPage) + 1}-{Math.min(currentPage * ticketsPerPage, totalTickets)}</span> of <span className="font-medium">{totalTickets}</span> tickets
                     </p>
@@ -434,11 +351,7 @@ function AdminDashboardContent() {
                             );
                         })}
 
-                        {totalPages > 3 && (
-                            <>
-                                <span className="text-gray-400">...</span>
-                            </>
-                        )}
+                        {totalPages > 3 && <span className="text-gray-400">...</span>}
 
                         <button
                             onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
@@ -447,15 +360,10 @@ function AdminDashboardContent() {
                         >
                             <ChevronRight className="w-5 h-5 text-gray-600" />
                         </button>
-
-                        {/* Dark mode toggle placeholder */}
-                        <button className="ml-4 w-9 h-9 bg-gray-900 rounded-full flex items-center justify-center">
-                            <span className="text-white text-lg">🌙</span>
-                        </button>
                     </div>
                 </footer>
-            </main>
-        </div>
+            </div>
+        </AdminShell>
     );
 }
 

@@ -15,10 +15,10 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function fixUser() {
-    const email = 'tijop22175@cimario.com';
-    const password = 'TicketIntel2024!';
-    const fullname = 'Test Employee';
-    const role = 'employee';
+    const email = 'superadmin@assettree.com';
+    const password = 'SuperAdmin2024!';
+    const fullname = 'Super Administrator';
+    const role = 'superadmin';
 
     console.log(`\n🔧 Fixing user: ${email}\n`);
 

@@ -11,12 +11,17 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-    const { user, profile, loading } = useAuth();
+    const { user, profile, loading, profileLoading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading) {
+        if (!loading && !profileLoading) {
             if (!user) {
+                router.replace('/login');
+                return;
+            }
+
+            if (allowedRoles && !profile) {
                 router.replace('/login');
                 return;
             }
@@ -30,9 +35,9 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
                 }
             }
         }
-    }, [user, profile, loading, allowedRoles, router]);
+    }, [user, profile, loading, profileLoading, allowedRoles, router]);
 
-    if (loading) {
+    if (loading || profileLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="animate-spin rounded-full h-10 w-10 border-3 border-purple-600 border-t-transparent"></div>
@@ -44,7 +49,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
         return null;
     }
 
-    if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+    if (allowedRoles && (!profile || !allowedRoles.includes(profile.role))) {
         return null;
     }
 
