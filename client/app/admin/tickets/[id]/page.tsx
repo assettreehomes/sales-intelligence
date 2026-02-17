@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { useTicketDetailStore } from '@/stores/ticketDetailStore';
@@ -9,7 +9,10 @@ import {
     Play,
     Pause,
     RotateCcw,
-    RotateCw,
+    VolumeX,
+    Volume1,
+    Volume2,
+    Gauge,
     Download,
     ThumbsUp,
     Smile,
@@ -57,6 +60,64 @@ type ComparisonInsights = {
     scoreChanges: ParsedScoreChange[];
 };
 
+const AUDIO_VOLUME_STORAGE_KEY = 'ticketintel-audio-volume';
+const AUDIO_MUTE_STORAGE_KEY = 'ticketintel-audio-muted';
+const AUDIO_LAST_VOLUME_STORAGE_KEY = 'ticketintel-audio-last-volume';
+const AUDIO_SPEED_STORAGE_KEY = 'ticketintel-audio-speed';
+const AUDIO_SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+type AudioPreferences = {
+    volume: number;
+    isMuted: boolean;
+    lastVolume: number;
+    speed: number;
+};
+
+const getStoredAudioPreferences = (): AudioPreferences => {
+    if (typeof window === 'undefined') {
+        return {
+            volume: 1,
+            isMuted: false,
+            lastVolume: 1,
+            speed: 1
+        };
+    }
+
+    const storedVolume = Number(window.localStorage.getItem(AUDIO_VOLUME_STORAGE_KEY));
+    const normalizedVolume = Number.isFinite(storedVolume) ? clamp(storedVolume, 0, 1) : 1;
+
+    const storedLastVolume = Number(window.localStorage.getItem(AUDIO_LAST_VOLUME_STORAGE_KEY));
+    const normalizedLastVolume = Number.isFinite(storedLastVolume)
+        ? clamp(storedLastVolume, 0, 1)
+        : Math.max(normalizedVolume, 0.5);
+
+    const storedMuted = window.localStorage.getItem(AUDIO_MUTE_STORAGE_KEY) === '1';
+    const storedSpeed = Number(window.localStorage.getItem(AUDIO_SPEED_STORAGE_KEY));
+    const normalizedSpeed = (AUDIO_SPEED_OPTIONS as readonly number[]).includes(storedSpeed)
+        ? storedSpeed
+        : 1;
+
+    return {
+        volume: normalizedVolume,
+        isMuted: storedMuted || normalizedVolume <= 0,
+        lastVolume: normalizedLastVolume > 0 ? normalizedLastVolume : 1,
+        speed: normalizedSpeed
+    };
+};
+
+const isEditableShortcutTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    if (target.tagName === 'TEXTAREA') return true;
+    if (target.tagName === 'INPUT') {
+        const input = target as HTMLInputElement;
+        return input.type !== 'range' && input.type !== 'button' && input.type !== 'checkbox' && input.type !== 'radio';
+    }
+    return false;
+};
+
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
 
@@ -86,11 +147,20 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     } = useTicketDetailStore();
 
     // Refs for auto-scrolling key moments
+    const initialAudioPreferences = useMemo<AudioPreferences>(() => getStoredAudioPreferences(), []);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const momentsContainerRef = useRef<HTMLDivElement>(null);
     const momentRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const lastVolumeRef = useRef(initialAudioPreferences.lastVolume);
+    const seekPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [hoveredChartPoint, setHoveredChartPoint] = useState<HoveredChartPoint | null>(null);
+    const [bufferedPercent, setBufferedPercent] = useState(0);
+    const [isScrubbing, setIsScrubbing] = useState(false);
+    const [scrubTime, setScrubTime] = useState<number | null>(null);
+    const [volume, setVolume] = useState(initialAudioPreferences.volume);
+    const [isMuted, setIsMuted] = useState(initialAudioPreferences.isMuted);
+    const [playbackSpeed, setPlaybackSpeed] = useState(initialAudioPreferences.speed);
 
     // Parse timestamps from multiple formats (MM:SS, HH:MM:SS, seconds, or milliseconds)
     const parseTime = (value?: string | number | null): number => {
@@ -168,7 +238,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const ensureSignedAudioUrl = async (forceRefresh = false) => {
+    const formatSpeed = (speed: number) => `${Number.isInteger(speed) ? speed.toFixed(0) : speed}\u00D7`;
+
+    const ensureSignedAudioUrl = useCallback(async (forceRefresh = false) => {
         const resolvedUrl = await fetchAudioUrl(id, forceRefresh || !audioUrl);
         if (!resolvedUrl) {
             setAudioError('Backend could not generate a signed audio URL for this ticket.');
@@ -176,9 +248,104 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         }
         setAudioError(null);
         return resolvedUrl;
-    };
+    }, [fetchAudioUrl, id, audioUrl]);
 
-    const togglePlayback = async () => {
+    const getSeekLimit = useCallback((audio: HTMLAudioElement | null) => {
+        if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+            return audio.duration;
+        }
+        return Math.max(duration, 0);
+    }, [duration]);
+
+    const setPlaybackPosition = useCallback((nextTime: number) => {
+        const audio = audioRef.current;
+        const max = getSeekLimit(audio);
+        const bounded = clamp(nextTime, 0, max > 0 ? max : Math.max(nextTime, 0));
+        if (audio) {
+            audio.currentTime = bounded;
+        }
+        setCurrentTime(bounded);
+        return bounded;
+    }, [getSeekLimit, setCurrentTime]);
+
+    const updateBufferedProgress = useCallback(() => {
+        const audio = audioRef.current;
+        if (!audio || audio.buffered.length === 0) {
+            setBufferedPercent(0);
+            return;
+        }
+
+        try {
+            const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
+            const max = getSeekLimit(audio);
+            if (max <= 0) {
+                setBufferedPercent(0);
+                return;
+            }
+            setBufferedPercent(clamp((bufferedEnd / max) * 100, 0, 100));
+        } catch {
+            setBufferedPercent(0);
+        }
+    }, [getSeekLimit]);
+
+    const applyVolume = useCallback((nextVolume: number) => {
+        const clampedVolume = clamp(nextVolume, 0, 1);
+        setVolume(clampedVolume);
+        if (clampedVolume <= 0) {
+            setIsMuted(true);
+            return;
+        }
+        lastVolumeRef.current = clampedVolume;
+        setIsMuted(false);
+    }, []);
+
+    const changeVolumeBy = useCallback((delta: number) => {
+        const baseVolume = isMuted ? Math.max(lastVolumeRef.current, 0.25) : volume;
+        applyVolume(baseVolume + delta);
+    }, [isMuted, volume, applyVolume]);
+
+    const toggleMute = useCallback(() => {
+        if (isMuted || volume <= 0) {
+            const restoredVolume = clamp(lastVolumeRef.current || 1, 0.05, 1);
+            setVolume(restoredVolume);
+            setIsMuted(false);
+            return;
+        }
+
+        if (volume > 0) {
+            lastVolumeRef.current = volume;
+        }
+        setIsMuted(true);
+    }, [isMuted, volume]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(AUDIO_VOLUME_STORAGE_KEY, volume.toString());
+        if (volume > 0) {
+            lastVolumeRef.current = volume;
+            window.localStorage.setItem(AUDIO_LAST_VOLUME_STORAGE_KEY, volume.toString());
+        }
+    }, [volume]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(AUDIO_MUTE_STORAGE_KEY, isMuted ? '1' : '0');
+    }, [isMuted]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(AUDIO_SPEED_STORAGE_KEY, playbackSpeed.toString());
+    }, [playbackSpeed]);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        audio.volume = clamp(volume, 0, 1);
+        audio.muted = isMuted;
+        audio.playbackRate = playbackSpeed;
+    }, [volume, isMuted, playbackSpeed]);
+
+    const togglePlayback = useCallback(async () => {
         const signedUrl = await ensureSignedAudioUrl(false);
         if (!signedUrl) return;
 
@@ -221,9 +388,45 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
         audio.pause();
         setIsPlaying(false);
-    };
+    }, [ensureSignedAudioUrl, setIsPlaying]);
 
-    const seekBy = async (deltaSeconds: number) => {
+    const setSeekPreview = useCallback((nextTime: number, keepMs = 240) => {
+        if (seekPreviewTimerRef.current) {
+            clearTimeout(seekPreviewTimerRef.current);
+        }
+        setScrubTime(nextTime);
+        seekPreviewTimerRef.current = setTimeout(() => {
+            setScrubTime(null);
+            seekPreviewTimerRef.current = null;
+        }, keepMs);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (seekPreviewTimerRef.current) {
+                clearTimeout(seekPreviewTimerRef.current);
+            }
+        };
+    }, []);
+
+    const restartPlayback = useCallback(async () => {
+        const signedUrl = await ensureSignedAudioUrl(false);
+        if (!signedUrl) return;
+
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+            audio.src = signedUrl;
+            audio.load();
+        }
+
+        const resetPoint = setPlaybackPosition(0);
+        setIsScrubbing(false);
+        setSeekPreview(resetPoint);
+    }, [ensureSignedAudioUrl, setPlaybackPosition, setSeekPreview]);
+
+    const seekBy = useCallback(async (deltaSeconds: number) => {
         const signedUrl = await ensureSignedAudioUrl(false);
         if (!signedUrl) return;
 
@@ -241,9 +444,33 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         const unclamped = audio.currentTime + deltaSeconds;
         const next = Math.max(0, max > 0 ? Math.min(unclamped, max) : unclamped);
 
-        audio.currentTime = next;
-        setCurrentTime(next);
-    };
+        setPlaybackPosition(next);
+        setIsScrubbing(false);
+        setSeekPreview(next);
+    }, [duration, ensureSignedAudioUrl, setPlaybackPosition, setSeekPreview]);
+
+    const handleSeekInput = useCallback((nextTime: number) => {
+        const bounded = setPlaybackPosition(nextTime);
+        setIsScrubbing(true);
+        setScrubTime(bounded);
+    }, [setPlaybackPosition]);
+
+    const commitScrub = useCallback(() => {
+        setIsScrubbing(false);
+        if (seekPreviewTimerRef.current) {
+            clearTimeout(seekPreviewTimerRef.current);
+        }
+        seekPreviewTimerRef.current = setTimeout(() => {
+            setScrubTime(null);
+            seekPreviewTimerRef.current = null;
+        }, 160);
+    }, []);
+
+    const cyclePlaybackSpeed = useCallback(() => {
+        const currentIndex = AUDIO_SPEED_OPTIONS.findIndex((speed) => speed === playbackSpeed);
+        const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % AUDIO_SPEED_OPTIONS.length : 0;
+        setPlaybackSpeed(AUDIO_SPEED_OPTIONS[nextIndex]);
+    }, [playbackSpeed]);
 
     const seekToMoment = async (momentTime: string | number | null | undefined) => {
         const seconds = Math.max(0, parseTime(momentTime));
@@ -252,7 +479,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
         const audio = audioRef.current;
 
-        setCurrentTime(seconds);
+        const target = setPlaybackPosition(seconds);
+        setIsScrubbing(false);
+        setSeekPreview(target);
 
         if (!audio) return;
 
@@ -272,6 +501,57 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             setIsPlaying(false);
         }
     };
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+            if (isEditableShortcutTarget(event.target)) return;
+
+            if (event.key === ' ' || event.key === 'Spacebar') {
+                event.preventDefault();
+                void togglePlayback();
+                return;
+            }
+
+            if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                void seekBy(-5);
+                return;
+            }
+
+            if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                void seekBy(event.shiftKey ? 10 : 5);
+                return;
+            }
+
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                changeVolumeBy(0.05);
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                changeVolumeBy(-0.05);
+                return;
+            }
+
+            if (event.key.toLowerCase() === 'm') {
+                event.preventDefault();
+                toggleMute();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [togglePlayback, seekBy, changeVolumeBy, toggleMute]);
+
+    const displayedCurrentTime = scrubTime ?? currentTime;
+    const progressPercent = duration > 0 ? clamp((displayedCurrentTime / duration) * 100, 0, 100) : 0;
+    const effectiveVolume = isMuted ? 0 : volume;
+    const volumePercent = clamp(effectiveVolume * 100, 0, 100);
+    const VolumeIcon = effectiveVolume <= 0 ? VolumeX : effectiveVolume < 0.5 ? Volume1 : Volume2;
 
     const getSentimentColor = (sentiment: string) => {
         switch (sentiment) {
@@ -520,7 +800,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             <AdminShell activeSection="tickets">
                 <main className="min-h-screen">
                     {/* Header */}
-                    <header className="bg-white border-b border-gray-200 px-5 py-4 md:px-7 sticky top-0 z-10">
+                    <header className="bg-white border-b border-gray-200 px-5 py-4 md:px-7">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <Link
@@ -579,98 +859,159 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         </div>
                     </header>
 
-                    <div className="px-5 py-7 md:px-7 max-w-[90rem] mx-auto space-y-6">
-                        {/* Title Section */}
-                        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
-                            <div>
-                                <div className="flex items-center gap-3 mb-2">
+                    <div className="px-5 py-7 md:px-7 max-w-[90rem] mx-auto space-y-5">
+                        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="inline-flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5">
                                     <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wide">
                                         {ticket.status}
                                     </span>
-                                    <span className="text-sm text-gray-500">
+                                    <span className="text-sm font-medium text-gray-500">
                                         {new Date(ticket.createdat).toLocaleString()}
                                     </span>
                                 </div>
-                                <h1 className="text-2xl md:text-[1.85rem] font-semibold text-gray-900 mb-2 leading-tight">
-                                    Ticket #{ticket.id.slice(0, 4).toUpperCase()} - {ticket.clientname || 'Client Analysis'}
-                                </h1>
-                                <p className="text-gray-500 text-base">
-                                    Customer Intelligence Report - {ticket.visittype.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </p>
-                            </div>
 
-                            <div className="flex flex-wrap gap-4">
-                                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm min-w-[140px]">
-                                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Client ID</p>
-                                    <p className="text-lg font-bold text-gray-900">{ticket.client_id}</p>
-                                </div>
-                                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm min-w-[140px]">
-                                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Agent</p>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center">
-                                            <span className="text-xs font-medium">JD</span>
+                                <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
+                                    <div className="min-w-[150px] rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                                        <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client ID</p>
+                                        <p className="text-[1.65rem] leading-none font-semibold text-gray-900">{ticket.client_id}</p>
+                                    </div>
+                                    <div className="min-w-[170px] rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                                        <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
+                                                <span className="text-xs font-semibold text-gray-700">JD</span>
+                                            </div>
+                                            <p className="text-lg font-semibold leading-none text-gray-900">John Doe</p>
                                         </div>
-                                        <p className="text-sm font-medium text-gray-900">John Doe</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* Audio Player */}
-                        <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                            {/* Waveform Background (abstract) */}
-                            <div className="absolute inset-0 opacity-20 flex items-center gap-1 justify-center px-12 pointer-events-none">
-                                {[...Array(60)].map((_, i) => (
-                                    <div
-                                        key={i}
-                                        className="w-1.5 bg-purple-500 rounded-full transition-all duration-300"
-                                        style={{ height: `${((i * 37 + 13) % 80) + 20}%` }}
-                                    />
-                                ))}
-                            </div>
+                        <div className="ticket-audio-player rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden border border-white/8 bg-[radial-gradient(130%_190%_at_0%_0%,rgba(141,59,197,0.35),rgba(13,16,31,0.97)_54%,rgba(4,7,20,0.98)_100%)] text-white">
+                            <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(90deg,rgba(141,59,197,0.14),rgba(87,26,155,0.08),transparent)]" />
 
-                            <div className="relative z-10 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <button
-                                        onClick={togglePlayback}
-                                        className="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center hover:bg-purple-500 transition-colors shadow-lg hover:shadow-purple-500/30"
-                                    >
-                                        {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
-                                    </button>
-                                    <div>
-                                        <h3 className="font-semibold text-lg">Call Recording</h3>
-                                        <p className="text-sm text-gray-400">
-                                            {ticket.clientname} - Visit #{ticket.visitnumber}
-                                        </p>
-                                        {audioError && (
-                                            <p className="text-xs text-red-300 mt-1">{audioError}</p>
-                                        )}
-                                        {!audioUrl && (
-                                            <p className="text-xs text-amber-200 mt-1">Requesting signed playback URL from backend...</p>
-                                        )}
+                            <div className="relative z-10 space-y-4">
+                                <div className="ticket-audio-strip rounded-full border border-white/15 bg-[linear-gradient(90deg,rgba(9,12,26,0.93),rgba(6,9,21,0.96))] px-3 py-2.5 sm:px-4 sm:py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                                    <div className="flex items-center gap-2 sm:gap-3">
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => { void togglePlayback(); }}
+                                                className={`ticket-audio-main-btn inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-gradient-to-r from-purple-600 to-indigo-600 text-white transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/35 ${isPlaying ? 'shadow-md shadow-purple-500/35' : ''}`}
+                                                aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+                                            >
+                                                {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+                                            </button>
+                                            <button
+                                                onClick={() => { void restartPlayback(); }}
+                                                className="ticket-audio-action-btn hidden h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition-colors hover:bg-white/10 md:inline-flex"
+                                                aria-label="Replay from start"
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => { void seekBy(-10); }}
+                                                className="ticket-audio-action-btn inline-flex h-9 min-w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 px-2 text-xs font-semibold text-white transition-colors hover:bg-white/10"
+                                                aria-label="Skip backward 10 seconds"
+                                            >
+                                                -10
+                                            </button>
+                                        </div>
+
+                                        <div className="mx-1 sm:mx-2 md:mx-4 flex min-w-[120px] flex-1 items-center gap-2 sm:gap-3">
+                                            <span className="w-11 text-right font-mono text-xs text-gray-200">
+                                                {formatTime(displayedCurrentTime)}
+                                            </span>
+
+                                            <div className="relative flex h-4 flex-1 items-center group">
+                                                <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/20 transition-shadow duration-200 ease-out group-hover:shadow-[0_0_0_3px_rgba(168,85,247,0.16)]" />
+                                                <div
+                                                    className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/35 transition-[width] duration-200 ease-out"
+                                                    style={{ width: `${bufferedPercent}%` }}
+                                                />
+                                                <div
+                                                    className={`absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-gradient-to-r from-purple-600 via-purple-400 to-indigo-300 ${isScrubbing ? '' : 'transition-[width] duration-200 ease-out'}`}
+                                                    style={{ width: `${progressPercent}%` }}
+                                                />
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={Math.max(duration, 0.1)}
+                                                    step={0.01}
+                                                    value={displayedCurrentTime}
+                                                    onMouseDown={() => setIsScrubbing(true)}
+                                                    onTouchStart={() => setIsScrubbing(true)}
+                                                    onChange={(event) => handleSeekInput(Number(event.currentTarget.value))}
+                                                    onMouseUp={commitScrub}
+                                                    onTouchEnd={commitScrub}
+                                                    onKeyUp={commitScrub}
+                                                    onBlur={commitScrub}
+                                                    className={`ticket-audio-seek-input relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent accent-purple-500 ${isScrubbing ? 'ticket-audio-seek-input--dragging' : ''}`}
+                                                    aria-label="Seek timeline"
+                                                />
+                                            </div>
+
+                                            <span className="w-11 font-mono text-xs text-gray-300">
+                                                {formatTime(duration)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => { void seekBy(10); }}
+                                                className="ticket-audio-action-btn inline-flex h-9 min-w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 px-2 text-xs font-semibold text-white transition-colors hover:bg-white/10"
+                                                aria-label="Skip forward 10 seconds"
+                                            >
+                                                +10
+                                            </button>
+
+                                            <button
+                                                onClick={toggleMute}
+                                                className="ticket-audio-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition-colors hover:bg-white/10"
+                                                aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
+                                            >
+                                                <VolumeIcon className="w-4 h-4" />
+                                            </button>
+
+                                            <div className="ticket-audio-volume-shell">
+                                                <div className="ticket-audio-volume-track ticket-audio-volume-track-base" />
+                                                <div
+                                                    className="ticket-audio-volume-track ticket-audio-volume-track-fill"
+                                                    style={{ width: `${volumePercent}%` }}
+                                                />
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={1}
+                                                    step={0.01}
+                                                    value={effectiveVolume}
+                                                    onChange={(event) => applyVolume(Number(event.currentTarget.value))}
+                                                    className="ticket-audio-volume-input ticket-audio-volume-inline"
+                                                    aria-label="Volume"
+                                                />
+                                            </div>
+
+                                            <button
+                                                onClick={cyclePlaybackSpeed}
+                                                className="ticket-audio-action-btn inline-flex h-9 items-center justify-center gap-1 rounded-full border border-white/20 bg-white/5 px-2 text-white transition-colors hover:bg-white/10"
+                                                aria-label={`Playback speed ${formatSpeed(playbackSpeed)}`}
+                                                title="Cycle playback speed"
+                                            >
+                                                <Gauge className="w-4 h-4" />
+                                                <span className="hidden sm:inline text-xs font-semibold">{formatSpeed(playbackSpeed)}</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-4 bg-black/30 px-4 py-2 rounded-lg backdrop-blur-sm">
-                                    <span className="font-mono">{formatTime(currentTime)}</span>
-                                    <span className="text-gray-500">/</span>
-                                    <span className="font-mono text-gray-400">{formatTime(duration)}</span>
-                                    <div className="w-px h-4 bg-gray-700 mx-2" />
-                                    <button
-                                        onClick={() => { void seekBy(-10); }}
-                                        className="hover:text-purple-400 transition-colors"
-                                        aria-label="Rewind 10 seconds"
-                                    >
-                                        <RotateCcw className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => { void seekBy(10); }}
-                                        className="hover:text-purple-400 transition-colors"
-                                        aria-label="Forward 10 seconds"
-                                    >
-                                        <RotateCw className="w-4 h-4" />
-                                    </button>
-                                </div>
+                                {audioError && (
+                                    <p className="text-xs text-red-300 px-1">{audioError}</p>
+                                )}
+                                {!audioUrl && (
+                                    <p className="text-xs text-amber-200 px-1">Requesting signed playback URL from backend...</p>
+                                )}
                             </div>
 
                             <audio
@@ -680,11 +1021,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 preload="metadata"
                                 crossOrigin="anonymous"
                                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                                onProgress={updateBufferedProgress}
                                 onLoadedMetadata={(e) => {
                                     const audioDuration = Number.isFinite(e.currentTarget.duration)
                                         ? e.currentTarget.duration
                                         : 0;
                                     setDuration(audioDuration);
+                                    e.currentTarget.playbackRate = playbackSpeed;
+                                    e.currentTarget.volume = clamp(volume, 0, 1);
+                                    e.currentTarget.muted = isMuted;
+                                    updateBufferedProgress();
                                     setAudioError(null);
                                 }}
                                 onPlay={() => setIsPlaying(true)}
@@ -692,6 +1038,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 onEnded={() => {
                                     setIsPlaying(false);
                                     setCurrentTime(0);
+                                    setScrubTime(null);
                                 }}
                                 onError={() => {
                                     setAudioError('Failed to load recording URL.');
@@ -704,7 +1051,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
                             <div
                                 title={`Exact score: ${metricCards.politeness} / 100`}
-                                className="group bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-semibold text-gray-500 uppercase">Politeness</span>
@@ -714,12 +1061,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <span className="text-2xl font-semibold text-gray-900">{metricCards.politeness}%</span>
                                     <span className="text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">High</span>
                                 </div>
-                                <p className="mt-2 text-[11px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Exact score: {metricCards.politeness} / 100</p>
+                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                                    Exact score: {metricCards.politeness} / 100
+                                </p>
                             </div>
 
                             <div
                                 title={`Exact score: ${metricCards.confidence} / 100`}
-                                className="group bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-semibold text-gray-500 uppercase">Confidence</span>
@@ -729,12 +1078,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <span className="text-2xl font-semibold text-gray-900">{metricCards.confidence}%</span>
                                     <span className="text-xs font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Steady</span>
                                 </div>
-                                <p className="mt-2 text-[11px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Exact score: {metricCards.confidence} / 100</p>
+                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                                    Exact score: {metricCards.confidence} / 100
+                                </p>
                             </div>
 
                             <div
                                 title={`Exact score: ${metricCards.interestScore} / 100`}
-                                className="group bg-gradient-to-br from-purple-600 to-indigo-700 text-white p-5 rounded-2xl border border-transparent shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                                className="group relative overflow-hidden bg-gradient-to-br from-purple-600 to-indigo-700 text-white p-5 rounded-2xl border border-transparent shadow-sm transition-shadow hover:shadow-lg"
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-semibold text-white/80 uppercase">Interest</span>
@@ -743,12 +1094,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-2xl font-semibold uppercase">{metricCards.interestRaw}</span>
                                 </div>
-                                <p className="mt-2 text-[11px] text-white/80 opacity-0 group-hover:opacity-100 transition-opacity">Mapped score: {metricCards.interestScore} / 100</p>
+                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-white/25 bg-black/20 px-2 py-1 text-[11px] text-white/90 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                                    Mapped score: {metricCards.interestScore} / 100
+                                </p>
                             </div>
 
                             <div
                                 title={`Exact score: ${Math.min(metricCards.speakers * 50, 100)} / 100`}
-                                className="group bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-semibold text-gray-500 uppercase">Speakers</span>
@@ -761,12 +1114,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         <div className="w-6 h-6 rounded-full bg-purple-200 border-2 border-white" />
                                     </div>
                                 </div>
-                                <p className="mt-2 text-[11px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Conversation complexity: {Math.min(metricCards.speakers * 50, 100)} / 100</p>
+                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                                    Conversation complexity: {Math.min(metricCards.speakers * 50, 100)} / 100
+                                </p>
                             </div>
 
                             <div
                                 title={`Exact score: ${metricCards.ratingOutOf100} / 100`}
-                                className="group bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-semibold text-gray-500 uppercase">Rating</span>
@@ -776,7 +1131,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <span className="text-2xl font-semibold text-gray-900">{Math.round((analysis?.rating || 0) / 2)} <span className="text-base text-gray-400 font-normal">/ 5</span></span>
                                     {renderStars(analysis?.rating || 0)}
                                 </div>
-                                <p className="mt-2 text-[11px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Exact score: {metricCards.ratingOutOf100} / 100</p>
+                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                                    Exact score: {metricCards.ratingOutOf100} / 100
+                                </p>
                             </div>
                         </div>
 
@@ -1253,12 +1610,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {analysis.improvementsuggestions.map((suggestion, i) => (
-                                        <div key={i} className="analysis-suggestion-item p-4 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-sm">
+                                        <div key={i} className="analysis-suggestion-item p-4 rounded-xl transition-all hover:shadow-sm">
                                             <div className="flex items-start gap-3">
-                                                <div className="h-6 w-6 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold flex items-center justify-center">
+                                                <div className="analysis-suggestion-index h-7 w-7 rounded-lg bg-gradient-to-br from-amber-100 to-amber-50 text-amber-700 text-sm font-semibold flex items-center justify-center border border-amber-200 shadow-sm">
                                                     {i + 1}
                                                 </div>
-                                                <p className="text-sm leading-7 text-gray-800">{suggestion}</p>
+                                                <p className="text-sm leading-6 text-gray-800">{suggestion}</p>
                                             </div>
                                         </div>
                                     ))}

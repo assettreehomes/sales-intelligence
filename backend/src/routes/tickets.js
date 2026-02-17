@@ -29,6 +29,36 @@ const mimeTypes = {
     'aac': 'audio/aac'
 };
 
+const ANALYTICS_PERIOD_DAYS = {
+    weekly: 7,
+    monthly: 30,
+    quarterly: 90,
+    'half-yearly': 182,
+    yearly: 365
+};
+
+function safePercent(part, whole) {
+    if (!whole || whole <= 0) return 0;
+    return Math.round((part / whole) * 1000) / 10;
+}
+
+function roundTo(value, digits = 2) {
+    const multiplier = 10 ** digits;
+    return Math.round(value * multiplier) / multiplier;
+}
+
+function formatStatusLabel(status) {
+    return String(status || 'unknown')
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatVisitTypeLabel(type) {
+    return String(type || 'unknown')
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function toNumber(value) {
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     if (typeof value === 'string' && value.trim() !== '') {
@@ -661,6 +691,265 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('List error:', error);
         res.status(500).json({ error: 'Failed to list tickets' });
+    }
+});
+
+/**
+ * GET /tickets/analytics/overview
+ * Aggregate team and project performance metrics for admin analytics.
+ * Role: admin, superadmin
+ */
+router.get('/analytics/overview', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const requestedPeriod = String(req.query.period || 'monthly').toLowerCase();
+        const period = ANALYTICS_PERIOD_DAYS[requestedPeriod] ? requestedPeriod : 'monthly';
+        const days = ANALYTICS_PERIOD_DAYS[period];
+
+        const now = new Date();
+        const fromDate = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
+
+        const { data: tickets, error: ticketsError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, status, rating, istrainingcall, createdat, visittype, client_id, clientname, createdby')
+            .is('deletedat', null)
+            .gte('createdat', fromDate.toISOString())
+            .order('createdat', { ascending: true });
+
+        if (ticketsError) {
+            console.error('Analytics tickets query failed:', ticketsError);
+            return res.status(500).json({ error: 'Failed to fetch analytics tickets' });
+        }
+
+        const { data: users, error: usersError } = await supabaseAdmin
+            .from('users')
+            .select('id, fullname, email, role, status');
+
+        if (usersError) {
+            console.error('Analytics users query failed:', usersError);
+            return res.status(500).json({ error: 'Failed to fetch analytics users' });
+        }
+
+        const rows = tickets || [];
+        const people = users || [];
+        const usersById = new Map(people.map((row) => [row.id, row]));
+
+        let analyzedCount = 0;
+        let failedCount = 0;
+        let activeCount = 0;
+        let trainingCalls = 0;
+        let ratingSum = 0;
+        let ratingCount = 0;
+
+        const statusMap = new Map();
+        const visitTypeMap = new Map();
+        const teamMap = new Map();
+        const projectMap = new Map();
+        const trendMap = new Map();
+
+        const useDailyBuckets = period === 'weekly' || period === 'monthly';
+
+        for (const ticket of rows) {
+            const status = ticket.status || 'unknown';
+            const createdAtRaw = ticket.createdat || null;
+            const createdAt = createdAtRaw ? new Date(createdAtRaw) : null;
+            const clientId = (ticket.client_id || '').trim() || 'unassigned-project';
+            const clientName = (ticket.clientname || '').trim() || clientId;
+            const visitType = ticket.visittype || 'unknown';
+            const creatorId = ticket.createdby || 'unassigned';
+            const rating = toNumber(ticket.rating);
+            const isTraining = Boolean(ticket.istrainingcall);
+            const creator = usersById.get(creatorId);
+            const creatorName = creator?.fullname || (creatorId === 'unassigned' ? 'Unassigned' : 'Unknown Member');
+
+            if (status === 'analyzed') analyzedCount += 1;
+            if (status === 'analysis_failed') failedCount += 1;
+            if (['pending', 'processing', 'uploading', 'draft'].includes(status)) activeCount += 1;
+            if (isTraining) trainingCalls += 1;
+
+            if (rating !== null) {
+                ratingSum += rating;
+                ratingCount += 1;
+            }
+
+            statusMap.set(status, (statusMap.get(status) || 0) + 1);
+            visitTypeMap.set(visitType, (visitTypeMap.get(visitType) || 0) + 1);
+
+            const existingTeam = teamMap.get(creatorId) || {
+                user_id: creatorId,
+                member_name: creatorName,
+                role: creator?.role || 'unknown',
+                tickets: 0,
+                analyzed: 0,
+                failed: 0,
+                active: 0,
+                training_calls: 0,
+                rating_sum: 0,
+                rating_count: 0,
+                projects: new Set()
+            };
+
+            existingTeam.tickets += 1;
+            if (status === 'analyzed') existingTeam.analyzed += 1;
+            if (status === 'analysis_failed') existingTeam.failed += 1;
+            if (['pending', 'processing', 'uploading', 'draft'].includes(status)) existingTeam.active += 1;
+            if (isTraining) existingTeam.training_calls += 1;
+            if (rating !== null) {
+                existingTeam.rating_sum += rating;
+                existingTeam.rating_count += 1;
+            }
+            existingTeam.projects.add(clientId);
+            teamMap.set(creatorId, existingTeam);
+
+            const existingProject = projectMap.get(clientId) || {
+                project_id: clientId,
+                project_name: clientName,
+                tickets: 0,
+                analyzed: 0,
+                failed: 0,
+                active: 0,
+                training_calls: 0,
+                rating_sum: 0,
+                rating_count: 0,
+                teammates: new Set()
+            };
+
+            existingProject.tickets += 1;
+            if (status === 'analyzed') existingProject.analyzed += 1;
+            if (status === 'analysis_failed') existingProject.failed += 1;
+            if (['pending', 'processing', 'uploading', 'draft'].includes(status)) existingProject.active += 1;
+            if (isTraining) existingProject.training_calls += 1;
+            if (rating !== null) {
+                existingProject.rating_sum += rating;
+                existingProject.rating_count += 1;
+            }
+            existingProject.teammates.add(creatorName);
+            projectMap.set(clientId, existingProject);
+
+            if (createdAt && Number.isFinite(createdAt.getTime())) {
+                const key = useDailyBuckets
+                    ? createdAt.toISOString().slice(0, 10)
+                    : `${createdAt.getUTCFullYear()}-${String(createdAt.getUTCMonth() + 1).padStart(2, '0')}`;
+                const label = useDailyBuckets
+                    ? createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    : createdAt.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+
+                const bucket = trendMap.get(key) || {
+                    key,
+                    label,
+                    tickets: 0,
+                    analyzed: 0,
+                    rating_sum: 0,
+                    rating_count: 0
+                };
+
+                bucket.tickets += 1;
+                if (status === 'analyzed') bucket.analyzed += 1;
+                if (rating !== null) {
+                    bucket.rating_sum += rating;
+                    bucket.rating_count += 1;
+                }
+                trendMap.set(key, bucket);
+            }
+        }
+
+        const totalTickets = rows.length;
+        const avgRatingOutOf10 = ratingCount > 0 ? roundTo(ratingSum / ratingCount, 2) : 0;
+        const avgRatingOutOf5 = roundTo(avgRatingOutOf10 / 2, 2);
+        const completionRate = safePercent(analyzedCount, totalTickets);
+
+        const statusBreakdown = Array.from(statusMap.entries())
+            .map(([key, count]) => ({
+                key,
+                label: formatStatusLabel(key),
+                count,
+                percent: safePercent(count, totalTickets)
+            }))
+            .sort((a, b) => b.count - a.count);
+
+        const visitTypeBreakdown = Array.from(visitTypeMap.entries())
+            .map(([key, count]) => ({
+                key,
+                label: formatVisitTypeLabel(key),
+                count,
+                percent: safePercent(count, totalTickets)
+            }))
+            .sort((a, b) => b.count - a.count);
+
+        const teamPerformance = Array.from(teamMap.values())
+            .map((row) => ({
+                user_id: row.user_id,
+                member_name: row.member_name,
+                role: row.role,
+                tickets: row.tickets,
+                analyzed: row.analyzed,
+                failed: row.failed,
+                active: row.active,
+                projects_count: row.projects.size,
+                training_calls: row.training_calls,
+                completion_rate: safePercent(row.analyzed, row.tickets),
+                average_rating_10: row.rating_count > 0 ? roundTo(row.rating_sum / row.rating_count, 2) : 0,
+                average_rating_5: row.rating_count > 0 ? roundTo((row.rating_sum / row.rating_count) / 2, 2) : 0
+            }))
+            .sort((a, b) => b.tickets - a.tickets);
+
+        const projectPerformance = Array.from(projectMap.values())
+            .map((row) => ({
+                project_id: row.project_id,
+                project_name: row.project_name,
+                tickets: row.tickets,
+                analyzed: row.analyzed,
+                failed: row.failed,
+                active: row.active,
+                teammates_count: row.teammates.size,
+                teammates: Array.from(row.teammates).sort(),
+                training_calls: row.training_calls,
+                completion_rate: safePercent(row.analyzed, row.tickets),
+                average_rating_10: row.rating_count > 0 ? roundTo(row.rating_sum / row.rating_count, 2) : 0,
+                average_rating_5: row.rating_count > 0 ? roundTo((row.rating_sum / row.rating_count) / 2, 2) : 0
+            }))
+            .sort((a, b) => b.tickets - a.tickets);
+
+        const trend = Array.from(trendMap.values())
+            .sort((a, b) => a.key.localeCompare(b.key))
+            .map((bucket) => ({
+                key: bucket.key,
+                label: bucket.label,
+                tickets: bucket.tickets,
+                analyzed: bucket.analyzed,
+                completion_rate: safePercent(bucket.analyzed, bucket.tickets),
+                average_rating_5: bucket.rating_count > 0 ? roundTo((bucket.rating_sum / bucket.rating_count) / 2, 2) : 0
+            }));
+
+        res.json({
+            period,
+            from: fromDate.toISOString(),
+            to: now.toISOString(),
+            summary: {
+                total_tickets: totalTickets,
+                analyzed_tickets: analyzedCount,
+                active_tickets: activeCount,
+                failed_tickets: failedCount,
+                training_calls: trainingCalls,
+                completion_rate: completionRate,
+                average_rating_10: avgRatingOutOf10,
+                average_rating_5: avgRatingOutOf5
+            },
+            status_breakdown: statusBreakdown,
+            visit_type_breakdown: visitTypeBreakdown,
+            team_performance: teamPerformance,
+            project_performance: projectPerformance,
+            trend,
+            raw_json: {
+                tickets_sample: rows.slice(0, 25),
+                users_sample: people.slice(0, 25),
+                tickets_count: rows.length,
+                users_count: people.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Analytics overview error:', error);
+        res.status(500).json({ error: 'Failed to generate analytics overview' });
     }
 });
 

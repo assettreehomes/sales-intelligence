@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertCircle,
-    BarChart3,
     LogOut,
     Menu,
     Moon,
@@ -20,7 +19,7 @@ import {
     Users
 } from 'lucide-react';
 
-type AdminSection = 'tickets' | 'analytics' | 'excuses' | 'assign';
+type AdminSection = 'tickets' | 'excuses' | 'assign';
 
 interface AdminShellProps {
     activeSection: AdminSection;
@@ -47,7 +46,6 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
 
     const navItems = useMemo(() => ([
         { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
-        { id: 'analytics' as const, label: 'Analytics', icon: BarChart3, href: '#' },
         { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
         { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
     ]), []);
@@ -79,7 +77,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                     } ${collapsed ? 'w-20' : 'w-64'}`}
             >
                 <div className="flex h-full w-full flex-col">
-                    <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4">
+                    <div className={`relative flex items-center border-b border-gray-200 px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
                         <Link href="/admin/tickets" className="flex items-center gap-2 overflow-hidden">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white">
                                 <Sparkles className="h-4 w-4" />
@@ -92,7 +90,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                         <button
                             type="button"
                             onClick={() => setCollapsed((prev) => !prev)}
-                            className="hidden h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 lg:inline-flex"
+                            className={`hidden h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 lg:inline-flex ${collapsed ? 'absolute right-2' : ''}`}
                             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                         >
                             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
