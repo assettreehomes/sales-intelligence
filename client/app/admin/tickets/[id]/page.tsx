@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -33,7 +34,8 @@ import {
     TrendingDown,
     Minus,
     Sparkles,
-    Loader2
+    Loader2,
+    Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -123,6 +125,7 @@ const isEditableShortcutTarget = (target: EventTarget | null) => {
 
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
+    const router = useRouter();
 
     // Zustand store
     const {
@@ -157,6 +160,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const lastVolumeRef = useRef(initialAudioPreferences.lastVolume);
     const seekPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reportMenuRef = useRef<HTMLDivElement | null>(null);
+    const reportContainerRef = useRef<HTMLElement | null>(null);
     const previousReanalyzeStatusRef = useRef(reanalyzeStatus);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [hoveredChartPoint, setHoveredChartPoint] = useState<HoveredChartPoint | null>(null);
@@ -168,7 +172,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const [playbackSpeed, setPlaybackSpeed] = useState(initialAudioPreferences.speed);
     const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
     const [reportActionLoading, setReportActionLoading] = useState<'download' | 'copy' | 'share' | null>(null);
-    const [reportShareUrl, setReportShareUrl] = useState<string | null>(null);
 
     // Parse timestamps from multiple formats (MM:SS, HH:MM:SS, seconds, or milliseconds)
     const parseTime = (value?: string | number | null): number => {
@@ -555,117 +558,169 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [togglePlayback, seekBy, changeVolumeBy, toggleMute]);
 
-    const triggerReportDownload = useCallback((blob: Blob) => {
-        const objectUrl = window.URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = `ticket-report-${id.slice(0, 8)}.pdf`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        window.URL.revokeObjectURL(objectUrl);
-    }, [id]);
+    const getCurrentTicketUrl = useCallback(() => {
+        if (typeof window === 'undefined') return '';
+        return window.location.href;
+    }, []);
 
-    const fetchReportBlob = useCallback(async () => {
-        const token = await getToken();
-        if (!token) {
-            throw new Error('Authentication required');
+    const copyUrlToClipboard = useCallback(async (value: string) => {
+        if (!navigator.clipboard) {
+            throw new Error('Clipboard is not available on this browser');
         }
-
-        const response = await fetch(`${API_URL}/tickets/${id}/report?download=true`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            throw new Error(payload.error || 'Failed to generate ticket report');
-        }
-
-        return await response.blob();
-    }, [id]);
-
-    const getReportShareLink = useCallback(async (forceRefresh = false) => {
-        if (!forceRefresh && reportShareUrl) {
-            return reportShareUrl;
-        }
-
-        const token = await getToken();
-        if (!token) {
-            throw new Error('Authentication required');
-        }
-
-        const response = await fetch(`${API_URL}/tickets/${id}/report/share-link`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({})
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw new Error(payload.error || 'Failed to create share link');
-        }
-
-        const shareUrl = typeof payload.share_url === 'string' ? payload.share_url : null;
-        if (!shareUrl) {
-            throw new Error('Report share URL not available');
-        }
-
-        setReportShareUrl(shareUrl);
-        return shareUrl;
-    }, [id, reportShareUrl]);
+        await navigator.clipboard.writeText(value);
+    }, []);
 
     const handleDownloadReport = useCallback(async () => {
         setReportActionLoading('download');
         try {
-            const blob = await fetchReportBlob();
-            triggerReportDownload(blob);
-            notifySuccess('Report downloaded successfully.');
             setIsReportMenuOpen(false);
+            const container = reportContainerRef.current;
+            if (!container) {
+                throw new Error('Report content is not ready yet.');
+            }
+
+            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+                import('html2canvas-pro'),
+                import('jspdf')
+            ]);
+
+            const scale = Math.min(2, Math.max(1.25, window.devicePixelRatio || 1));
+            const canvas = await html2canvas(container, {
+                backgroundColor: '#ffffff',
+                useCORS: true,
+                scale,
+                scrollX: 0,
+                scrollY: -window.scrollY,
+                windowWidth: document.documentElement.scrollWidth,
+                windowHeight: document.documentElement.scrollHeight,
+                onclone: (clonedDocument) => {
+                    clonedDocument.documentElement.classList.add('ticket-exporting-pdf');
+                }
+            });
+
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4',
+                compress: true
+            });
+
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const marginMm = 6;
+            const printableWidth = pageWidth - marginMm * 2;
+            const printableHeight = pageHeight - marginMm * 2;
+            const renderedHeight = (canvas.height * printableWidth) / canvas.width;
+            const imageData = canvas.toDataURL('image/jpeg', 0.95);
+
+            let offsetMm = 0;
+            while (offsetMm < renderedHeight) {
+                if (offsetMm > 0) {
+                    pdf.addPage();
+                }
+
+                const drawY = marginMm - offsetMm;
+                pdf.addImage(imageData, 'JPEG', marginMm, drawY, printableWidth, renderedHeight, undefined, 'FAST');
+                offsetMm += printableHeight;
+            }
+
+            const fileSafeId = (ticket?.id || id).replace(/[^a-zA-Z0-9-_]/g, '');
+            const shortId = fileSafeId.slice(0, 8) || 'ticket';
+            pdf.save(`ticket-report-${shortId}.pdf`);
+            notifySuccess('PDF downloaded successfully.');
         } catch (error) {
-            notifyError(error instanceof Error ? error.message : 'Report download failed');
+            notifyError(error instanceof Error ? error.message : 'Could not generate PDF');
         } finally {
             setReportActionLoading(null);
         }
-    }, [fetchReportBlob, triggerReportDownload]);
+    }, [id, ticket?.id]);
+
+    const handleDeleteTicket = useCallback(async () => {
+        const confirmed = window.confirm('Delete this ticket permanently? This removes DB records and GCP audio files.');
+        if (!confirmed) return;
+
+        try {
+            const token = await getToken();
+            if (!token) throw new Error('Authentication required');
+
+            const requestDelete = async (endpoint: string, method: 'DELETE' | 'POST') => {
+                return fetch(endpoint, {
+                    method,
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {})
+                    },
+                    ...(method === 'POST' ? { body: '{}' } : {})
+                });
+            };
+
+            let response = await requestDelete(`${API_URL}/tickets/${id}`, 'DELETE');
+            let payload = await response.json().catch(() => ({}));
+            let backendError = typeof payload?.error === 'string' ? payload.error : '';
+
+            if (!response.ok && response.status === 404 && backendError === 'Not found') {
+                response = await requestDelete(`${API_URL}/tickets/${id}/delete`, 'POST');
+                payload = await response.json().catch(() => ({}));
+                backendError = typeof payload?.error === 'string' ? payload.error : '';
+            }
+
+            if (!response.ok) {
+                if (response.status === 404 && backendError === 'Ticket not found') {
+                    notifyInfo('Ticket was already deleted.');
+                    router.replace('/admin/tickets');
+                    return;
+                }
+
+                if (response.status === 404 && backendError === 'Not found') {
+                    throw new Error('Delete endpoint is unavailable on this backend deployment. Please deploy the latest backend revision.');
+                }
+
+                throw new Error(backendError || 'Failed to delete ticket');
+            }
+
+            notifySuccess('Ticket deleted successfully.');
+            router.replace('/admin/tickets');
+        } catch (error) {
+            notifyError(error instanceof Error ? error.message : 'Failed to delete ticket');
+        } finally {
+            setIsReportMenuOpen(false);
+        }
+    }, [id, router]);
 
     const handleCopyReportLink = useCallback(async () => {
         setReportActionLoading('copy');
         try {
-            const shareLink = await getReportShareLink(false);
-            if (!navigator.clipboard) {
-                throw new Error('Clipboard is not available on this browser');
-            }
-            await navigator.clipboard.writeText(shareLink);
-            notifySuccess('Report share link copied to clipboard.');
+            const currentUrl = getCurrentTicketUrl();
+            await copyUrlToClipboard(currentUrl);
+            notifySuccess('Ticket link copied to clipboard.');
             setIsReportMenuOpen(false);
         } catch (error) {
             notifyError(error instanceof Error ? error.message : 'Could not copy report link');
         } finally {
             setReportActionLoading(null);
         }
-    }, [getReportShareLink]);
+    }, [copyUrlToClipboard, getCurrentTicketUrl]);
 
     const handleShareReport = useCallback(async () => {
         setReportActionLoading('share');
         try {
-            const shareLink = await getReportShareLink(false);
+            const currentUrl = getCurrentTicketUrl();
+
+            try {
+                await copyUrlToClipboard(currentUrl);
+            } catch {
+                // Ignore clipboard errors and continue with native share fallback.
+            }
 
             if (navigator.share) {
                 await navigator.share({
-                    title: `Ticket Report #${id.slice(0, 4).toUpperCase()}`,
-                    text: 'TicketIntel detailed report',
-                    url: shareLink
+                    title: `Ticket #${id.slice(0, 4).toUpperCase()}`,
+                    text: 'TicketIntel ticket link',
+                    url: currentUrl
                 });
-                notifySuccess('Report link shared.');
-            } else if (navigator.clipboard) {
-                await navigator.clipboard.writeText(shareLink);
-                notifyInfo('Share is not supported on this device. Link copied to clipboard.');
+                notifySuccess('Ticket link shared. Link is also copied to clipboard.');
             } else {
-                window.open(shareLink, '_blank', 'noopener,noreferrer');
-                notifyInfo('Opened the share link in a new tab.');
+                notifyInfo('Share is not supported here. Ticket link copied to clipboard.');
             }
 
             setIsReportMenuOpen(false);
@@ -678,7 +733,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         } finally {
             setReportActionLoading(null);
         }
-    }, [getReportShareLink, id]);
+    }, [copyUrlToClipboard, getCurrentTicketUrl, id]);
 
     useEffect(() => {
         if (!isReportMenuOpen) return;
@@ -970,7 +1025,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     return (
         <ProtectedRoute allowedRoles={['superadmin', 'admin']}>
             <AdminShell activeSection="tickets">
-                <main className="min-h-screen">
+                <main ref={reportContainerRef} className="ticket-print-main min-h-screen">
                     {/* Header */}
                     <header className="bg-white border-b border-gray-200 px-5 py-4 md:px-7">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -990,7 +1045,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 </nav>
                             </div>
 
-                            <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 lg:w-auto lg:justify-end">
+                            <div className="ticket-no-print flex w-full flex-wrap items-center gap-2 sm:gap-3 lg:w-auto lg:justify-end">
                                 {/* Re-analyze Button */}
                                 {reanalyzeStatus === 'idle' && (
                                     <button
@@ -1020,9 +1075,18 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                 )}
 
+                                <button
+                                    type="button"
+                                    onClick={() => { void handleDeleteTicket(); }}
+                                    className="ticket-no-print flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span>Delete</span>
+                                </button>
+
                                 <NotificationBell />
 
-                                <div ref={reportMenuRef} className="relative">
+                                <div ref={reportMenuRef} className="ticket-no-print relative">
                                     <button
                                         type="button"
                                         onClick={() => setIsReportMenuOpen((prev) => !prev)}
@@ -1040,32 +1104,22 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 onClick={() => { void handleDownloadReport(); }}
                                                 className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                                             >
-                                                Download PDF
+                                                Download As PDF
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => { void handleCopyReportLink(); }}
                                                 className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                                             >
-                                                Copy Share Link
+                                                Copy Ticket Link
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => { void handleShareReport(); }}
                                                 className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                                             >
-                                                Share Link
+                                                Share Ticket Link
                                             </button>
-                                            {reportShareUrl && (
-                                                <a
-                                                    href={reportShareUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="mt-1 block rounded-lg px-3 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
-                                                >
-                                                    Open Share Link
-                                                </a>
-                                            )}
                                         </div>
                                     )}
                                 </div>

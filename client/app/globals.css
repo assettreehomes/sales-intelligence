@@ -669,3 +669,39 @@ html.space-dark .ticket-audio-action-btn {
         width: 4.8rem;
     }
 }
+
+.ticket-exporting-pdf .ticket-no-print,
+.ticket-exporting-pdf .Toastify__toast-container {
+    display: none !important;
+}
+
+.ticket-exporting-pdf .ticket-print-main {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+@media print {
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    html,
+    body {
+        background: #ffffff !important;
+    }
+
+    .ticket-no-print,
+    .Toastify__toast-container {
+        display: none !important;
+    }
+
+    .ticket-print-main {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .ticket-audio-player {
+        break-inside: avoid-page;
+    }
+}

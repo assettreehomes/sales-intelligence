@@ -557,20 +557,89 @@ function extractGcsObjectPath(ticket) {
     return rawPath;
 }
 
+function isMissingGcsCredentialsError(error) {
+    const message = String(error?.message || '');
+    return (
+        message.includes('Could not load the default credentials')
+        || message.includes('Unable to detect a Project Id')
+        || message.includes('Could not refresh access token')
+    );
+}
+
 async function generateTicketAudioUrl(ticketId, ticket = null) {
+    try {
+        const objectPath = extractGcsObjectPath(ticket);
+
+        if (objectPath) {
+            const [exists] = await buckets.uploads.file(objectPath).exists();
+            if (exists) {
+                return await generatePlaybackUrl('uploads', objectPath);
+            }
+        }
+
+        const { exists, extension } = await checkAudioExists(ticketId);
+        if (!exists || !extension) return null;
+
+        return await generatePlaybackUrl('uploads', `${ticketId}.${extension}`);
+    } catch (error) {
+        if (isMissingGcsCredentialsError(error)) {
+            console.warn('Skipping audio URL generation because GCS credentials are not configured.');
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function deleteObjectQuietly(bucket, path) {
+    if (!path) return null;
+    try {
+        await bucket.file(path).delete({ ignoreNotFound: true });
+        return null;
+    } catch (error) {
+        return `${bucket.name}/${path}: ${error.message || 'delete failed'}`;
+    }
+}
+
+async function cleanupTicketAudioAssets(ticket) {
+    const warnings = [];
+    const ticketId = ticket?.id || null;
     const objectPath = extractGcsObjectPath(ticket);
 
     if (objectPath) {
-        const [exists] = await buckets.uploads.file(objectPath).exists();
-        if (exists) {
-            return await generatePlaybackUrl('uploads', objectPath);
+        const uploadPathWarning = await deleteObjectQuietly(buckets.uploads, objectPath);
+        if (uploadPathWarning) warnings.push(uploadPathWarning);
+
+        const trainingPathWarning = await deleteObjectQuietly(buckets.training, objectPath);
+        if (trainingPathWarning) warnings.push(trainingPathWarning);
+    }
+
+    if (ticketId) {
+        let exists = false;
+        let extension = null;
+        try {
+            const lookup = await checkAudioExists(ticketId);
+            exists = Boolean(lookup?.exists);
+            extension = lookup?.extension || null;
+        } catch (error) {
+            if (isMissingGcsCredentialsError(error)) {
+                warnings.push('Skipped GCS asset cleanup: credentials are not configured in local environment.');
+                return warnings;
+            }
+            throw error;
+        }
+
+        if (exists && extension) {
+            const fallbackPath = `${ticketId}.${extension}`;
+
+            const uploadFallbackWarning = await deleteObjectQuietly(buckets.uploads, fallbackPath);
+            if (uploadFallbackWarning) warnings.push(uploadFallbackWarning);
+
+            const trainingFallbackWarning = await deleteObjectQuietly(buckets.training, fallbackPath);
+            if (trainingFallbackWarning) warnings.push(trainingFallbackWarning);
         }
     }
 
-    const { exists, extension } = await checkAudioExists(ticketId);
-    if (!exists || !extension) return null;
-
-    return await generatePlaybackUrl('uploads', `${ticketId}.${extension}`);
+    return warnings;
 }
 
 // ============================================
@@ -1497,6 +1566,83 @@ router.get('/:id/audio-url', authMiddleware, requireAdmin, async (req, res) => {
         res.status(500).json({ error: 'Failed to generate audio playback URL' });
     }
 });
+
+/**
+ * DELETE /tickets/:id
+ * Permanently delete a ticket and related artifacts
+ * Role: admin
+ */
+async function handleTicketDelete(req, res) {
+    try {
+        const { id } = req.params;
+
+        const { data: ticket, error: ticketError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, gcs_path, gcspath')
+            .eq('id', id)
+            .single();
+
+        if (ticketError || !ticket) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        const cleanupSpecs = [
+            { table: 'actionitems', column: 'ticketid' },
+            { table: 'employeeexcuses', column: 'ticketid' },
+            { table: 'analysisresults', column: 'ticketid' },
+            { table: 'trainingtickets', column: 'ticketid' }
+        ];
+
+        for (const spec of cleanupSpecs) {
+            const { error } = await supabaseAdmin
+                .from(spec.table)
+                .delete()
+                .eq(spec.column, id);
+
+            if (error) {
+                console.error(`Ticket delete cleanup error (${spec.table}):`, error);
+                return res.status(500).json({ error: `Failed to clean ${spec.table}` });
+            }
+        }
+
+        const { error: deleteTicketError } = await supabaseAdmin
+            .from('tickets')
+            .delete()
+            .eq('id', id);
+
+        if (deleteTicketError) {
+            console.error('Ticket delete error:', deleteTicketError);
+            return res.status(500).json({ error: 'Failed to delete ticket' });
+        }
+
+        let assetWarnings = [];
+        try {
+            assetWarnings = await cleanupTicketAudioAssets(ticket);
+        } catch (cleanupError) {
+            const warningMessage = cleanupError instanceof Error ? cleanupError.message : 'asset cleanup failed';
+            console.error('Ticket asset cleanup warning:', cleanupError);
+            assetWarnings = [`Audio cleanup skipped: ${warningMessage}`];
+        }
+
+        res.json({
+            success: true,
+            message: 'Ticket deleted successfully',
+            warnings: assetWarnings
+        });
+    } catch (error) {
+        console.error('Delete ticket error:', error);
+        res.status(500).json({ error: 'Failed to delete ticket' });
+    }
+}
+
+router.delete('/:id', authMiddleware, requireAdmin, handleTicketDelete);
+
+/**
+ * POST /tickets/:id/delete
+ * Compatibility delete alias for clients/environments that cannot use DELETE.
+ * Role: admin
+ */
+router.post('/:id/delete', authMiddleware, requireAdmin, handleTicketDelete);
 
 /**
  * GET /tickets/:id

@@ -10,15 +10,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && !profileLoading) {
-      if (user) {
+        if (user) {
         if (!profile) return;
 
         // User is logged in - redirect based on role
         if (profile?.role === 'superadmin' || profile?.role === 'admin') {
           router.replace('/admin');
+        } else if (profile?.role === 'intern') {
+          router.replace('/intern');
         } else {
-          // Default to employee for any logged-in user
-          router.replace('/employee');
+          // Employee dashboard is mobile-app only
+          router.replace('/login');
         }
       } else {
         // Not logged in

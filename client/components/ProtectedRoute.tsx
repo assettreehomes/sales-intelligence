@@ -30,8 +30,10 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
                 // Redirect to appropriate dashboard based on role
                 if (profile.role === 'superadmin' || profile.role === 'admin') {
                     router.replace('/admin');
+                } else if (profile.role === 'intern') {
+                    router.replace('/intern');
                 } else {
-                    router.replace('/employee');
+                    router.replace('/login');
                 }
             }
         }

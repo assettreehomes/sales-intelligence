@@ -15,7 +15,7 @@ import {
     Star,
     ChevronLeft,
     ChevronRight,
-    MoreVertical
+    Trash2
 } from 'lucide-react';
 
 function AdminDashboardContent() {
@@ -36,6 +36,7 @@ function AdminDashboardContent() {
         setFilter,
         clearFilters,
         setPage,
+        deleteTicket,
     } = useTicketsStore();
 
     const statusOptions = [
@@ -351,8 +352,21 @@ function AdminDashboardContent() {
                                             </span>
                                             {getStatusBadge(ticket.status, ticket.istrainingcall)}
                                         </div>
-                                        <button className="p-1 hover:bg-gray-100 rounded">
-                                            <MoreVertical className="w-4 h-4 text-gray-400" />
+                                        <button
+                                            onClick={async (event) => {
+                                                event.stopPropagation();
+                                                const confirmed = window.confirm(`Delete ticket #${ticket.id.slice(0, 4).toUpperCase()}? This removes DB and audio files permanently.`);
+                                                if (!confirmed) return;
+
+                                                const deleted = await deleteTicket(ticket.id);
+                                                if (deleted) {
+                                                    await fetchTickets();
+                                                }
+                                            }}
+                                            className="rounded p-1 hover:bg-red-50"
+                                            aria-label="Delete ticket"
+                                        >
+                                            <Trash2 className="h-4 w-4 text-red-500" />
                                         </button>
                                     </div>
 

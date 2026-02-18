@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertCircle,
+    GraduationCap,
     LogOut,
     Menu,
     Moon,
@@ -19,7 +20,7 @@ import {
     Users
 } from 'lucide-react';
 
-type AdminSection = 'tickets' | 'excuses' | 'assign';
+type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training';
 
 interface AdminShellProps {
     activeSection: AdminSection;
@@ -147,11 +148,21 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         }
     };
 
-    const navItems = useMemo(() => ([
-        { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
-        { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
-        { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
-    ]), []);
+    const homeHref = profile?.role === 'intern' ? '/intern' : '/admin/tickets';
+
+    const navItems = useMemo(() => {
+        if (profile?.role === 'intern') {
+            return [
+                { id: 'training' as const, label: 'Training', icon: GraduationCap, href: '/intern' }
+            ];
+        }
+
+        return [
+            { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
+            { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
+            { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' }
+        ];
+    }, [profile?.role]);
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -162,7 +173,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                     onPointerMove={handleMobileMenuPointerMove}
                     onPointerUp={handleMobileMenuPointerUp}
                     onPointerCancel={() => { dragStateRef.current = null; }}
-                    className="fixed z-40 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm lg:hidden"
+                    className="fixed z-40 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm print:hidden lg:hidden"
                     aria-label="Open sidebar menu"
                     style={{ left: mobileMenuButtonPos.left, top: mobileMenuButtonPos.top }}
                 >
@@ -174,18 +185,18 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                 <button
                     type="button"
                     onClick={() => setMobileOpen(false)}
-                    className="fixed inset-0 z-40 bg-black/45 lg:hidden"
+                    className="fixed inset-0 z-40 bg-black/45 print:hidden lg:hidden"
                     aria-label="Close sidebar menu"
                 />
             )}
 
             <aside
-                className={`fixed inset-y-0 left-0 z-50 flex border-r border-gray-200 bg-white transition-all duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+                className={`fixed inset-y-0 left-0 z-50 flex border-r border-gray-200 bg-white transition-all duration-300 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                     } ${collapsed ? 'w-20' : 'w-64'}`}
             >
                 <div className="flex h-full w-full flex-col">
                     <div className={`relative flex items-center border-b border-gray-200 px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
-                        <Link href="/admin/tickets" className="flex items-center gap-2 overflow-hidden">
+                        <Link href={homeHref} className="flex items-center gap-2 overflow-hidden">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white">
                                 <Sparkles className="h-4 w-4" />
                             </div>

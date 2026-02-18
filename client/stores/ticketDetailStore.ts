@@ -161,21 +161,50 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                set({
-                    ticket: data.ticket,
-                    analysis: data.analysis,
-                    previousAnalysis: data.previous_analysis || null,
-                    comparison: data.comparison || null,
-                    actionItemsDb: data.action_items_db || [],
-                    excuses: data.excuses || [],
-                    audioUrl: null,
-                });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const backendMessage = typeof errorData?.error === 'string' ? errorData.error : null;
+
+                if (response.status === 404) {
+                    set({
+                        ticket: null,
+                        analysis: null,
+                        previousAnalysis: null,
+                        comparison: null,
+                        actionItemsDb: [],
+                        excuses: [],
+                        audioUrl: null
+                    });
+
+                    if (backendMessage === 'Not found') {
+                        notifyError('Ticket details endpoint is unavailable on this backend deployment.', {
+                            toastId: 'ticket-detail-endpoint-missing'
+                        });
+                    } else {
+                        notifyError('Ticket not found. It may have been deleted already.', {
+                            toastId: 'ticket-detail-not-found'
+                        });
+                    }
+                    return;
+                }
+
+                throw new Error(backendMessage || 'Failed to fetch ticket details');
             }
+
+            const data = await response.json();
+            set({
+                ticket: data.ticket,
+                analysis: data.analysis,
+                previousAnalysis: data.previous_analysis || null,
+                comparison: data.comparison || null,
+                actionItemsDb: data.action_items_db || [],
+                excuses: data.excuses || [],
+                audioUrl: null,
+            });
         } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to fetch ticket details.';
             console.error('Failed to fetch ticket details:', error);
-            notifyError('Failed to fetch ticket details.', { toastId: 'ticket-detail-fetch-error' });
+            notifyError(message, { toastId: 'ticket-detail-fetch-error' });
         } finally {
             set({ loading: false });
         }
@@ -194,8 +223,11 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                console.error('Failed to fetch signed audio URL:', errorData?.error || response.statusText);
-                notifyError('Could not load audio playback URL.', { toastId: 'audio-url-error' });
+                const message = errorData?.error || response.statusText;
+                console.error('Failed to fetch signed audio URL:', message);
+                if (response.status !== 404) {
+                    notifyError('Could not load audio playback URL.', { toastId: 'audio-url-error' });
+                }
                 set({ audioUrl: null });
                 return null;
             }

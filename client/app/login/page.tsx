@@ -8,7 +8,7 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
     const router = useRouter();
-    const { signIn, user, profile, loading: authLoading, profileLoading } = useAuth();
+    const { signIn, signOut, user, profile, loading: authLoading, profileLoading } = useAuth();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -20,13 +20,26 @@ export default function LoginPage() {
     // Redirect if already logged in
     useEffect(() => {
         if (!authLoading && !profileLoading && user && profile) {
-            if (profile?.role === 'superadmin' || profile?.role === 'admin') {
+            if (profile.role === 'superadmin' || profile.role === 'admin') {
                 router.replace('/admin');
-            } else {
-                router.replace('/employee');
+                return;
             }
+
+            if (profile.role === 'intern') {
+                router.replace('/intern');
+                return;
+            }
+
+            const kickOutEmployee = async () => {
+                await signOut();
+                const message = 'Employee web access is disabled. Please use the mobile application.';
+                setError(message);
+                notifyError(message, { toastId: 'employee-web-disabled' });
+            };
+
+            void kickOutEmployee();
         }
-    }, [user, profile, authLoading, profileLoading, router]);
+    }, [user, profile, authLoading, profileLoading, router, signOut]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
