@@ -24,6 +24,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             client_name,
             visit_type,
             expected_recording_time,
+            scheduled_time,
             notes
         } = req.body;
 
@@ -53,6 +54,10 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
         // Get visit sequence
         const { visitNumber, previousTicketId } = await getVisitSequence(normalizedClientId);
 
+        // Web admin panel sends "expected_recording_time" as the scheduled datetime
+        // Use it as scheduled_time in the database
+        const finalScheduledTime = expected_recording_time || scheduled_time || null;
+
         // Create draft ticket
         // Note: Database has BOTH column formats (with and without underscores), so we populate both
         const { data: draft, error: draftError } = await supabaseAdmin
@@ -66,7 +71,9 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
                 previousvisitticketid: previousTicketId,
                 createdby: employee_id,
                 status: 'draft',
-                notes: notes || null
+                notes: notes || null,
+                scheduled_time: finalScheduledTime,
+                scheduledtime: finalScheduledTime
             })
             .select()
             .single();
@@ -86,7 +93,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
                 client_name: normalizedClientName,
                 visit_number: visitNumber,
                 assigned_to: employee.fullname,
-                expected_recording_time
+                scheduled_time: finalScheduledTime
             }
         });
 
@@ -127,7 +134,9 @@ router.get('/', authMiddleware, requireEmployee, async (req, res) => {
                 visit_type: row.visit_type || row.visittype || 'site_visit',
                 visit_number: row.visit_number || row.visitnumber || 1,
                 notes: row.notes || null,
-                created_at: row.created_at || row.createdat || null
+                created_at: row.created_at || row.createdat || null,
+                scheduled_time: row.scheduled_time || row.scheduledtime || null,
+                expected_recording_time: row.expected_recording_time || row.expectedrecordingtime || row.expected_duration || row.expectedduration || null
             }))
             .sort((a, b) => {
                 const aTs = a.created_at ? new Date(a.created_at).getTime() : 0;
