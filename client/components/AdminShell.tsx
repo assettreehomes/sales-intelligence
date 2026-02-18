@@ -84,6 +84,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         originTop: number;
         moved: boolean;
     } | null>(null);
+    const suppressMenuClickRef = useRef(false);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -105,6 +106,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
     }, []);
 
     const handleMobileMenuPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        suppressMenuClickRef.current = false;
         dragStateRef.current = {
             pointerId: event.pointerId,
             startX: event.clientX,
@@ -126,6 +128,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
 
         if (movedEnough) {
             drag.moved = true;
+            suppressMenuClickRef.current = true;
             const nextPos = clampFloatingPosition({
                 left: drag.originLeft + deltaX,
                 top: drag.originTop + deltaY
@@ -138,14 +141,19 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         const drag = dragStateRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
 
-        if (!drag.moved) {
-            setMobileOpen(true);
-        }
-
+        suppressMenuClickRef.current = drag.moved;
         dragStateRef.current = null;
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
             event.currentTarget.releasePointerCapture(event.pointerId);
         }
+    };
+
+    const handleMobileMenuClick = () => {
+        if (suppressMenuClickRef.current) {
+            suppressMenuClickRef.current = false;
+            return;
+        }
+        setMobileOpen(true);
     };
 
     const homeHref = profile?.role === 'intern' ? '/intern' : '/admin/tickets';
@@ -169,11 +177,15 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             {!mobileOpen && (
                 <button
                     type="button"
+                    onClick={handleMobileMenuClick}
                     onPointerDown={handleMobileMenuPointerDown}
                     onPointerMove={handleMobileMenuPointerMove}
                     onPointerUp={handleMobileMenuPointerUp}
-                    onPointerCancel={() => { dragStateRef.current = null; }}
-                    className="fixed z-40 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm print:hidden lg:hidden"
+                    onPointerCancel={() => {
+                        dragStateRef.current = null;
+                        suppressMenuClickRef.current = true;
+                    }}
+                    className="fixed z-40 inline-flex h-10 w-10 select-none touch-none items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm print:hidden lg:hidden"
                     aria-label="Open sidebar menu"
                     style={{ left: mobileMenuButtonPos.left, top: mobileMenuButtonPos.top }}
                 >
