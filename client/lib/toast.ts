@@ -1,28 +1,41 @@
 'use client';
 
-import { toast, type ToastOptions } from 'react-toastify';
+import { toast, type ToastOptions } from 'react-hot-toast';
+
+type AppToastOptions = ToastOptions & {
+    toastId?: string;
+};
 
 const baseToastOptions: ToastOptions = {
     position: 'top-right',
-    autoClose: 3200,
-    hideProgressBar: false,
-    closeOnClick: true,
-    pauseOnHover: true,
-    draggable: true
+    duration: 3200
 };
 
-export function notifySuccess(message: string, options?: ToastOptions) {
-    return toast.success(message, { ...baseToastOptions, ...options });
+function withToastId(options?: AppToastOptions): ToastOptions {
+    if (!options) {
+        return baseToastOptions;
+    }
+
+    const { toastId, ...rest } = options;
+    return {
+        ...baseToastOptions,
+        ...rest,
+        ...(toastId ? { id: toastId } : {})
+    };
 }
 
-export function notifyError(message: string, options?: ToastOptions) {
-    return toast.error(message, { ...baseToastOptions, ...options });
+export function notifySuccess(message: string, options?: AppToastOptions) {
+    return toast.success(message, withToastId(options));
 }
 
-export function notifyInfo(message: string, options?: ToastOptions) {
-    return toast.info(message, { ...baseToastOptions, ...options });
+export function notifyError(message: string, options?: AppToastOptions) {
+    return toast.error(message, withToastId(options));
 }
 
-export function notifyWarning(message: string, options?: ToastOptions) {
-    return toast.warning(message, { ...baseToastOptions, ...options });
+export function notifyInfo(message: string, options?: AppToastOptions) {
+    return toast(message, { icon: '??', ...withToastId(options) });
+}
+
+export function notifyWarning(message: string, options?: AppToastOptions) {
+    return toast(message, { icon: '??', ...withToastId(options) });
 }
