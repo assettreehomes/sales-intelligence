@@ -26,7 +26,7 @@ steps:
       - '--region=asia-south1'
       - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--set-env-vars=HCAPTCHA_SECRET_KEY=${_HCAPTCHA_SECRET_KEY},TOTP_ENCRYPTION_KEY=${_TOTP_ENCRYPTION_KEY}'
+      - '--update-env-vars=HCAPTCHA_SECRET_KEY=${_HCAPTCHA_SECRET_KEY},TOTP_ENCRYPTION_KEY=${_TOTP_ENCRYPTION_KEY}'
 
 images:
   - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sales-intelligence:$COMMIT_SHA'
