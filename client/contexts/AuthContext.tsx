@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { createClient } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 export interface UserProfile {
     id: string;
     email: string;
@@ -12,13 +14,34 @@ export interface UserProfile {
     status: 'active' | 'inactive';
 }
 
+/**
+ * Login result types for the multi-step auth flow
+ */
+export interface LoginResult {
+    error?: string;
+    /** If true, user must enter a 6-digit TOTP code */
+    requiresTOTP?: boolean;
+    /** If true, user must set up TOTP (scan QR code first) */
+    requiresTOTPSetup?: boolean;
+    /** Temporary token for TOTP verification step */
+    tempToken?: string;
+    /** QR code data URI for TOTP setup */
+    qrCodeDataUri?: string;
+    /** Base32 secret for manual entry */
+    base32Secret?: string;
+    /** User info (available before TOTP step) */
+    user?: { id: string; email: string; fullname: string; role: string };
+}
+
 interface AuthContextType {
     user: User | null;
     session: Session | null;
     profile: UserProfile | null;
     loading: boolean;
     profileLoading: boolean;
-    signIn: (email: string, password: string) => Promise<{ error?: string }>;
+    signIn: (email: string, password: string, captchaToken: string) => Promise<LoginResult>;
+    completeTOTP: (tempToken: string, totpCode: string) => Promise<LoginResult>;
+    confirmTOTPSetup: (tempToken: string, totpCode: string) => Promise<LoginResult>;
     signOut: () => Promise<void>;
 }
 
@@ -70,6 +93,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             clearTimeout(timeoutId);
         }
     }, [supabase]);
+
+    /**
+     * Set the Supabase session from server-provided tokens and hydrate user/profile state.
+     */
+    const hydrateSession = useCallback(async (sessionData: { access_token: string; refresh_token: string }) => {
+        const { data, error } = await supabase.auth.setSession({
+            access_token: sessionData.access_token,
+            refresh_token: sessionData.refresh_token,
+        });
+
+        if (error) {
+            console.error('setSession error:', error);
+            return;
+        }
+
+        if (data.session && data.user) {
+            setSession(data.session);
+            setUser(data.user);
+            setProfileLoading(true);
+            const userProfile = await fetchProfile(data.user.id);
+            setProfile(userProfile);
+            setProfileLoading(false);
+        }
+    }, [supabase, fetchProfile]);
 
     // Initialize auth state on mount
     useEffect(() => {
@@ -151,32 +198,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, [supabase, fetchProfile]);
 
-    // Sign in with email and password
-    const signIn = useCallback(async (email: string, password: string) => {
+    /**
+     * Sign in with email, password, and CAPTCHA token.
+     * Goes through the backend which validates CAPTCHA + checks TOTP.
+     */
+    const signIn = useCallback(async (email: string, password: string, captchaToken: string): Promise<LoginResult> => {
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
+            const response = await fetch(`${API_URL}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, captchaToken }),
             });
 
-            if (error) {
-                return { error: error.message };
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { error: data.error || 'Login failed' };
             }
 
+            // If TOTP is required, return the temp token for next step
+            if (data.requiresTOTP || data.requiresTOTPSetup) {
+                return {
+                    requiresTOTP: data.requiresTOTP,
+                    requiresTOTPSetup: data.requiresTOTPSetup,
+                    tempToken: data.tempToken,
+                    qrCodeDataUri: data.qrCodeDataUri,
+                    base32Secret: data.base32Secret,
+                    user: data.user,
+                };
+            }
+
+            // No TOTP required — set session directly (shouldn't normally happen since all users need TOTP)
             if (data.session) {
-                setSession(data.session);
-                setUser(data.user);
-                setProfileLoading(true);
-
-                // Fetch profile
-                const userProfile = await fetchProfile(data.user.id);
-                setProfile(userProfile);
-                setProfileLoading(false);
-
-                if (userProfile?.status !== 'active') {
-                    await supabase.auth.signOut();
-                    return { error: 'Account is not active. Contact administrator.' };
-                }
+                await hydrateSession(data.session);
             }
 
             return {};
@@ -184,7 +238,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('SignIn error:', err);
             return { error: 'An unexpected error occurred' };
         }
-    }, [supabase, fetchProfile]);
+    }, [hydrateSession]);
+
+    /**
+     * Complete TOTP verification for users who already have 2FA enabled.
+     */
+    const completeTOTP = useCallback(async (tempToken: string, totpCode: string): Promise<LoginResult> => {
+        try {
+            const response = await fetch(`${API_URL}/auth/totp/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tempToken, totpCode }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { error: data.error || 'Verification failed' };
+            }
+
+            // Success — set the session
+            if (data.session) {
+                await hydrateSession(data.session);
+            }
+
+            return {};
+        } catch (err) {
+            console.error('TOTP verify error:', err);
+            return { error: 'An unexpected error occurred' };
+        }
+    }, [hydrateSession]);
+
+    /**
+     * Confirm TOTP setup (first-time activation).
+     */
+    const confirmTOTPSetup = useCallback(async (tempToken: string, totpCode: string): Promise<LoginResult> => {
+        try {
+            const response = await fetch(`${API_URL}/auth/totp/confirm-setup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tempToken, totpCode }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { error: data.error || 'Setup failed' };
+            }
+
+            // Success — set the session
+            if (data.session) {
+                await hydrateSession(data.session);
+            }
+
+            return {};
+        } catch (err) {
+            console.error('TOTP setup error:', err);
+            return { error: 'An unexpected error occurred' };
+        }
+    }, [hydrateSession]);
 
     // Sign out
     const signOut = useCallback(async () => {
@@ -202,8 +314,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         profileLoading,
         signIn,
+        completeTOTP,
+        confirmTOTPSetup,
         signOut,
-    }), [user, session, profile, loading, profileLoading, signIn, signOut]);
+    }), [user, session, profile, loading, profileLoading, signIn, completeTOTP, confirmTOTPSetup, signOut]);
 
     return (
         <AuthContext.Provider value={value}>

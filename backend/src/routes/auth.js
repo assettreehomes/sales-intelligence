@@ -1,22 +1,64 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { verifyCaptcha } from '../services/captcha.js';
+import {
+    generateTOTPSecret,
+    verifyTOTPCode,
+    getTOTPUri,
+    generateQRCodeDataUri,
+    encryptSecret,
+    decryptSecret
+} from '../services/totp.js';
 
 const router = Router();
 
+// In-memory store for temporary tokens (short-lived, 5 min expiry)
+// In production, use Redis or a database table
+const tempTokenStore = new Map();
+
+/**
+ * Create a temporary token for the TOTP verification step.
+ * This token is NOT a session token — it's a short-lived proof of password auth.
+ */
+function createTempToken(userId, sessionData) {
+    const token = crypto.randomBytes(32).toString('hex');
+    tempTokenStore.set(token, {
+        userId,
+        sessionData,
+        createdAt: Date.now(),
+        attempts: 0,
+    });
+
+    // Auto-cleanup after 5 minutes
+    setTimeout(() => {
+        tempTokenStore.delete(token);
+    }, 5 * 60 * 1000);
+
+    return token;
+}
+
 /**
  * POST /auth/login
- * Send magic link or OTP to email
+ * Password login with CAPTCHA verification.
+ * Returns session directly if no TOTP, or tempToken if TOTP is required.
  */
 router.post('/login', async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, password, captchaToken } = req.body;
 
-        if (!email) {
-            return res.status(400).json({ error: 'Email is required' });
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        // Check if user exists in our users table
+        // 1. Verify CAPTCHA
+        const captchaValid = await verifyCaptcha(captchaToken);
+        if (!captchaValid) {
+            return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
+        }
+
+        // 2. Check if user exists and is active
         const { data: existingUser, error: userError } = await supabaseAdmin
             .from('users')
             .select('id, email, role, status')
@@ -35,24 +77,103 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        // Send OTP via Supabase Auth
-        const { data, error } = await supabasePublic.auth.signInWithOtp({
+        // 3. Authenticate with Supabase (password)
+        const { data: authData, error: authError } = await supabasePublic.auth.signInWithPassword({
             email: email.toLowerCase(),
-            options: {
-                shouldCreateUser: false // Don't auto-create users
-            }
+            password,
         });
 
-        if (error) {
-            console.error('OTP send error:', error);
-            return res.status(500).json({ error: 'Failed to send verification code' });
+        if (authError) {
+            console.error('Password auth error:', authError.message);
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        res.json({
-            success: true,
-            message: 'Verification code sent to your email',
-            email: email.toLowerCase()
-        });
+        // 4. Get user profile
+        const { data: profile, error: profileError } = await supabaseAdmin
+            .from('users')
+            .select('id, email, fullname, role, status')
+            .eq('id', authData.user.id)
+            .single();
+
+        if (profileError) {
+            return res.status(500).json({ error: 'Failed to fetch user profile' });
+        }
+
+        // 5. Check TOTP status
+        const { data: totpRecord } = await supabaseAdmin
+            .from('totp_secrets')
+            .select('encrypted_secret, enabled')
+            .eq('user_id', authData.user.id)
+            .single();
+
+        const sessionData = {
+            access_token: authData.session.access_token,
+            refresh_token: authData.session.refresh_token,
+            expires_at: authData.session.expires_at,
+        };
+
+        const userInfo = {
+            id: authData.user.id,
+            email: authData.user.email,
+            fullname: profile.fullname,
+            role: profile.role,
+        };
+
+        // Case A: TOTP is enabled → require 6-digit code
+        if (totpRecord?.enabled) {
+            const tempToken = createTempToken(authData.user.id, sessionData);
+            return res.json({
+                success: true,
+                requiresTOTP: true,
+                requiresTOTPSetup: false,
+                tempToken,
+                user: userInfo,
+            });
+        }
+
+        // Case B: No TOTP set up → require setup (generate QR)
+        if (!totpRecord) {
+            const { base32Secret } = generateTOTPSecret(email.toLowerCase());
+            const otpauthUri = getTOTPUri(email.toLowerCase(), base32Secret);
+            const qrCodeDataUri = await generateQRCodeDataUri(otpauthUri);
+
+            // Store the secret encrypted (not yet enabled)
+            const encryptedSecret = encryptSecret(base32Secret);
+            await supabaseAdmin.from('totp_secrets').upsert({
+                user_id: authData.user.id,
+                encrypted_secret: encryptedSecret,
+                enabled: false,
+            });
+
+            const tempToken = createTempToken(authData.user.id, sessionData);
+            return res.json({
+                success: true,
+                requiresTOTP: false,
+                requiresTOTPSetup: true,
+                tempToken,
+                qrCodeDataUri,
+                base32Secret,
+                user: userInfo,
+            });
+        }
+
+        // Case C: TOTP record exists but not enabled (re-setup)
+        if (totpRecord && !totpRecord.enabled) {
+            const base32Secret = decryptSecret(totpRecord.encrypted_secret);
+            const otpauthUri = getTOTPUri(email.toLowerCase(), base32Secret);
+            const qrCodeDataUri = await generateQRCodeDataUri(otpauthUri);
+
+            const tempToken = createTempToken(authData.user.id, sessionData);
+            return res.json({
+                success: true,
+                requiresTOTP: false,
+                requiresTOTPSetup: true,
+                tempToken,
+                qrCodeDataUri,
+                base32Secret,
+                user: userInfo,
+            });
+        }
 
     } catch (error) {
         console.error('Login error:', error);
@@ -61,65 +182,157 @@ router.post('/login', async (req, res) => {
 });
 
 /**
- * POST /auth/verify
- * Verify OTP and return session
+ * POST /auth/totp/verify
+ * Verify TOTP code for users who already have 2FA enabled.
  */
-router.post('/verify', async (req, res) => {
+router.post('/totp/verify', async (req, res) => {
     try {
-        const { email, otp } = req.body;
+        const { tempToken, totpCode } = req.body;
 
-        if (!email || !otp) {
-            return res.status(400).json({ error: 'Email and OTP are required' });
+        if (!tempToken || !totpCode) {
+            return res.status(400).json({ error: 'Temporary token and TOTP code are required' });
         }
 
-        // Verify OTP with Supabase
-        const { data, error } = await supabasePublic.auth.verifyOtp({
-            email: email.toLowerCase(),
-            token: otp,
-            type: 'email'
-        });
-
-        if (error) {
-            console.error('OTP verification error:', error);
-            return res.status(401).json({ error: 'Invalid or expired verification code' });
+        const stored = tempTokenStore.get(tempToken);
+        if (!stored) {
+            return res.status(401).json({ error: 'Session expired. Please login again.' });
         }
 
-        // Get user profile with role
-        const { data: profile, error: profileError } = await supabaseAdmin
-            .from('users')
-            .select('id, email, fullname, role, status')
-            .eq('id', data.user.id)
+        // Rate limit: max 5 attempts
+        if (stored.attempts >= 5) {
+            tempTokenStore.delete(tempToken);
+            return res.status(429).json({ error: 'Too many attempts. Please login again.' });
+        }
+
+        stored.attempts++;
+
+        // Get the user's TOTP secret
+        const { data: totpRecord } = await supabaseAdmin
+            .from('totp_secrets')
+            .select('encrypted_secret')
+            .eq('user_id', stored.userId)
             .single();
 
-        if (profileError) {
-            console.error('Profile fetch error:', profileError);
-            return res.status(500).json({ error: 'Failed to fetch user profile' });
+        if (!totpRecord) {
+            return res.status(400).json({ error: 'TOTP not configured for this user' });
         }
+
+        const base32Secret = decryptSecret(totpRecord.encrypted_secret);
+        const isValid = verifyTOTPCode(base32Secret, totpCode);
+
+        if (!isValid) {
+            return res.status(401).json({
+                error: 'Invalid authenticator code. Please try again.',
+                attemptsRemaining: 5 - stored.attempts,
+            });
+        }
+
+        // Success — clean up temp token and return session
+        tempTokenStore.delete(tempToken);
 
         // Update last login
         await supabaseAdmin
             .from('users')
             .update({ last_login: new Date().toISOString() })
-            .eq('id', data.user.id);
+            .eq('id', stored.userId);
+
+        // Get fresh profile
+        const { data: profile } = await supabaseAdmin
+            .from('users')
+            .select('id, email, fullname, role, status')
+            .eq('id', stored.userId)
+            .single();
 
         res.json({
             success: true,
             user: {
-                id: data.user.id,
-                email: data.user.email,
+                id: profile.id,
+                email: profile.email,
                 fullname: profile.fullname,
-                role: profile.role
+                role: profile.role,
             },
-            session: {
-                access_token: data.session.access_token,
-                refresh_token: data.session.refresh_token,
-                expires_at: data.session.expires_at
-            }
+            session: stored.sessionData,
         });
 
     } catch (error) {
-        console.error('Verify error:', error);
-        res.status(500).json({ error: 'Verification failed' });
+        console.error('TOTP verify error:', error);
+        res.status(500).json({ error: 'TOTP verification failed' });
+    }
+});
+
+/**
+ * POST /auth/totp/confirm-setup
+ * Verify the first TOTP code during setup to activate 2FA.
+ */
+router.post('/totp/confirm-setup', async (req, res) => {
+    try {
+        const { tempToken, totpCode } = req.body;
+
+        if (!tempToken || !totpCode) {
+            return res.status(400).json({ error: 'Temporary token and TOTP code are required' });
+        }
+
+        const stored = tempTokenStore.get(tempToken);
+        if (!stored) {
+            return res.status(401).json({ error: 'Session expired. Please login again.' });
+        }
+
+        // Get the user's pending TOTP secret
+        const { data: totpRecord } = await supabaseAdmin
+            .from('totp_secrets')
+            .select('encrypted_secret, enabled')
+            .eq('user_id', stored.userId)
+            .single();
+
+        if (!totpRecord) {
+            return res.status(400).json({ error: 'TOTP setup not initiated' });
+        }
+
+        const base32Secret = decryptSecret(totpRecord.encrypted_secret);
+        const isValid = verifyTOTPCode(base32Secret, totpCode);
+
+        if (!isValid) {
+            return res.status(401).json({ error: 'Invalid code. Please scan the QR code and try again.' });
+        }
+
+        // Activate TOTP
+        await supabaseAdmin
+            .from('totp_secrets')
+            .update({ enabled: true, updated_at: new Date().toISOString() })
+            .eq('user_id', stored.userId);
+
+        // Clean up temp token
+        tempTokenStore.delete(tempToken);
+
+        // Update last login
+        await supabaseAdmin
+            .from('users')
+            .update({ last_login: new Date().toISOString() })
+            .eq('id', stored.userId);
+
+        // Get fresh profile
+        const { data: profile } = await supabaseAdmin
+            .from('users')
+            .select('id, email, fullname, role, status')
+            .eq('id', stored.userId)
+            .single();
+
+        console.log(`✅ TOTP activated for user: ${profile.email}`);
+
+        res.json({
+            success: true,
+            user: {
+                id: profile.id,
+                email: profile.email,
+                fullname: profile.fullname,
+                role: profile.role,
+            },
+            session: stored.sessionData,
+        });
+
+    } catch (error) {
+        console.error('TOTP setup confirm error:', error);
+        res.status(500).json({ error: 'TOTP setup failed' });
     }
 });
 
