@@ -1960,4 +1960,60 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
     }
 });
 
+/**
+ * DELETE /tickets/:id
+ * Delete a ticket and its associated audio file
+ * Role: admin
+ */
+router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Get ticket details to find GCS path
+        const { data: ticket, error: fetchError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, gcs_path, gcspath')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !ticket) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        // 2. Delete from GCS
+        const objectPath = extractGcsObjectPath(ticket);
+        if (objectPath) {
+            try {
+                await buckets.uploads.file(objectPath).delete();
+                console.log(`Deleted GCS file: ${objectPath}`);
+            } catch (gcsError) {
+                console.warn(`Failed to delete GCS file ${objectPath}:`, gcsError.message);
+                // Continue with DB deletion even if GCS deletion fails (orphaned file is better than stuck record)
+            }
+        }
+
+        // 3. Delete from Database
+        // Note: cascading deletes should handle related tables (analysisresults, actionitems, etc.)
+        // depending on your DB schema setup. If not, we might need to delete them manually here.
+        // Assuming ON DELETE CASCADE is configured or we want to hard delete.
+
+        const { error: deleteError } = await supabaseAdmin
+            .from('tickets')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) {
+            console.error('Database deletion error:', deleteError);
+            return res.status(500).json({ error: 'Failed to delete ticket record' });
+        }
+
+        console.log(`✅ Deleted ticket: ${id}`);
+        res.json({ success: true, message: 'Ticket and audio deleted successfully' });
+
+    } catch (error) {
+        console.error('Delete ticket error:', error);
+        res.status(500).json({ error: 'Failed to delete ticket' });
+    }
+});
+
 export default router;

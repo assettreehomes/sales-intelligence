@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { getToken, API_URL } from './authStore';
-import { notifyError, notifyInfo, notifySuccess } from '@/lib/toast';
+import { notifyError, notifySuccess } from '@/lib/toast';
 
 interface Ticket {
     id: string;
@@ -130,44 +130,16 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
     deleteTicket: async (id: string) => {
         try {
             const token = await getToken();
-            const requestDelete = async (endpoint: string, method: 'DELETE' | 'POST') => {
-                return fetch(endpoint, {
-                    method,
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {})
-                    },
-                    ...(method === 'POST' ? { body: '{}' } : {})
-                });
-            };
-
-            let response = await requestDelete(`${API_URL}/tickets/${id}`, 'DELETE');
-            let payload = await response.json().catch(() => ({}));
-            let backendError = typeof payload?.error === 'string' ? payload.error : '';
-
-            if (!response.ok && response.status === 404 && backendError === 'Not found') {
-                response = await requestDelete(`${API_URL}/tickets/${id}/delete`, 'POST');
-                payload = await response.json().catch(() => ({}));
-                backendError = typeof payload?.error === 'string' ? payload.error : '';
-            }
+            const response = await fetch(`${API_URL}/tickets/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
 
             if (!response.ok) {
-                if (response.status === 404) {
-                    if (backendError === 'Not found') {
-                        throw new Error('Delete endpoint is unavailable on this backend deployment. Please deploy the latest backend revision.');
-                    }
-
-                    if (backendError === 'Ticket not found') {
-                        set((state) => ({
-                            tickets: state.tickets.filter((ticket) => ticket.id !== id),
-                            totalTickets: Math.max(0, state.totalTickets - 1)
-                        }));
-                        notifyInfo('Ticket was already deleted.');
-                        return true;
-                    }
-                }
-
-                throw new Error(backendError || 'Failed to delete ticket');
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to delete ticket');
             }
 
             set((state) => ({
@@ -178,9 +150,8 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
             notifySuccess('Ticket deleted successfully.');
             return true;
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to delete ticket';
             console.error('Delete ticket error:', error);
-            notifyError(message);
+            notifyError(error instanceof Error ? error.message : 'Failed to delete ticket');
             return false;
         }
     },

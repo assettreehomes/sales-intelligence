@@ -353,23 +353,20 @@ function AdminDashboardContent() {
                                             {getStatusBadge(ticket.status, ticket.istrainingcall)}
                                         </div>
                                         <button
-                                            onClick={async (event) => {
-                                                event.stopPropagation();
-                                                const confirmed = window.confirm(`Delete ticket #${ticket.id.slice(0, 4).toUpperCase()}? This removes DB and audio files permanently.`);
-                                                if (!confirmed) return;
-
-                                                const deleted = await deleteTicket(ticket.id);
-                                                if (deleted) {
-                                                    await fetchTickets();
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) {
+                                                    await deleteTicket(ticket.id);
                                                 }
                                             }}
-                                            className="rounded p-1 hover:bg-red-50"
-                                            aria-label="Delete ticket"
+                                            className="p-1.5 hover:bg-red-50 rounded-lg group transition-colors"
+                                            title="Delete Ticket"
                                         >
-                                            <Trash2 className="h-4 w-4 text-red-500" />
+                                            <Trash2 className="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
                                         </button>
                                     </div>
 
+                                    {/* Client Info */}
                                     <h3 className="font-semibold text-gray-900 mb-1 text-base">
                                         {ticket.clientname || `Client ${ticket.client_id}`}
                                     </h3>
@@ -377,11 +374,13 @@ function AdminDashboardContent() {
                                         {getVisitTypeLabel(ticket.visittype)} - {ticket.client_id}
                                     </p>
 
+                                    {/* Rating */}
                                     <div className="mb-4">
                                         {renderStars(ticket.rating)}
                                     </div>
 
                                     <div className="border-t border-gray-100 pt-4">
+                                        {/* Duration & Visit */}
                                         <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
                                             <div className="flex items-center gap-1">
                                                 <Clock className="w-4 h-4" />
@@ -393,6 +392,7 @@ function AdminDashboardContent() {
                                             </div>
                                         </div>
 
+                                        {/* Date */}
                                         <div className="flex items-center gap-1 text-sm text-gray-500">
                                             <Calendar className="w-4 h-4" />
                                             <span>{formatDate(ticket.createdat)}</span>
