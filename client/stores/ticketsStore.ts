@@ -25,6 +25,10 @@ interface Employee {
 interface Filters {
     statusFilter: string;
     dateFilter: string;
+    ratingFilter: string;
+    customDateFrom: string;
+    customDateTo: string;
+    sortOrder: 'asc' | 'desc';
     agentFilter: string;
     searchQuery: string;
     showLiveOnly: boolean;
@@ -58,6 +62,10 @@ interface TicketsState {
 const DEFAULT_FILTERS: Filters = {
     statusFilter: 'all',
     dateFilter: '30days',
+    ratingFilter: 'all',
+    customDateFrom: '',
+    customDateTo: '',
+    sortOrder: 'desc',
     agentFilter: 'all',
     searchQuery: '',
     showLiveOnly: false,
@@ -84,6 +92,10 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
             const params = new URLSearchParams();
             if (filters.statusFilter !== 'all') params.append('status', filters.statusFilter);
             if (filters.dateFilter !== 'all') params.append('dateRange', filters.dateFilter);
+            if (filters.ratingFilter !== 'all') params.append('ratingFilter', filters.ratingFilter);
+            if (filters.customDateFrom) params.append('dateFrom', filters.customDateFrom);
+            if (filters.customDateTo) params.append('dateTo', filters.customDateTo);
+            if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
             if (filters.agentFilter !== 'all') params.append('createdBy', filters.agentFilter);
             if (filters.showLiveOnly) params.append('liveOnly', 'true');
             if (filters.searchQuery) params.append('search', filters.searchQuery);
@@ -94,17 +106,21 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                set({
-                    tickets: data.tickets || [],
-                    totalTickets: data.total || 0,
-                    initialized: true,
-                });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload?.error || 'Failed to fetch tickets');
             }
+
+            const data = await response.json();
+            set({
+                tickets: data.tickets || [],
+                totalTickets: data.total || 0,
+                initialized: true,
+            });
         } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to fetch tickets. Please try again.';
             console.error('Failed to fetch tickets:', error);
-            notifyError('Failed to fetch tickets. Please try again.', { toastId: 'tickets-fetch-error' });
+            notifyError(message, { toastId: 'tickets-fetch-error' });
         } finally {
             set({ loading: false });
         }

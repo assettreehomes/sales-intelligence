@@ -1078,7 +1078,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <button
                                     type="button"
                                     onClick={() => { void handleDeleteTicket(); }}
-                                    className="ticket-no-print flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100"
+                                    className="ticket-no-print flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 cursor-pointer"
                                 >
                                     <Trash2 className="h-4 w-4" />
                                     <span>Delete</span>

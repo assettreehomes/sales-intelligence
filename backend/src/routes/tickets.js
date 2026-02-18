@@ -476,6 +476,37 @@ function formatMetricLabel(key) {
         .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function normalizeSearchTerm(value) {
+    return String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+function getTicketSearchRank(ticket, searchTerm) {
+    if (!searchTerm) return 99;
+
+    const clientId = normalizeSearchTerm(ticket?.client_id);
+    const clientName = normalizeSearchTerm(ticket?.clientname);
+    const visitType = normalizeSearchTerm(String(ticket?.visittype || '').replaceAll('_', ' '));
+    const ticketId = normalizeSearchTerm(ticket?.id);
+    const visitNumber = normalizeSearchTerm(ticket?.visitnumber);
+
+    if (clientId && clientId === searchTerm) return 0;
+    if (clientId && clientId.startsWith(searchTerm)) return 1;
+    if (clientId && clientId.includes(searchTerm)) return 2;
+
+    if (clientName && clientName === searchTerm) return 3;
+    if (clientName && clientName.startsWith(searchTerm)) return 4;
+    if (clientName && clientName.includes(searchTerm)) return 5;
+
+    if (visitType && visitType.includes(searchTerm)) return 6;
+    if (visitNumber && visitNumber === searchTerm) return 7;
+    if (ticketId && ticketId.includes(searchTerm)) return 8;
+
+    return 99;
+}
+
 function extractNumericScores(analysisRow) {
     const result = {};
     const scores = analysisRow?.scores && typeof analysisRow.scores === 'object'
@@ -1082,6 +1113,10 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         const {
             status,
             dateRange,
+            dateFrom,
+            dateTo,
+            ratingFilter,
+            sortOrder = 'desc',
             createdBy,
             liveOnly,
             search,
@@ -1092,13 +1127,17 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
         const offset = (pageNum - 1) * limitNum;
+        const rawSearch = typeof search === 'string' ? search.trim() : '';
+        const hasSearch = rawSearch.length > 0;
+        const normalizedSearch = normalizeSearchTerm(rawSearch.replaceAll('#', ''));
+        const sortDirection = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
+        const sortAscending = sortDirection === 'asc';
 
         let query = supabaseAdmin
             .from('tickets')
             .select('*', { count: 'exact' })
             .is('deletedat', null)
-            .order('createdat', { ascending: false })
-            .range(offset, offset + limitNum - 1);
+            .order('createdat', { ascending: sortAscending });
 
         // Status filter
         if (status && status !== 'all') {
@@ -1115,9 +1154,34 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             query = query.eq('createdby', createdBy);
         }
 
-        // Search filter (ticket id, client id, visit type, and client name)
-        if (search) {
-            const rawSearch = String(search).trim();
+        // Rating filter (DB rating is 0-10; UI works in 0-5 stars)
+        if (ratingFilter && ratingFilter !== 'all') {
+            switch (String(ratingFilter)) {
+                case '4plus':
+                    query = query.gte('rating', 8);
+                    break;
+                case '3plus':
+                    query = query.gte('rating', 6);
+                    break;
+                case '2plus':
+                    query = query.gte('rating', 4);
+                    break;
+                case '1plus':
+                    query = query.gte('rating', 2);
+                    break;
+                case 'below2':
+                    query = query.lt('rating', 4).not('rating', 'is', null);
+                    break;
+                case 'unrated':
+                    query = query.is('rating', null);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Search filter (client ID is prioritized, then client name)
+        if (hasSearch) {
             const sanitizedSearch = rawSearch
                 .replace(/[,%*()]/g, ' ')
                 .replace(/\s+/g, ' ')
@@ -1132,15 +1196,9 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             }
 
             if (hashlessSearch) {
-                clauses.add(`clientname.ilike.%${hashlessSearch}%`);
                 clauses.add(`client_id.ilike.%${hashlessSearch}%`);
+                clauses.add(`clientname.ilike.%${hashlessSearch}%`);
                 clauses.add(`visittype.ilike.%${hashlessSearch}%`);
-                clauses.add(`id.ilike.%${hashlessSearch}%`);
-
-                // Prefix match supports short display IDs like #D656
-                if (!hashlessSearch.includes(' ')) {
-                    clauses.add(`id.ilike.${hashlessSearch}%`);
-                }
 
                 if (/^\d+$/.test(hashlessSearch)) {
                     clauses.add(`visitnumber.eq.${Number(hashlessSearch)}`);
@@ -1167,6 +1225,12 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 case '30days':
                     fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
                     break;
+                case '60days':
+                    fromDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'custom':
+                    fromDate = null;
+                    break;
                 default:
                     fromDate = null;
             }
@@ -1176,6 +1240,24 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             }
         }
 
+        // Manual date filter (works with dateRange=custom or alongside other filters)
+        if (dateFrom) {
+            const from = new Date(`${String(dateFrom)}T00:00:00`);
+            if (Number.isFinite(from.getTime())) {
+                query = query.gte('createdat', from.toISOString());
+            }
+        }
+        if (dateTo) {
+            const to = new Date(`${String(dateTo)}T23:59:59.999`);
+            if (Number.isFinite(to.getTime())) {
+                query = query.lte('createdat', to.toISOString());
+            }
+        }
+
+        if (!hasSearch) {
+            query = query.range(offset, offset + limitNum - 1);
+        }
+
         const { data: tickets, error, count } = await query;
 
         if (error) {
@@ -1183,12 +1265,35 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(500).json({ error: 'Failed to fetch tickets' });
         }
 
+        let resultTickets = tickets || [];
+        let total = count || 0;
+
+        if (hasSearch) {
+            const ranked = resultTickets
+                .map((ticket) => ({
+                    ticket,
+                    rank: getTicketSearchRank(ticket, normalizedSearch),
+                    createdAtTs: Number(new Date(ticket?.createdat || 0))
+                }))
+                .sort((a, b) => {
+                    if (a.rank !== b.rank) return a.rank - b.rank;
+                    return sortAscending
+                        ? a.createdAtTs - b.createdAtTs
+                        : b.createdAtTs - a.createdAtTs;
+                });
+
+            total = ranked.length;
+            resultTickets = ranked
+                .slice(offset, offset + limitNum)
+                .map((item) => item.ticket);
+        }
+
         res.json({
-            tickets,
-            total: count || 0,
+            tickets: resultTickets,
+            total,
             page: pageNum,
             limit: limitNum,
-            totalPages: Math.ceil((count || 0) / limitNum)
+            totalPages: Math.ceil(total / limitNum)
         });
 
     } catch (error) {

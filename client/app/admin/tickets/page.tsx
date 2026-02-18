@@ -15,7 +15,9 @@ import {
     Star,
     ChevronLeft,
     ChevronRight,
-    Trash2
+    Trash2,
+    ArrowDownAZ,
+    ArrowUpAZ
 } from 'lucide-react';
 
 function AdminDashboardContent() {
@@ -38,9 +40,13 @@ function AdminDashboardContent() {
         setPage,
         deleteTicket,
     } = useTicketsStore();
+    const [searchInput, setSearchInput] = useState(filters.searchQuery);
 
     const statusOptions = [
         { value: 'all', label: 'All Status' },
+        { value: 'draft', label: 'Draft' },
+        { value: 'uploading', label: 'Uploading' },
+        { value: 'uploaded', label: 'Uploaded' },
         { value: 'pending', label: 'Pending' },
         { value: 'processing', label: 'Processing' },
         { value: 'analyzed', label: 'Analyzed' },
@@ -48,10 +54,22 @@ function AdminDashboardContent() {
     ];
 
     const dateOptions = [
-        { value: '30days', label: 'Last 30 Days' },
-        { value: '7days', label: 'Last 7 Days' },
         { value: 'today', label: 'Today' },
+        { value: '7days', label: 'Last 7 Days' },
+        { value: '30days', label: 'Last 30 Days' },
+        { value: '60days', label: 'Last 2 Months' },
+        { value: 'custom', label: 'Custom Range' },
         { value: 'all', label: 'All Time' },
+    ];
+
+    const ratingOptions = [
+        { value: 'all', label: 'All Ratings' },
+        { value: '4plus', label: '4★ & Up' },
+        { value: '3plus', label: '3★ & Up' },
+        { value: '2plus', label: '2★ & Up' },
+        { value: '1plus', label: '1★ & Up' },
+        { value: 'below2', label: 'Below 2★' },
+        { value: 'unrated', label: 'Unrated' },
     ];
 
     useEffect(() => {
@@ -63,6 +81,30 @@ function AdminDashboardContent() {
             fetchEmployees();
         }
     }, [employeesLoaded, fetchEmployees]);
+
+    useEffect(() => {
+        const normalized = searchInput.trim();
+        if (normalized === filters.searchQuery) return;
+
+        const timer = setTimeout(() => {
+            setFilter('searchQuery', normalized);
+        }, 250);
+
+        return () => clearTimeout(timer);
+    }, [searchInput, filters.searchQuery, setFilter]);
+
+    const handleDateFilterChange = (value: string) => {
+        setFilter('dateFilter', value);
+        if (value !== 'custom') {
+            setFilter('customDateFrom', '');
+            setFilter('customDateTo', '');
+        }
+    };
+
+    const handleClearFilters = () => {
+        setSearchInput('');
+        clearFilters();
+    };
 
     const getStatusBadge = (status: string, isTraining: boolean) => {
         const badges = [];
@@ -174,9 +216,9 @@ function AdminDashboardContent() {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
                                     type="text"
-                                    placeholder="Search tickets or #D656..."
-                                    value={filters.searchQuery}
-                                    onChange={(e) => setFilter('searchQuery', e.target.value)}
+                                    placeholder="Search by Client ID or Client Name"
+                                    value={searchInput}
+                                    onChange={(e) => setSearchInput(e.target.value)}
                                     className="w-full min-w-[14rem] rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 lg:w-72"
                                 />
                             </div>
@@ -195,9 +237,9 @@ function AdminDashboardContent() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Search tickets or #D656..."
-                            value={filters.searchQuery}
-                            onChange={(e) => setFilter('searchQuery', e.target.value)}
+                            placeholder="Search by Client ID or Client Name"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
                             className="pl-10 pr-4 py-2.5 w-full border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
                         />
                     </div>
@@ -230,7 +272,7 @@ function AdminDashboardContent() {
                             <span className="text-xs text-gray-500 uppercase">Date</span>
                             <select
                                 value={filters.dateFilter}
-                                onChange={(e) => setFilter('dateFilter', e.target.value)}
+                                onChange={(e) => handleDateFilterChange(e.target.value)}
                                 className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none sm:w-auto"
                             >
                                 {dateOptions.map((opt) => (
@@ -238,6 +280,68 @@ function AdminDashboardContent() {
                                 ))}
                             </select>
                         </div>
+
+                        <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 sm:w-auto">
+                            <span className="text-xs text-gray-500 uppercase">Sort</span>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    title="Newest first"
+                                    aria-label="Newest first"
+                                    onClick={() => setFilter('sortOrder', 'desc')}
+                                    className={`cursor-pointer rounded-md border p-1.5 transition-colors ${filters.sortOrder === 'desc'
+                                        ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                        : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    <ArrowDownAZ className="h-4 w-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    title="Oldest first"
+                                    aria-label="Oldest first"
+                                    onClick={() => setFilter('sortOrder', 'asc')}
+                                    className={`cursor-pointer rounded-md border p-1.5 transition-colors ${filters.sortOrder === 'asc'
+                                        ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                        : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    <ArrowUpAZ className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 sm:w-auto">
+                            <span className="text-xs text-gray-500 uppercase">Rating</span>
+                            <select
+                                value={filters.ratingFilter}
+                                onChange={(e) => setFilter('ratingFilter', e.target.value)}
+                                className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none sm:w-auto"
+                            >
+                                {ratingOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {filters.dateFilter === 'custom' && (
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                                <span className="text-xs text-gray-500 uppercase">From</span>
+                                <input
+                                    type="date"
+                                    value={filters.customDateFrom}
+                                    onChange={(e) => setFilter('customDateFrom', e.target.value)}
+                                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                />
+                                <span className="text-xs text-gray-500 uppercase">To</span>
+                                <input
+                                    type="date"
+                                    value={filters.customDateTo}
+                                    onChange={(e) => setFilter('customDateTo', e.target.value)}
+                                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                />
+                            </div>
+                        )}
 
                         <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 sm:w-auto">
                             <span className="text-xs text-gray-500 uppercase">Agent</span>
@@ -254,8 +358,8 @@ function AdminDashboardContent() {
                         </div>
 
                         <button
-                            onClick={clearFilters}
-                            className="text-sm font-medium text-purple-600 hover:text-purple-700 sm:ml-auto"
+                            onClick={handleClearFilters}
+                            className="cursor-pointer text-sm font-medium text-purple-600 hover:text-purple-700 sm:ml-auto"
                         >
                             Clear Filters
                         </button>
@@ -290,7 +394,7 @@ function AdminDashboardContent() {
                                 <span className="text-xs text-gray-500 uppercase">Date</span>
                                 <select
                                     value={filters.dateFilter}
-                                    onChange={(e) => setFilter('dateFilter', e.target.value)}
+                                    onChange={(e) => handleDateFilterChange(e.target.value)}
                                     className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
                                 >
                                     {dateOptions.map((opt) => (
@@ -298,6 +402,72 @@ function AdminDashboardContent() {
                                     ))}
                                 </select>
                             </div>
+
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                                <span className="text-xs text-gray-500 uppercase">Sort</span>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        title="Newest first"
+                                        aria-label="Newest first"
+                                        onClick={() => setFilter('sortOrder', 'desc')}
+                                        className={`cursor-pointer rounded-md border p-1.5 transition-colors ${filters.sortOrder === 'desc'
+                                            ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        <ArrowDownAZ className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title="Oldest first"
+                                        aria-label="Oldest first"
+                                        onClick={() => setFilter('sortOrder', 'asc')}
+                                        className={`cursor-pointer rounded-md border p-1.5 transition-colors ${filters.sortOrder === 'asc'
+                                            ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        <ArrowUpAZ className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                                <span className="text-xs text-gray-500 uppercase">Rating</span>
+                                <select
+                                    value={filters.ratingFilter}
+                                    onChange={(e) => setFilter('ratingFilter', e.target.value)}
+                                    className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                >
+                                    {ratingOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {filters.dateFilter === 'custom' && (
+                                <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-300 bg-white px-3 py-3">
+                                    <label className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500 uppercase">From</span>
+                                        <input
+                                            type="date"
+                                            value={filters.customDateFrom}
+                                            onChange={(e) => setFilter('customDateFrom', e.target.value)}
+                                            className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                        />
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500 uppercase">To</span>
+                                        <input
+                                            type="date"
+                                            value={filters.customDateTo}
+                                            onChange={(e) => setFilter('customDateTo', e.target.value)}
+                                            className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                        />
+                                    </label>
+                                </div>
+                            )}
 
                             <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
                                 <span className="text-xs text-gray-500 uppercase">Agent</span>
@@ -315,10 +485,10 @@ function AdminDashboardContent() {
 
                             <button
                                 onClick={() => {
-                                    clearFilters();
+                                    handleClearFilters();
                                     setMobileFiltersOpen(false);
                                 }}
-                                className="text-sm font-medium text-purple-600 hover:text-purple-700"
+                                className="cursor-pointer text-sm font-medium text-purple-600 hover:text-purple-700"
                             >
                                 Clear Filters
                             </button>
@@ -327,7 +497,7 @@ function AdminDashboardContent() {
                 </header>
 
                 <div className="flex-1 p-5 md:p-7 overflow-auto">
-                    {loading ? (
+                    {loading && tickets.length === 0 ? (
                         <div className="flex items-center justify-center h-64">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
                         </div>
@@ -338,68 +508,73 @@ function AdminDashboardContent() {
                             <p className="text-sm">Try adjusting your filters</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                            {tickets.map((ticket) => (
-                                <div
-                                    key={ticket.id}
-                                    className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-shadow cursor-pointer"
-                                    onClick={() => router.push(`/admin/tickets/${ticket.id}`)}
-                                >
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-gray-500 font-medium">
-                                                #{ticket.id.slice(0, 4).toUpperCase()}
-                                            </span>
-                                            {getStatusBadge(ticket.status, ticket.istrainingcall)}
-                                        </div>
-                                        <button
-                                            onClick={async (e) => {
-                                                e.stopPropagation();
-                                                if (confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) {
-                                                    await deleteTicket(ticket.id);
-                                                }
-                                            }}
-                                            className="p-1.5 hover:bg-red-50 rounded-lg group transition-colors"
-                                            title="Delete Ticket"
-                                        >
-                                            <Trash2 className="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
-                                        </button>
-                                    </div>
-
-                                    {/* Client Info */}
-                                    <h3 className="font-semibold text-gray-900 mb-1 text-base">
-                                        {ticket.clientname || `Client ${ticket.client_id}`}
-                                    </h3>
-                                    <p className="text-sm text-gray-500 mb-3">
-                                        {getVisitTypeLabel(ticket.visittype)} - {ticket.client_id}
-                                    </p>
-
-                                    {/* Rating */}
-                                    <div className="mb-4">
-                                        {renderStars(ticket.rating)}
-                                    </div>
-
-                                    <div className="border-t border-gray-100 pt-4">
-                                        {/* Duration & Visit */}
-                                        <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
-                                            <div className="flex items-center gap-1">
-                                                <Clock className="w-4 h-4" />
-                                                <span>{formatDuration(ticket.durationseconds)}</span>
+                        <div>
+                            {loading && (
+                                <p className="mb-3 text-sm font-medium text-purple-600">Updating results...</p>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                                {tickets.map((ticket) => (
+                                    <div
+                                        key={ticket.id}
+                                        className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-shadow cursor-pointer"
+                                        onClick={() => router.push(`/admin/tickets/${ticket.id}`)}
+                                    >
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-gray-500 font-medium">
+                                                    {ticket.client_id || 'N/A'}
+                                                </span>
+                                                {getStatusBadge(ticket.status, ticket.istrainingcall)}
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-gray-400">V</span>
-                                                <span>Visit #{ticket.visitnumber}</span>
-                                            </div>
+                                            <button
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) {
+                                                        await deleteTicket(ticket.id);
+                                                    }
+                                                }}
+                                                className="p-1.5 hover:bg-purple-50 rounded-lg group transition-colors cursor-pointer"
+                                                title="Delete Ticket"
+                                            >
+                                                <Trash2 className="w-4 h-4 text-purple-500 group-hover:text-purple-700 transition-colors" />
+                                            </button>
                                         </div>
 
-                                        {/* Date */}
-                                        <div className="flex items-center gap-1 text-sm text-gray-500">
-                                            <Calendar className="w-4 h-4" />
-                                            <span>{formatDate(ticket.createdat)}</span>
+                                        {/* Client Info */}
+                                        <h3 className="font-semibold text-gray-900 mb-1 text-base">
+                                            {ticket.clientname || `Client ${ticket.client_id}`}
+                                        </h3>
+                                        <p className="text-sm text-gray-500 mb-3">
+                                            {getVisitTypeLabel(ticket.visittype)}
+                                        </p>
+
+                                        {/* Rating */}
+                                        <div className="mb-4">
+                                            {renderStars(ticket.rating)}
+                                        </div>
+
+                                        <div className="border-t border-gray-100 pt-4">
+                                            {/* Duration & Visit */}
+                                            <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
+                                                <div className="flex items-center gap-1">
+                                                    <Clock className="w-4 h-4" />
+                                                    <span>{formatDuration(ticket.durationseconds)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-gray-400">V</span>
+                                                    <span>Visit #{ticket.visitnumber}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Date */}
+                                            <div className="flex items-center gap-1 text-sm text-gray-500">
+                                                <Calendar className="w-4 h-4" />
+                                                <span>{formatDate(ticket.createdat)}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
