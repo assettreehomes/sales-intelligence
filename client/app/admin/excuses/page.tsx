@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
+import { NotificationBell } from '@/components/NotificationBell';
 import { API_URL, getToken } from '@/stores/authStore';
+import { notifyError, notifySuccess } from '@/lib/toast';
 import {
     Search,
     Check,
@@ -80,7 +82,9 @@ function ExcusesPageContent() {
 
             setExcuses(payload.excuses || []);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load excuses');
+            const message = err instanceof Error ? err.message : 'Failed to load excuses';
+            setError(message);
+            notifyError(message, { toastId: `excuses-load-${message}` });
             setExcuses([]);
         } finally {
             setLoading(false);
@@ -115,9 +119,12 @@ function ExcusesPageContent() {
                 throw new Error(payload.error || `Failed to ${action} excuse`);
             }
 
+            notifySuccess(`Excuse ${action === 'accept' ? 'accepted' : 'rejected'} successfully`);
             await fetchExcuses();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Decision failed');
+            const message = err instanceof Error ? err.message : 'Decision failed';
+            setError(message);
+            notifyError(message);
         } finally {
             setActionLoadingId(null);
         }
@@ -165,15 +172,15 @@ function ExcusesPageContent() {
                             <p className="text-sm text-gray-500">{filteredCountText}</p>
                         </div>
 
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <div className="relative">
+                        <div className="flex w-full items-center gap-3 flex-wrap md:w-auto">
+                            <div className="relative w-full md:w-auto">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search tickets..."
-                                    className="pl-10 pr-4 py-2.5 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                                    placeholder="Search tickets or #D656..."
+                                    className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 md:w-64"
                                 />
                             </div>
                             <select
@@ -187,6 +194,7 @@ function ExcusesPageContent() {
                                 <option value="rejected">Rejected</option>
                                 <option value="all">All</option>
                             </select>
+                            <NotificationBell />
                         </div>
                     </div>
 
@@ -221,7 +229,7 @@ function ExcusesPageContent() {
                                                     {formatReason(excuse.reason)} - {excuse.employee?.fullname || 'Unknown employee'} - Ticket #{excuse.ticket_id.slice(0, 8)}
                                                 </p>
                                             </div>
-                                            <span className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusClass(excuse.status)}`}>
+                                            <span className={`inline-flex w-fit self-start px-3 py-1 rounded-full text-sm font-medium capitalize md:self-auto ${getStatusClass(excuse.status)}`}>
                                                 {excuse.status}
                                             </span>
                                         </div>

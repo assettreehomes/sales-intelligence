@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getToken, API_URL } from './authStore';
+import { notifyError } from '@/lib/toast';
 
 interface Analysis {
     id: string;
@@ -174,6 +175,7 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
             }
         } catch (error) {
             console.error('Failed to fetch ticket details:', error);
+            notifyError('Failed to fetch ticket details.', { toastId: 'ticket-detail-fetch-error' });
         } finally {
             set({ loading: false });
         }
@@ -193,6 +195,7 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 console.error('Failed to fetch signed audio URL:', errorData?.error || response.statusText);
+                notifyError('Could not load audio playback URL.', { toastId: 'audio-url-error' });
                 set({ audioUrl: null });
                 return null;
             }
@@ -203,6 +206,7 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
             return url;
         } catch (error) {
             console.error('Failed to fetch signed audio URL:', error);
+            notifyError('Could not load audio playback URL.', { toastId: 'audio-url-error' });
             set({ audioUrl: null });
             return null;
         }

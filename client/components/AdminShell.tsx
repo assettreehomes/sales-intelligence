@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +27,26 @@ interface AdminShellProps {
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed';
+const MOBILE_MENU_BUTTON_POS_KEY = 'admin-mobile-menu-button-position';
+const MOBILE_MENU_BUTTON_SIZE = 40;
+const MOBILE_MENU_BUTTON_MARGIN = 8;
+
+type FloatingButtonPosition = {
+    left: number;
+    top: number;
+};
+
+function clampFloatingPosition(position: FloatingButtonPosition): FloatingButtonPosition {
+    if (typeof window === 'undefined') return position;
+
+    const maxLeft = Math.max(MOBILE_MENU_BUTTON_MARGIN, window.innerWidth - MOBILE_MENU_BUTTON_SIZE - MOBILE_MENU_BUTTON_MARGIN);
+    const maxTop = Math.max(MOBILE_MENU_BUTTON_MARGIN, window.innerHeight - MOBILE_MENU_BUTTON_SIZE - MOBILE_MENU_BUTTON_MARGIN);
+
+    return {
+        left: Math.min(Math.max(position.left, MOBILE_MENU_BUTTON_MARGIN), maxLeft),
+        top: Math.min(Math.max(position.top, MOBILE_MENU_BUTTON_MARGIN), maxTop)
+    };
+}
 
 export function AdminShell({ activeSection, children }: AdminShellProps) {
     const router = useRouter();
@@ -38,11 +58,94 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
     });
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [mobileMenuButtonPos, setMobileMenuButtonPos] = useState<FloatingButtonPosition>(() => {
+        if (typeof window === 'undefined') return { left: 16, top: 16 };
+
+        const raw = window.localStorage.getItem(MOBILE_MENU_BUTTON_POS_KEY);
+        if (!raw) return { left: 16, top: 16 };
+
+        try {
+            const parsed = JSON.parse(raw) as Partial<FloatingButtonPosition>;
+            if (typeof parsed.left === 'number' && typeof parsed.top === 'number') {
+                return clampFloatingPosition({ left: parsed.left, top: parsed.top });
+            }
+        } catch {
+            // ignore invalid persisted value
+        }
+
+        return { left: 16, top: 16 };
+    });
+    const dragStateRef = useRef<{
+        pointerId: number;
+        startX: number;
+        startY: number;
+        originLeft: number;
+        originTop: number;
+        moved: boolean;
+    } | null>(null);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
         window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
     }, [collapsed]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(MOBILE_MENU_BUTTON_POS_KEY, JSON.stringify(mobileMenuButtonPos));
+    }, [mobileMenuButtonPos]);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setMobileMenuButtonPos((prev) => clampFloatingPosition(prev));
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    const handleMobileMenuPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        dragStateRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            originLeft: mobileMenuButtonPos.left,
+            originTop: mobileMenuButtonPos.top,
+            moved: false
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const handleMobileMenuPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = dragStateRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        const deltaX = event.clientX - drag.startX;
+        const deltaY = event.clientY - drag.startY;
+        const movedEnough = Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3;
+
+        if (movedEnough) {
+            drag.moved = true;
+            const nextPos = clampFloatingPosition({
+                left: drag.originLeft + deltaX,
+                top: drag.originTop + deltaY
+            });
+            setMobileMenuButtonPos(nextPos);
+        }
+    };
+
+    const handleMobileMenuPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = dragStateRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        if (!drag.moved) {
+            setMobileOpen(true);
+        }
+
+        dragStateRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    };
 
     const navItems = useMemo(() => ([
         { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
@@ -55,9 +158,13 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             {!mobileOpen && (
                 <button
                     type="button"
-                    onClick={() => setMobileOpen(true)}
-                    className="fixed top-4 left-4 z-40 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm lg:hidden"
+                    onPointerDown={handleMobileMenuPointerDown}
+                    onPointerMove={handleMobileMenuPointerMove}
+                    onPointerUp={handleMobileMenuPointerUp}
+                    onPointerCancel={() => { dragStateRef.current = null; }}
+                    className="fixed z-40 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm lg:hidden"
                     aria-label="Open sidebar menu"
+                    style={{ left: mobileMenuButtonPos.left, top: mobileMenuButtonPos.top }}
                 >
                     <Menu className="h-5 w-5" />
                 </button>

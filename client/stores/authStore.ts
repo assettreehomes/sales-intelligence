@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createClient } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
 /**
  * Shared helper to get the current Supabase access token.
@@ -26,11 +27,11 @@ interface UserProfile {
 }
 
 interface AuthState {
-    user: any | null;
+    user: User | null;
     profile: UserProfile | null;
     loading: boolean;
     initialized: boolean;
-    setUser: (user: any | null) => void;
+    setUser: (user: User | null) => void;
     setProfile: (profile: UserProfile | null) => void;
     setLoading: (loading: boolean) => void;
     checkSession: () => Promise<void>;
@@ -39,7 +40,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
     persist(
-        (set, get) => ({
+        (set) => ({
             user: null,
             profile: null,
             loading: true,

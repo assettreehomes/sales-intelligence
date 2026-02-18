@@ -3,7 +3,10 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
+import { NotificationBell } from '@/components/NotificationBell';
 import { useTicketDetailStore } from '@/stores/ticketDetailStore';
+import { API_URL, getToken } from '@/stores/authStore';
+import { notifyError, notifyInfo, notifySuccess } from '@/lib/toast';
 import {
     ArrowLeft,
     Play,
@@ -24,13 +27,13 @@ import {
     XCircle,
     AlertTriangle,
     ChevronRight,
-    Bell,
     AlertCircle,
     RefreshCcw,
     TrendingUp,
     TrendingDown,
     Minus,
-    Sparkles
+    Sparkles,
+    Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -153,6 +156,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const momentRefs = useRef<(HTMLDivElement | null)[]>([]);
     const lastVolumeRef = useRef(initialAudioPreferences.lastVolume);
     const seekPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const reportMenuRef = useRef<HTMLDivElement | null>(null);
+    const previousReanalyzeStatusRef = useRef(reanalyzeStatus);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [hoveredChartPoint, setHoveredChartPoint] = useState<HoveredChartPoint | null>(null);
     const [bufferedPercent, setBufferedPercent] = useState(0);
@@ -161,6 +166,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const [volume, setVolume] = useState(initialAudioPreferences.volume);
     const [isMuted, setIsMuted] = useState(initialAudioPreferences.isMuted);
     const [playbackSpeed, setPlaybackSpeed] = useState(initialAudioPreferences.speed);
+    const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
+    const [reportActionLoading, setReportActionLoading] = useState<'download' | 'copy' | 'share' | null>(null);
+    const [reportShareUrl, setReportShareUrl] = useState<string | null>(null);
 
     // Parse timestamps from multiple formats (MM:SS, HH:MM:SS, seconds, or milliseconds)
     const parseTime = (value?: string | number | null): number => {
@@ -547,6 +555,170 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [togglePlayback, seekBy, changeVolumeBy, toggleMute]);
 
+    const triggerReportDownload = useCallback((blob: Blob) => {
+        const objectUrl = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = `ticket-report-${id.slice(0, 8)}.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.URL.revokeObjectURL(objectUrl);
+    }, [id]);
+
+    const fetchReportBlob = useCallback(async () => {
+        const token = await getToken();
+        if (!token) {
+            throw new Error('Authentication required');
+        }
+
+        const response = await fetch(`${API_URL}/tickets/${id}/report?download=true`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Failed to generate ticket report');
+        }
+
+        return await response.blob();
+    }, [id]);
+
+    const getReportShareLink = useCallback(async (forceRefresh = false) => {
+        if (!forceRefresh && reportShareUrl) {
+            return reportShareUrl;
+        }
+
+        const token = await getToken();
+        if (!token) {
+            throw new Error('Authentication required');
+        }
+
+        const response = await fetch(`${API_URL}/tickets/${id}/report/share-link`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({})
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.error || 'Failed to create share link');
+        }
+
+        const shareUrl = typeof payload.share_url === 'string' ? payload.share_url : null;
+        if (!shareUrl) {
+            throw new Error('Report share URL not available');
+        }
+
+        setReportShareUrl(shareUrl);
+        return shareUrl;
+    }, [id, reportShareUrl]);
+
+    const handleDownloadReport = useCallback(async () => {
+        setReportActionLoading('download');
+        try {
+            const blob = await fetchReportBlob();
+            triggerReportDownload(blob);
+            notifySuccess('Report downloaded successfully.');
+            setIsReportMenuOpen(false);
+        } catch (error) {
+            notifyError(error instanceof Error ? error.message : 'Report download failed');
+        } finally {
+            setReportActionLoading(null);
+        }
+    }, [fetchReportBlob, triggerReportDownload]);
+
+    const handleCopyReportLink = useCallback(async () => {
+        setReportActionLoading('copy');
+        try {
+            const shareLink = await getReportShareLink(false);
+            if (!navigator.clipboard) {
+                throw new Error('Clipboard is not available on this browser');
+            }
+            await navigator.clipboard.writeText(shareLink);
+            notifySuccess('Report share link copied to clipboard.');
+            setIsReportMenuOpen(false);
+        } catch (error) {
+            notifyError(error instanceof Error ? error.message : 'Could not copy report link');
+        } finally {
+            setReportActionLoading(null);
+        }
+    }, [getReportShareLink]);
+
+    const handleShareReport = useCallback(async () => {
+        setReportActionLoading('share');
+        try {
+            const shareLink = await getReportShareLink(false);
+
+            if (navigator.share) {
+                await navigator.share({
+                    title: `Ticket Report #${id.slice(0, 4).toUpperCase()}`,
+                    text: 'TicketIntel detailed report',
+                    url: shareLink
+                });
+                notifySuccess('Report link shared.');
+            } else if (navigator.clipboard) {
+                await navigator.clipboard.writeText(shareLink);
+                notifyInfo('Share is not supported on this device. Link copied to clipboard.');
+            } else {
+                window.open(shareLink, '_blank', 'noopener,noreferrer');
+                notifyInfo('Opened the share link in a new tab.');
+            }
+
+            setIsReportMenuOpen(false);
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                setReportActionLoading(null);
+                return;
+            }
+            notifyError(error instanceof Error ? error.message : 'Could not share report');
+        } finally {
+            setReportActionLoading(null);
+        }
+    }, [getReportShareLink, id]);
+
+    useEffect(() => {
+        if (!isReportMenuOpen) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!reportMenuRef.current) return;
+            if (!reportMenuRef.current.contains(event.target as Node)) {
+                setIsReportMenuOpen(false);
+            }
+        };
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsReportMenuOpen(false);
+            }
+        };
+
+        window.addEventListener('mousedown', handlePointerDown);
+        window.addEventListener('keydown', handleEscape);
+        return () => {
+            window.removeEventListener('mousedown', handlePointerDown);
+            window.removeEventListener('keydown', handleEscape);
+        };
+    }, [isReportMenuOpen]);
+
+    useEffect(() => {
+        const previousStatus = previousReanalyzeStatusRef.current;
+        if (reanalyzeStatus === previousStatus) return;
+
+        previousReanalyzeStatusRef.current = reanalyzeStatus;
+
+        if (reanalyzeStatus === 'analyzing') {
+            notifyInfo('Re-analysis started for this ticket.');
+        } else if (reanalyzeStatus === 'analyzed') {
+            notifySuccess('Re-analysis completed successfully.');
+        } else if (reanalyzeStatus === 'failed') {
+            notifyError('Re-analysis failed. Please try again.');
+        }
+    }, [reanalyzeStatus]);
+
     const displayedCurrentTime = scrubTime ?? currentTime;
     const progressPercent = duration > 0 ? clamp((displayedCurrentTime / duration) * 100, 0, 100) : 0;
     const effectiveVolume = isMuted ? 0 : volume;
@@ -801,60 +973,102 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 <main className="min-h-screen">
                     {/* Header */}
                     <header className="bg-white border-b border-gray-200 px-5 py-4 md:px-7">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
                                 <Link
                                     href="/admin/tickets"
-                                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                                    className="rounded-full p-2 transition-colors hover:bg-gray-100"
                                 >
                                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                                 </Link>
-                                <nav className="flex items-center gap-2 text-sm text-gray-500">
+                                <nav className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 sm:text-sm">
                                     <Link href="/admin/tickets" className="hover:text-purple-600">Tickets</Link>
                                     <ChevronRight className="w-4 h-4" />
-                                    <span>{ticket.clientname || ticket.client_id}</span>
-                                    <ChevronRight className="w-4 h-4" />
+                                    <span className="max-w-[9rem] truncate sm:max-w-none">{ticket.clientname || ticket.client_id}</span>
+                                    <ChevronRight className="hidden w-4 h-4 sm:block" />
                                     <span className="font-medium text-gray-900">#{ticket.id.slice(0, 4).toUpperCase()}</span>
                                 </nav>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 lg:w-auto lg:justify-end">
                                 {/* Re-analyze Button */}
                                 {reanalyzeStatus === 'idle' && (
                                     <button
                                         onClick={() => setReanalyzeModalOpen(true)}
-                                        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 hover:text-purple-600 transition-colors shadow-sm font-medium text-sm"
+                                        className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-purple-600"
                                     >
                                         <RefreshCcw className="w-4 h-4" />
                                         <span>Re-analyze</span>
                                     </button>
                                 )}
                                 {reanalyzeStatus === 'analyzing' && (
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-700 rounded-lg border border-amber-200 text-sm font-medium">
+                                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
                                         <RefreshCcw className="w-4 h-4 animate-spin" />
                                         <span>Analyzing...</span>
                                     </div>
                                 )}
                                 {reanalyzeStatus === 'analyzed' && (
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg border border-green-200 text-sm font-medium">
+                                    <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
                                         <CheckCircle className="w-4 h-4" />
                                         <span>Done! Updated.</span>
                                     </div>
                                 )}
                                 {reanalyzeStatus === 'failed' && (
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm font-medium">
+                                    <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
                                         <XCircle className="w-4 h-4" />
                                         <span>Failed</span>
                                     </div>
                                 )}
 
-                                <button className="p-2 hover:bg-gray-100 rounded-full">
-                                    <Bell className="w-5 h-5 text-gray-500" />
-                                </button>
-                                <button className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm">
-                                    <Download className="w-4 h-4" />
-                                    <span>Export Report</span>
-                                </button>
+                                <NotificationBell />
+
+                                <div ref={reportMenuRef} className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsReportMenuOpen((prev) => !prev)}
+                                        disabled={reportActionLoading !== null}
+                                        className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-white shadow-sm transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                        {reportActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                        <span>Export Report</span>
+                                    </button>
+
+                                    {isReportMenuOpen && (
+                                        <div className="absolute right-0 z-30 mt-2 w-52 rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
+                                            <button
+                                                type="button"
+                                                onClick={() => { void handleDownloadReport(); }}
+                                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                                            >
+                                                Download PDF
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { void handleCopyReportLink(); }}
+                                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                                            >
+                                                Copy Share Link
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { void handleShareReport(); }}
+                                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                                            >
+                                                Share Link
+                                            </button>
+                                            {reportShareUrl && (
+                                                <a
+                                                    href={reportShareUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="mt-1 block rounded-lg px-3 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
+                                                >
+                                                    Open Share Link
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </header>
@@ -872,11 +1086,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 </div>
 
                                 <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
-                                    <div className="min-w-[150px] rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                                    <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[150px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client ID</p>
                                         <p className="text-[1.65rem] leading-none font-semibold text-gray-900">{ticket.client_id}</p>
                                     </div>
-                                    <div className="min-w-[170px] rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                                    <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[170px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>
                                         <div className="flex items-center gap-2.5">
                                             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">

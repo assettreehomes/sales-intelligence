@@ -1,15 +1,15 @@
 ﻿'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
+import { NotificationBell } from '@/components/NotificationBell';
 import { useTicketsStore } from '@/stores/ticketsStore';
 import {
     AlertCircle,
     Search,
     SlidersHorizontal,
-    Bell,
     Clock,
     Calendar,
     Star,
@@ -20,6 +20,7 @@ import {
 
 function AdminDashboardContent() {
     const router = useRouter();
+    const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
     const {
         tickets,
@@ -154,50 +155,54 @@ function AdminDashboardContent() {
     };
 
     const totalPages = Math.ceil(totalTickets / ticketsPerPage);
+    const rangeStart = totalTickets === 0 ? 0 : ((currentPage - 1) * ticketsPerPage) + 1;
+    const rangeEnd = totalTickets === 0 ? 0 : Math.min(currentPage * ticketsPerPage, totalTickets);
 
     return (
         <AdminShell activeSection="tickets">
             <div className="flex min-h-screen flex-col">
                 <header className="bg-white border-b border-gray-200 px-5 py-5 md:px-7 sticky top-0 z-20">
-                    <div className="flex items-center justify-between mb-5 gap-4">
+                    <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <h1 className="text-xl md:text-2xl font-semibold text-gray-900">Ticket Repository</h1>
                             <p className="text-sm text-gray-500">Manage and monitor customer intelligence flow</p>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex w-full items-center gap-3 lg:w-auto lg:justify-end">
                             <div className="relative hidden md:block">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
                                     type="text"
-                                    placeholder="Search tickets..."
+                                    placeholder="Search tickets or #D656..."
                                     value={filters.searchQuery}
                                     onChange={(e) => setFilter('searchQuery', e.target.value)}
-                                    className="pl-10 pr-4 py-2.5 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                                    className="w-full min-w-[14rem] rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 lg:w-72"
                                 />
                             </div>
-                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                            <button
+                                onClick={() => setMobileFiltersOpen((prev) => !prev)}
+                                className="rounded-lg p-2 transition-colors hover:bg-gray-100 md:hidden"
+                                aria-label="Toggle filters"
+                            >
                                 <SlidersHorizontal className="w-5 h-5 text-gray-600" />
                             </button>
-                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative">
-                                <Bell className="w-5 h-5 text-gray-600" />
-                            </button>
+                            <NotificationBell />
                         </div>
                     </div>
 
-                    <div className="relative md:hidden mb-3">
+                    <div className="relative mb-3 md:hidden">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Search tickets..."
+                            placeholder="Search tickets or #D656..."
                             value={filters.searchQuery}
                             onChange={(e) => setFilter('searchQuery', e.target.value)}
                             className="pl-10 pr-4 py-2.5 w-full border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
                         />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <div className="hidden flex-wrap items-center gap-3 md:flex">
+                        <label className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 hover:bg-gray-50 sm:w-auto">
                             <div
                                 onClick={() => setFilter('showLiveOnly', !filters.showLiveOnly)}
                                 className={`w-10 h-5 rounded-full transition-colors ${filters.showLiveOnly ? 'bg-purple-600' : 'bg-gray-300'} relative`}
@@ -207,12 +212,12 @@ function AdminDashboardContent() {
                             <span className="text-sm font-medium text-gray-700">Show Live Only</span>
                         </label>
 
-                        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
+                        <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 sm:w-auto">
                             <span className="text-xs text-gray-500 uppercase">Status</span>
                             <select
                                 value={filters.statusFilter}
                                 onChange={(e) => setFilter('statusFilter', e.target.value)}
-                                className="text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none cursor-pointer"
+                                className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none sm:w-auto"
                             >
                                 {statusOptions.map((opt) => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -220,12 +225,12 @@ function AdminDashboardContent() {
                             </select>
                         </div>
 
-                        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
+                        <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 sm:w-auto">
                             <span className="text-xs text-gray-500 uppercase">Date</span>
                             <select
                                 value={filters.dateFilter}
                                 onChange={(e) => setFilter('dateFilter', e.target.value)}
-                                className="text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none cursor-pointer"
+                                className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none sm:w-auto"
                             >
                                 {dateOptions.map((opt) => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -233,12 +238,12 @@ function AdminDashboardContent() {
                             </select>
                         </div>
 
-                        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
+                        <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 sm:w-auto">
                             <span className="text-xs text-gray-500 uppercase">Agent</span>
                             <select
                                 value={filters.agentFilter}
                                 onChange={(e) => setFilter('agentFilter', e.target.value)}
-                                className="text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none cursor-pointer"
+                                className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none sm:w-auto"
                             >
                                 <option value="all">All Agents</option>
                                 {employees.map((emp) => (
@@ -249,11 +254,75 @@ function AdminDashboardContent() {
 
                         <button
                             onClick={clearFilters}
-                            className="ml-auto text-purple-600 hover:text-purple-700 text-sm font-medium px-2 py-1"
+                            className="text-sm font-medium text-purple-600 hover:text-purple-700 sm:ml-auto"
                         >
                             Clear Filters
                         </button>
                     </div>
+
+                    {mobileFiltersOpen && (
+                        <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 md:hidden">
+                            <label className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 hover:bg-gray-50">
+                                <div
+                                    onClick={() => setFilter('showLiveOnly', !filters.showLiveOnly)}
+                                    className={`relative h-5 w-10 rounded-full transition-colors ${filters.showLiveOnly ? 'bg-purple-600' : 'bg-gray-300'}`}
+                                >
+                                    <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${filters.showLiveOnly ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                </div>
+                                <span className="text-sm font-medium text-gray-700">Show Live Only</span>
+                            </label>
+
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                                <span className="text-xs text-gray-500 uppercase">Status</span>
+                                <select
+                                    value={filters.statusFilter}
+                                    onChange={(e) => setFilter('statusFilter', e.target.value)}
+                                    className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                >
+                                    {statusOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                                <span className="text-xs text-gray-500 uppercase">Date</span>
+                                <select
+                                    value={filters.dateFilter}
+                                    onChange={(e) => setFilter('dateFilter', e.target.value)}
+                                    className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                >
+                                    {dateOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                                <span className="text-xs text-gray-500 uppercase">Agent</span>
+                                <select
+                                    value={filters.agentFilter}
+                                    onChange={(e) => setFilter('agentFilter', e.target.value)}
+                                    className="w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none"
+                                >
+                                    <option value="all">All Agents</option>
+                                    {employees.map((emp) => (
+                                        <option key={emp.id} value={emp.id}>{emp.fullname}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    clearFilters();
+                                    setMobileFiltersOpen(false);
+                                }}
+                                className="text-sm font-medium text-purple-600 hover:text-purple-700"
+                            >
+                                Clear Filters
+                            </button>
+                        </div>
+                    )}
                 </header>
 
                 <div className="flex-1 p-5 md:p-7 overflow-auto">
@@ -321,15 +390,15 @@ function AdminDashboardContent() {
                     )}
                 </div>
 
-                <footer className="bg-white border-t border-gray-200 px-5 py-4 md:px-7 flex items-center justify-between">
+                <footer className="bg-white border-t border-gray-200 px-5 py-4 md:px-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <p className="text-sm text-gray-500">
-                        Showing <span className="font-medium">{((currentPage - 1) * ticketsPerPage) + 1}-{Math.min(currentPage * ticketsPerPage, totalTickets)}</span> of <span className="font-medium">{totalTickets}</span> tickets
+                        Showing <span className="font-medium">{rangeStart}-{rangeEnd}</span> of <span className="font-medium">{totalTickets}</span> tickets
                     </p>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             onClick={() => setPage(Math.max(1, currentPage - 1))}
-                            disabled={currentPage === 1}
+                            disabled={currentPage === 1 || totalPages === 0}
                             className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ChevronLeft className="w-5 h-5 text-gray-600" />
@@ -354,8 +423,8 @@ function AdminDashboardContent() {
                         {totalPages > 3 && <span className="text-gray-400">...</span>}
 
                         <button
-                            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
-                            disabled={currentPage === totalPages}
+                            onClick={() => setPage(Math.min(Math.max(totalPages, 1), currentPage + 1))}
+                            disabled={totalPages === 0 || currentPage >= totalPages}
                             className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ChevronRight className="w-5 h-5 text-gray-600" />

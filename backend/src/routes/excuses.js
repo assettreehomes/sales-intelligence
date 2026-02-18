@@ -207,9 +207,12 @@ router.get('/', authMiddleware, requireEmployee, async (req, res) => {
         let excuses = (rows || []).map(normalizeExcuse);
 
         if (search && typeof search === 'string' && search.trim()) {
-            const needle = search.trim().toLowerCase();
+            const needleRaw = search.trim().toLowerCase();
+            const ticketNeedle = needleRaw.replace(/^#/, '').trim();
             excuses = excuses.filter((excuse) => {
                 const haystack = [
+                    excuse.ticket_id,
+                    `#${String(excuse.ticket_id || '').slice(0, 4)}`,
                     excuse.reason,
                     excuse.reason_details,
                     excuse.ticket?.client_name,
@@ -221,7 +224,9 @@ router.get('/', authMiddleware, requireEmployee, async (req, res) => {
                     .join(' ')
                     .toLowerCase();
 
-                return haystack.includes(needle);
+                if (haystack.includes(needleRaw)) return true;
+                if (ticketNeedle && String(excuse.ticket_id || '').toLowerCase().includes(ticketNeedle)) return true;
+                return false;
             });
         }
 

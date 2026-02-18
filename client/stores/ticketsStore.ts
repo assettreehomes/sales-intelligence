@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getToken, API_URL } from './authStore';
+import { notifyError } from '@/lib/toast';
 
 interface Ticket {
     id: string;
@@ -102,6 +103,7 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
             }
         } catch (error) {
             console.error('Failed to fetch tickets:', error);
+            notifyError('Failed to fetch tickets. Please try again.', { toastId: 'tickets-fetch-error' });
         } finally {
             set({ loading: false });
         }
@@ -120,6 +122,7 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
             }
         } catch (error) {
             console.error('Failed to fetch employees:', error);
+            notifyError('Failed to fetch employees.', { toastId: 'employees-fetch-error' });
         }
     },
 

@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useUploadStore, type VisitType } from '@/stores/uploadStore';
 import { API_URL, getToken } from '@/stores/authStore';
+import { notifyError, notifyInfo, notifySuccess } from '@/lib/toast';
 import {
     Upload,
     CheckCircle,
@@ -34,6 +35,7 @@ function EmployeeDashboardContent() {
     const router = useRouter();
     const { user, profile, signOut } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const previousUploadStatusRef = useRef<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle');
     const [dragActive, setDragActive] = useState(false);
     const [excuseDraftId, setExcuseDraftId] = useState<string | null>(null);
     const [excuseReason, setExcuseReason] = useState<string>('client_unavailable');
@@ -127,6 +129,23 @@ function EmployeeDashboardContent() {
         fetchDrafts();
     }, [fetchDrafts]);
 
+    useEffect(() => {
+        const previous = previousUploadStatusRef.current;
+        if (uploadState.status === previous) return;
+
+        previousUploadStatusRef.current = uploadState.status;
+
+        if (uploadState.status === 'processing') {
+            notifyInfo(uploadState.message || 'Upload complete, analysis started.');
+        }
+        if (uploadState.status === 'success') {
+            notifySuccess(uploadState.message || 'Upload completed successfully.');
+        }
+        if (uploadState.status === 'error') {
+            notifyError(uploadState.message || 'Upload failed.');
+        }
+    }, [uploadState.message, uploadState.status]);
+
     const formatFileSize = (bytes: number) => {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -181,12 +200,15 @@ function EmployeeDashboardContent() {
             }
 
             setExcuseFeedback({ type: 'success', message: 'Excuse submitted. Awaiting admin review.' });
+            notifySuccess('Excuse submitted. Awaiting admin review.');
             resetExcuseForm();
         } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to submit excuse';
             setExcuseFeedback({
                 type: 'error',
-                message: error instanceof Error ? error.message : 'Failed to submit excuse'
+                message
             });
+            notifyError(message);
         } finally {
             setExcuseLoading(false);
         }
@@ -196,7 +218,7 @@ function EmployeeDashboardContent() {
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
             {/* Header */}
             <header className="bg-white/80 backdrop-blur-sm border-b border-purple-100 sticky top-0 z-10">
-                <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-[#2d3a2d] rounded-lg flex items-center justify-center">
                             <span className="text-lg">🌳</span>
@@ -213,10 +235,10 @@ function EmployeeDashboardContent() {
                 </div>
             </header>
 
-            <main className="max-w-6xl mx-auto px-6 py-8">
+            <main className="max-w-6xl mx-auto px-4 md:px-6 py-8">
                 {/* Profile Card */}
                 <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-purple-100">
-                    <div className="flex items-center gap-6">
+                    <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:gap-6">
                         <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center shadow-lg">
                             <User className="w-10 h-10 text-white" />
                         </div>

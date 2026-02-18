@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
+import { NotificationBell } from '@/components/NotificationBell';
 import { getToken, API_URL } from '@/stores/authStore';
+import { notifyError, notifySuccess } from '@/lib/toast';
 import {
     Loader2,
     CheckCircle2
@@ -70,7 +72,9 @@ function AssignPageContent() {
                 const data = await response.json();
                 setEmployees(data.users || []);
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load employees');
+                const message = err instanceof Error ? err.message : 'Failed to load employees';
+                setError(message);
+                notifyError(message, { toastId: 'assign-load-employees-error' });
             } finally {
                 setLoadingEmployees(false);
             }
@@ -85,7 +89,9 @@ function AssignPageContent() {
         setSuccessDraft(null);
 
         if (!employeeId || !clientName.trim()) {
-            setError('Employee and client name are required.');
+            const message = 'Employee and client name are required.';
+            setError(message);
+            notifyError(message);
             return;
         }
 
@@ -123,8 +129,11 @@ function AssignPageContent() {
             setVisitType('site_visit');
             setExpectedRecordingTime('');
             setNotes('');
+            notifySuccess('Draft assigned successfully.');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to assign draft');
+            const message = err instanceof Error ? err.message : 'Failed to assign draft';
+            setError(message);
+            notifyError(message);
         } finally {
             setSubmitting(false);
         }
@@ -134,9 +143,10 @@ function AssignPageContent() {
         <AdminShell activeSection="assign">
             <main className="p-5 md:p-8">
                 <div className="max-w-3xl mx-auto">
-                    <div className="mb-6">
+                    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                         <h1 className="text-2xl font-semibold text-gray-900">Assign Ticket Draft</h1>
-                        <p className="text-sm text-gray-500">Create a draft ticket for an employee. It appears in their dashboard for later audio upload.</p>
+                        <NotificationBell />
+                        <p className="w-full text-sm text-gray-500">Create a draft ticket for an employee. It appears in their dashboard for later audio upload.</p>
                     </div>
 
                     {error && (

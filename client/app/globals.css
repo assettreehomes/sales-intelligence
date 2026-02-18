@@ -166,6 +166,10 @@ html.space-dark select option {
     color: var(--text);
 }
 
+.Toastify__toast-container {
+    z-index: 100000;
+}
+
 .analysis-objection-item,
 .analysis-next-step-item,
 .analysis-suggestion-item {

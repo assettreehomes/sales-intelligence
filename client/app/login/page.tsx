@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { notifyError } from '@/lib/toast';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
@@ -36,6 +37,7 @@ export default function LoginPage() {
 
         if (result.error) {
             setError(result.error);
+            notifyError(result.error);
             setLoading(false);
             return;
         }
@@ -100,12 +102,7 @@ export default function LoginPage() {
 
                         {/* Password Field */}
                         <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="block text-sm font-medium text-gray-700">Password</label>
-                                <button type="button" className="text-sm text-purple-600 hover:text-purple-700 font-medium">
-                                    Forgot password?
-                                </button>
-                            </div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">Password</label>
                             <div className="relative">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                                 <input

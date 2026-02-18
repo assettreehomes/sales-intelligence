@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
+import crypto from 'crypto';
 import { supabaseAdmin } from '../config/supabase.js';
 import { buckets, checkAudioExists, getAudioUri, generatePlaybackUrl, promoteToTraining } from '../config/gcs.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -36,6 +37,407 @@ const ANALYTICS_PERIOD_DAYS = {
     'half-yearly': 182,
     yearly: 365
 };
+
+const REPORT_SHARE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REPORT_FALLBACK_SECRET = 'ticketintel-report-share-fallback';
+
+function escapePdfText(value) {
+    return String(value ?? '')
+        .replaceAll('\\', '\\\\')
+        .replaceAll('(', '\\(')
+        .replaceAll(')', '\\)')
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .replace(/\r?\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function wrapReportText(value, maxChars = 92) {
+    const normalized = escapePdfText(value);
+    if (!normalized) return ['-'];
+
+    const words = normalized.split(' ');
+    const lines = [];
+    let current = '';
+
+    for (const word of words) {
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length <= maxChars) {
+            current = candidate;
+            continue;
+        }
+
+        if (current) lines.push(current);
+
+        if (word.length > maxChars) {
+            for (let index = 0; index < word.length; index += maxChars) {
+                const chunk = word.slice(index, index + maxChars);
+                if (chunk.length === maxChars || index + maxChars < word.length) {
+                    lines.push(chunk);
+                } else {
+                    current = chunk;
+                }
+            }
+        } else {
+            current = word;
+        }
+    }
+
+    if (current) lines.push(current);
+    return lines.length ? lines : ['-'];
+}
+
+function buildPdfPageContent(lines) {
+    const safeLines = lines.length ? lines : [''];
+    let stream = 'BT\n/F1 10 Tf\n14 TL\n50 760 Td\n';
+
+    safeLines.forEach((line, index) => {
+        if (index > 0) stream += 'T*\n';
+        stream += `(${escapePdfText(line)}) Tj\n`;
+    });
+
+    stream += 'ET';
+    return stream;
+}
+
+function buildSimplePdf(lines) {
+    const linesPerPage = 48;
+    const pages = [];
+    for (let index = 0; index < lines.length; index += linesPerPage) {
+        pages.push(lines.slice(index, index + linesPerPage));
+    }
+    if (pages.length === 0) pages.push(['No report data available.']);
+
+    const pageCount = pages.length;
+    const fontObjectNum = 3 + pageCount * 2;
+    const objectCount = fontObjectNum;
+    const objectMap = new Map();
+
+    objectMap.set(1, '<< /Type /Catalog /Pages 2 0 R >>');
+
+    const pageRefs = [];
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+        const pageObjNum = 3 + pageIndex * 2;
+        pageRefs.push(`${pageObjNum} 0 R`);
+    }
+    objectMap.set(2, `<< /Type /Pages /Kids [${pageRefs.join(' ')}] /Count ${pageCount} >>`);
+
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+        const pageObjNum = 3 + pageIndex * 2;
+        const contentObjNum = pageObjNum + 1;
+        const contentStream = buildPdfPageContent(pages[pageIndex]);
+
+        objectMap.set(pageObjNum, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontObjectNum} 0 R >> >> /Contents ${contentObjNum} 0 R >>`);
+        objectMap.set(contentObjNum, `<< /Length ${Buffer.byteLength(contentStream, 'utf8')} >>\nstream\n${contentStream}\nendstream`);
+    }
+
+    objectMap.set(fontObjectNum, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+
+    let pdf = '%PDF-1.4\n';
+    const offsets = [0];
+
+    for (let objNum = 1; objNum <= objectCount; objNum += 1) {
+        offsets[objNum] = Buffer.byteLength(pdf, 'utf8');
+        const body = objectMap.get(objNum);
+        pdf += `${objNum} 0 obj\n${body}\nendobj\n`;
+    }
+
+    const xrefOffset = Buffer.byteLength(pdf, 'utf8');
+    pdf += `xref\n0 ${objectCount + 1}\n`;
+    pdf += '0000000000 65535 f \n';
+
+    for (let objNum = 1; objNum <= objectCount; objNum += 1) {
+        pdf += `${String(offsets[objNum]).padStart(10, '0')} 00000 n \n`;
+    }
+
+    pdf += `trailer\n<< /Size ${objectCount + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+    return Buffer.from(pdf, 'utf8');
+}
+
+function formatReportVisitType(value) {
+    return String(value || 'unknown')
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatReportExcuseReason(reason) {
+    const labels = {
+        client_unavailable: 'Client unavailable',
+        technical_issues: 'Technical issues',
+        travel_delay: 'Travel delay',
+        meeting_rescheduled: 'Meeting rescheduled',
+        emergency: 'Emergency',
+        other: 'Other'
+    };
+    return labels[reason] || String(reason || 'Other').replaceAll('_', ' ');
+}
+
+function formatReportDate(value) {
+    if (!value) return 'N/A';
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return 'N/A';
+    return parsed.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}
+
+function buildTicketReportLines({ ticket, analysis, actionItems, excuses }) {
+    const lines = [];
+    const addLine = (value = '') => lines.push(value);
+    const addWrapped = (value) => {
+        const wrapped = wrapReportText(value);
+        wrapped.forEach((line) => addLine(line));
+    };
+    const addSection = (title) => {
+        addLine('');
+        addLine(title);
+        addLine('----------------------------------------------------------------');
+    };
+
+    addLine('TicketIntel Detailed Report');
+    addLine(`Generated: ${formatReportDate(new Date().toISOString())}`);
+    addLine(`Ticket ID: ${ticket.id}`);
+    addLine(`Display ID: #${String(ticket.id || '').slice(0, 4).toUpperCase()}`);
+
+    addSection('Ticket Overview');
+    addLine(`Client Name: ${ticket.clientname || ticket.client_name || 'Unknown'}`);
+    addLine(`Client ID: ${ticket.client_id || 'N/A'}`);
+    addLine(`Visit Type: ${formatReportVisitType(ticket.visittype || ticket.visit_type)}`);
+    addLine(`Visit Number: ${ticket.visitnumber || ticket.visit_number || 1}`);
+    addLine(`Status: ${ticket.status || 'unknown'}`);
+    addLine(`Created At: ${formatReportDate(ticket.createdat || ticket.created_at)}`);
+    if (ticket.durationseconds) {
+        addLine(`Duration: ${Math.floor(ticket.durationseconds / 60)} min ${ticket.durationseconds % 60} sec`);
+    }
+
+    addSection('Analysis Summary');
+    if (!analysis) {
+        addLine('Analysis is not available yet for this ticket.');
+    } else {
+        addLine(`Overall Rating (0-10): ${analysis.rating ?? 'N/A'}`);
+        addLine(`Training Call: ${(ticket.istrainingcall || ticket.is_training_call) ? 'Yes' : 'No'}`);
+        addLine('');
+        addLine('Summary:');
+        addWrapped(analysis.summary || 'No summary generated.');
+
+        const scores = analysis.scores && typeof analysis.scores === 'object' ? analysis.scores : {};
+        const scoreEntries = Object.entries(scores).filter(([, raw]) => typeof raw === 'number' || typeof raw === 'string');
+        if (scoreEntries.length > 0) {
+            addLine('');
+            addLine('Key Scores:');
+            scoreEntries.slice(0, 12).forEach(([key, raw]) => {
+                addLine(`- ${formatMetricLabel(key)}: ${raw}`);
+            });
+        }
+    }
+
+    addSection('Key Moments');
+    const keyMoments = Array.isArray(analysis?.keymoments) ? analysis.keymoments : [];
+    if (keyMoments.length === 0) {
+        addLine('No key moments captured.');
+    } else {
+        keyMoments.slice(0, 15).forEach((moment, index) => {
+            const time = moment.time || moment.timestamp || '00:00';
+            const sentiment = moment.sentiment || 'neutral';
+            addLine(`${index + 1}. [${time}] (${sentiment}) ${moment.label || 'Moment'}`);
+            if (moment.description) {
+                wrapReportText(moment.description, 86).forEach((line) => addLine(`   ${line}`));
+            }
+        });
+    }
+
+    addSection('Suggestions And Action Items');
+    const suggestions = Array.isArray(analysis?.improvementsuggestions) ? analysis.improvementsuggestions : [];
+    if (suggestions.length === 0) {
+        addLine('No AI suggestions available.');
+    } else {
+        suggestions.slice(0, 15).forEach((suggestion, index) => {
+            wrapReportText(`${index + 1}. ${suggestion}`, 90).forEach((line) => addLine(line));
+        });
+    }
+
+    if (Array.isArray(actionItems) && actionItems.length > 0) {
+        addLine('');
+        addLine('Tracked Action Items:');
+        actionItems.slice(0, 20).forEach((item, index) => {
+            addLine(`${index + 1}. ${item.title || 'Untitled'} [${item.completed ? 'Completed' : 'Pending'}]`);
+            if (item.description) {
+                wrapReportText(item.description, 86).forEach((line) => addLine(`   ${line}`));
+            }
+            if (item.due_date) {
+                addLine(`   Due: ${formatReportDate(item.due_date)}`);
+            }
+        });
+    }
+
+    addSection('Excuse Queue Timeline');
+    if (!Array.isArray(excuses) || excuses.length === 0) {
+        addLine('No excuse requests for this ticket.');
+    } else {
+        excuses.slice(0, 20).forEach((excuse, index) => {
+            addLine(`${index + 1}. ${formatReportExcuseReason(excuse.reason)} [${excuse.status || 'pending'}]`);
+            addLine(`   Submitted: ${formatReportDate(excuse.submitted_at || excuse.submittedat)}`);
+            if (excuse.reason_details || excuse.reasondetails) {
+                wrapReportText(excuse.reason_details || excuse.reasondetails, 84).forEach((line) => addLine(`   ${line}`));
+            }
+            if (excuse.admin_notes || excuse.adminnotes) {
+                wrapReportText(`Admin Notes: ${excuse.admin_notes || excuse.adminnotes}`, 84).forEach((line) => addLine(`   ${line}`));
+            }
+        });
+    }
+
+    addLine('');
+    addLine('End Of Report');
+
+    return lines;
+}
+
+function toBase64Url(value) {
+    return Buffer.from(String(value), 'utf8').toString('base64url');
+}
+
+function fromBase64Url(value) {
+    return Buffer.from(String(value), 'base64url').toString('utf8');
+}
+
+function getReportShareSecret() {
+    return process.env.REPORT_SHARE_SECRET
+        || process.env.JWT_SECRET
+        || process.env.SUPABASE_SERVICE_KEY
+        || REPORT_FALLBACK_SECRET;
+}
+
+function createReportShareToken(ticketId, expiresAtMs) {
+    const ticketPart = toBase64Url(ticketId);
+    const expiryPart = String(Math.floor(expiresAtMs / 1000));
+    const payload = `${ticketPart}.${expiryPart}`;
+    const signature = crypto
+        .createHmac('sha256', getReportShareSecret())
+        .update(payload)
+        .digest('base64url');
+
+    return `${payload}.${signature}`;
+}
+
+function verifyReportShareToken(token) {
+    if (!token || typeof token !== 'string') return null;
+
+    const [ticketPart, expiryPart, signature] = token.split('.');
+    if (!ticketPart || !expiryPart || !signature) return null;
+    if (!/^\d+$/.test(expiryPart)) return null;
+
+    const payload = `${ticketPart}.${expiryPart}`;
+    const expectedSignature = crypto
+        .createHmac('sha256', getReportShareSecret())
+        .update(payload)
+        .digest('base64url');
+
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+    if (
+        signatureBuffer.length !== expectedBuffer.length
+        || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+    ) {
+        return null;
+    }
+
+    const expiresAtMs = Number(expiryPart) * 1000;
+    if (!Number.isFinite(expiresAtMs) || Date.now() > expiresAtMs) {
+        return null;
+    }
+
+    let ticketId = '';
+    try {
+        ticketId = fromBase64Url(ticketPart);
+    } catch {
+        return null;
+    }
+
+    if (!ticketId) return null;
+    return { ticketId, expiresAtMs };
+}
+
+async function fetchTicketReportContext(ticketId) {
+    const { data: ticket, error: ticketError } = await supabaseAdmin
+        .from('tickets')
+        .select('*')
+        .eq('id', ticketId)
+        .single();
+
+    if (ticketError || !ticket) {
+        return null;
+    }
+
+    const [{ data: analysis }, { data: actionItems }, { data: excuseRows }] = await Promise.all([
+        supabaseAdmin
+            .from('analysisresults')
+            .select('*')
+            .eq('ticketid', ticketId)
+            .maybeSingle(),
+        supabaseAdmin
+            .from('actionitems')
+            .select('id, title, description, completed, duedate')
+            .eq('ticketid', ticketId)
+            .order('createdat', { ascending: false }),
+        supabaseAdmin
+            .from('employeeexcuses')
+            .select('id, reason, reasondetails, status, submittedat, adminnotes')
+            .eq('ticketid', ticketId)
+            .order('submittedat', { ascending: false })
+    ]);
+
+    const normalizedActionItems = (actionItems || []).map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        completed: item.completed,
+        due_date: item.duedate
+    }));
+
+    const normalizedExcuses = (excuseRows || []).map((row) => ({
+        id: row.id,
+        reason: row.reason,
+        reason_details: row.reasondetails,
+        status: row.status,
+        submitted_at: row.submittedat,
+        admin_notes: row.adminnotes
+    }));
+
+    return {
+        ticket,
+        analysis: analysis || null,
+        actionItems: normalizedActionItems,
+        excuses: normalizedExcuses
+    };
+}
+
+function sendTicketReportPdf(res, ticketId, lines, asAttachment = true) {
+    const pdfBuffer = buildSimplePdf(lines);
+    const filename = `ticket-report-${String(ticketId).slice(0, 8)}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', String(pdfBuffer.length));
+    res.setHeader(
+        'Content-Disposition',
+        `${asAttachment ? 'attachment' : 'inline'}; filename="${filename}"`
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(pdfBuffer);
+}
+
+function getRequestOrigin(req) {
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const protocol = typeof forwardedProto === 'string'
+        ? forwardedProto.split(',')[0].trim()
+        : req.protocol;
+    return `${protocol}://${req.get('host')}`;
+}
 
 function safePercent(part, whole) {
     if (!whole || whole <= 0) return 0;
@@ -644,9 +1046,41 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             query = query.eq('createdby', createdBy);
         }
 
-        // Search filter (client name or client ID)
+        // Search filter (ticket id, client id, visit type, and client name)
         if (search) {
-            query = query.or(`clientname.ilike.%${search}%,client_id.ilike.%${search}%`);
+            const rawSearch = String(search).trim();
+            const sanitizedSearch = rawSearch
+                .replace(/[,%*()]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const hashlessSearch = sanitizedSearch.replaceAll('#', '').trim();
+
+            const clauses = new Set();
+
+            // Keep raw-ish term for client_id since some IDs may include '#'.
+            if (sanitizedSearch) {
+                clauses.add(`client_id.ilike.%${sanitizedSearch}%`);
+            }
+
+            if (hashlessSearch) {
+                clauses.add(`clientname.ilike.%${hashlessSearch}%`);
+                clauses.add(`client_id.ilike.%${hashlessSearch}%`);
+                clauses.add(`visittype.ilike.%${hashlessSearch}%`);
+                clauses.add(`id.ilike.%${hashlessSearch}%`);
+
+                // Prefix match supports short display IDs like #D656
+                if (!hashlessSearch.includes(' ')) {
+                    clauses.add(`id.ilike.${hashlessSearch}%`);
+                }
+
+                if (/^\d+$/.test(hashlessSearch)) {
+                    clauses.add(`visitnumber.eq.${Number(hashlessSearch)}`);
+                }
+            }
+
+            if (clauses.size > 0) {
+                query = query.or([...clauses].join(','));
+            }
         }
 
         // Date range filter
@@ -950,6 +1384,83 @@ router.get('/analytics/overview', authMiddleware, requireAdmin, async (req, res)
     } catch (error) {
         console.error('Analytics overview error:', error);
         res.status(500).json({ error: 'Failed to generate analytics overview' });
+    }
+});
+
+/**
+ * GET /tickets/report/shared/:token
+ * Public shared PDF report endpoint (tokenized, time-limited)
+ */
+router.get('/report/shared/:token', async (req, res) => {
+    try {
+        const { token } = req.params;
+        const tokenPayload = verifyReportShareToken(token);
+
+        if (!tokenPayload) {
+            return res.status(401).json({ error: 'Invalid or expired report link' });
+        }
+
+        const context = await fetchTicketReportContext(tokenPayload.ticketId);
+        if (!context) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        const lines = buildTicketReportLines(context);
+        const shouldDownload = req.query.download === 'true' || req.query.download === '1';
+        sendTicketReportPdf(res, context.ticket.id, lines, shouldDownload);
+    } catch (error) {
+        console.error('Shared report error:', error);
+        res.status(500).json({ error: 'Failed to generate shared report' });
+    }
+});
+
+/**
+ * GET /tickets/:id/report
+ * Download detailed PDF report for a ticket
+ * Role: admin
+ */
+router.get('/:id/report', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const context = await fetchTicketReportContext(id);
+        if (!context) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        const lines = buildTicketReportLines(context);
+        const shouldDownload = req.query.download !== 'false' && req.query.download !== '0';
+        sendTicketReportPdf(res, id, lines, shouldDownload);
+    } catch (error) {
+        console.error('Ticket report error:', error);
+        res.status(500).json({ error: 'Failed to generate ticket report' });
+    }
+});
+
+/**
+ * POST /tickets/:id/report/share-link
+ * Generate a time-limited share URL for a ticket report
+ * Role: admin
+ */
+router.post('/:id/report/share-link', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const context = await fetchTicketReportContext(id);
+        if (!context) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        const expiresAtMs = Date.now() + REPORT_SHARE_TTL_MS;
+        const token = createReportShareToken(id, expiresAtMs);
+        const shareUrl = `${getRequestOrigin(req)}/tickets/report/shared/${token}`;
+
+        res.json({
+            ticket_id: id,
+            share_url: shareUrl,
+            expires_at: new Date(expiresAtMs).toISOString()
+        });
+    } catch (error) {
+        console.error('Create report share link error:', error);
+        res.status(500).json({ error: 'Failed to create report share link' });
     }
 });
 
