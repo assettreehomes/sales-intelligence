@@ -16,6 +16,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Trash2,
+    Loader2,
     ArrowDownAZ,
     ArrowUpAZ
 } from 'lucide-react';
@@ -41,6 +42,7 @@ function AdminDashboardContent() {
         deleteTicket,
     } = useTicketsStore();
     const [searchInput, setSearchInput] = useState(filters.searchQuery);
+    const [deletingTicketIds, setDeletingTicketIds] = useState<Set<string>>(new Set());
 
     const statusOptions = [
         { value: 'all', label: 'All Status' },
@@ -529,14 +531,34 @@ function AdminDashboardContent() {
                                             <button
                                                 onClick={async (e) => {
                                                     e.stopPropagation();
-                                                    if (confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) {
+                                                    if (deletingTicketIds.has(ticket.id)) return;
+                                                    if (!confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) return;
+
+                                                    setDeletingTicketIds((prev) => {
+                                                        const next = new Set(prev);
+                                                        next.add(ticket.id);
+                                                        return next;
+                                                    });
+
+                                                    try {
                                                         await deleteTicket(ticket.id);
+                                                    } finally {
+                                                        setDeletingTicketIds((prev) => {
+                                                            const next = new Set(prev);
+                                                            next.delete(ticket.id);
+                                                            return next;
+                                                        });
                                                     }
                                                 }}
-                                                className="p-1.5 hover:bg-purple-50 rounded-lg group transition-colors cursor-pointer"
+                                                disabled={deletingTicketIds.has(ticket.id)}
+                                                className="p-1.5 hover:bg-purple-50 rounded-lg group transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                                                 title="Delete Ticket"
                                             >
-                                                <Trash2 className="w-4 h-4 text-purple-500 group-hover:text-purple-700 transition-colors" />
+                                                {deletingTicketIds.has(ticket.id) ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+                                                ) : (
+                                                    <Trash2 className="w-4 h-4 text-purple-500 group-hover:text-purple-700 transition-colors" />
+                                                )}
                                             </button>
                                         </div>
 

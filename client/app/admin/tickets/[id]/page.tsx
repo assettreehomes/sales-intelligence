@@ -172,6 +172,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const [playbackSpeed, setPlaybackSpeed] = useState(initialAudioPreferences.speed);
     const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
     const [reportActionLoading, setReportActionLoading] = useState<'download' | 'copy' | 'share' | null>(null);
+    const [isDeletingTicket, setIsDeletingTicket] = useState(false);
 
     // Parse timestamps from multiple formats (MM:SS, HH:MM:SS, seconds, or milliseconds)
     const parseTime = (value?: string | number | null): number => {
@@ -636,9 +637,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     }, [id, ticket?.id]);
 
     const handleDeleteTicket = useCallback(async () => {
+        if (isDeletingTicket) return;
         const confirmed = window.confirm('Delete this ticket permanently? This removes DB records and GCP audio files.');
         if (!confirmed) return;
 
+        setIsDeletingTicket(true);
         try {
             const token = await getToken();
             if (!token) throw new Error('Authentication required');
@@ -684,8 +687,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             notifyError(error instanceof Error ? error.message : 'Failed to delete ticket');
         } finally {
             setIsReportMenuOpen(false);
+            setIsDeletingTicket(false);
         }
-    }, [id, router]);
+    }, [id, router, isDeletingTicket]);
 
     const handleCopyReportLink = useCallback(async () => {
         setReportActionLoading('copy');
@@ -1078,10 +1082,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <button
                                     type="button"
                                     onClick={() => { void handleDeleteTicket(); }}
-                                    className="ticket-no-print flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 cursor-pointer"
+                                    disabled={isDeletingTicket}
+                                    className="ticket-no-print flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    <Trash2 className="h-4 w-4" />
-                                    <span>Delete</span>
+                                    {isDeletingTicket ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                    <span>{isDeletingTicket ? 'Deleting...' : 'Delete'}</span>
                                 </button>
 
                                 <NotificationBell />
