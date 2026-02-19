@@ -43,24 +43,16 @@ export default function LoginPage() {
     // Redirect if already logged in
     useEffect(() => {
         if (!authLoading && !profileLoading && user && profile) {
+            // Allow all users to access the web portal for now (dev requirement)
             if (profile.role === 'superadmin' || profile.role === 'admin') {
                 router.replace('/admin');
                 return;
             }
 
-            if (profile.role === 'intern') {
+            if (profile.role === 'intern' || profile.role === 'employee') {
                 router.replace('/intern');
                 return;
             }
-
-            const kickOutEmployee = async () => {
-                await signOut();
-                const message = 'Employee web access is disabled. Please use the mobile application.';
-                setError(message);
-                notifyError(message, { toastId: 'employee-web-disabled' });
-            };
-
-            void kickOutEmployee();
         }
     }, [user, profile, authLoading, profileLoading, router, signOut]);
 

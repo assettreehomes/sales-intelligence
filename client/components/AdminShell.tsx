@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertCircle,
+    BarChart3,
     ClipboardList,
     GraduationCap,
     LogOut,
@@ -21,7 +22,7 @@ import {
     Users
 } from 'lucide-react';
 
-type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training' | 'activity';
+type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training' | 'activity' | 'performance' | 'live';
 
 interface AdminShellProps {
     activeSection: AdminSection;
@@ -157,10 +158,10 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         setMobileOpen(true);
     };
 
-    const homeHref = profile?.role === 'intern' ? '/intern' : '/admin/tickets';
+    const homeHref = (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : '/admin/tickets';
 
     const navItems = useMemo(() => {
-        if (profile?.role === 'intern') {
+        if (profile?.role === 'intern' || profile?.role === 'employee') {
             return [
                 { id: 'training' as const, label: 'Training', icon: GraduationCap, href: '/intern' }
             ];
@@ -168,9 +169,11 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
 
         return [
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
+            { id: 'performance' as const, label: 'Performance', icon: BarChart3, href: '/admin/performance' },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
-            { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' }
+            { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
+            { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' }
         ];
     }, [profile?.role]);
 

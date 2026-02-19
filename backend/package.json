@@ -11,9 +11,9 @@
   "dependencies": {
     "@google-cloud/storage": "^7.14.0",
     "@google-cloud/vertexai": "^1.9.0",
-    "@supabase/supabase-js": "^2.93.3",
+    "@supabase/supabase-js": "^2.97.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "multer": "^2.0.2",
     "otpauth": "^9.5.0",

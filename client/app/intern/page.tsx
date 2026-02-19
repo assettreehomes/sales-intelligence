@@ -285,7 +285,7 @@ function InternDashboardContent() {
 
 export default function InternDashboardPage() {
     return (
-        <ProtectedRoute allowedRoles={['intern', 'admin', 'superadmin']}>
+        <ProtectedRoute allowedRoles={['intern', 'employee', 'admin', 'superadmin']}>
             <InternDashboardContent />
         </ProtectedRoute>
     );

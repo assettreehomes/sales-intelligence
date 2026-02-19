@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AppToaster } from "@/components/AppToaster";
+import { HeartbeatManager } from "@/components/HeartbeatManager";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className={`${poppins.variable} antialiased`} suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
+            <HeartbeatManager />
             {children}
             <AppToaster />
           </AuthProvider>

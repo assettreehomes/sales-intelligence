@@ -1120,6 +1120,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             sortOrder = 'desc',
             createdBy,
             liveOnly,
+            flaggedOnly,
             search,
             page = 1,
             limit = 12
@@ -1289,12 +1290,55 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 .map((item) => item.ticket);
         }
 
+        // Enrich tickets with flag status
+        const ticketIds = resultTickets.map((t) => t.id);
+        let flaggedIds = new Set();
+        if (ticketIds.length > 0) {
+            const { data: flags } = await supabaseAdmin
+                .from('flagged_tickets')
+                .select('ticket_id')
+                .in('ticket_id', ticketIds);
+            if (flags) {
+                flaggedIds = new Set(flags.map((f) => f.ticket_id));
+            }
+        }
+        const enrichedTickets = resultTickets.map((t) => ({
+            ...t,
+            is_flagged: flaggedIds.has(t.id),
+        }));
+
+        // Apply flaggedOnly filter
+        let finalTickets = enrichedTickets;
+        let finalTotal = total;
+        if (String(flaggedOnly) === 'true') {
+            finalTickets = enrichedTickets.filter((t) => t.is_flagged);
+            finalTotal = finalTickets.length;
+        }
+
+        // Enrich tickets with creator details (fullname, avatar_url)
+        const userIds = [...new Set(finalTickets.map((t) => t.createdby).filter(Boolean))];
+        if (userIds.length > 0) {
+            const { data: users } = await supabaseAdmin
+                .from('users')
+                .select('id, fullname, avatar_url')
+                .in('id', userIds);
+
+            if (users) {
+                const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
+                finalTickets.forEach((ticket) => {
+                    if (ticket.createdby && userMap[ticket.createdby]) {
+                        ticket.creator_details = userMap[ticket.createdby];
+                    }
+                });
+            }
+        }
+
         res.json({
-            tickets: resultTickets,
-            total,
+            tickets: finalTickets,
+            total: finalTotal,
             page: pageNum,
             limit: limitNum,
-            totalPages: Math.ceil(total / limitNum)
+            totalPages: Math.ceil(finalTotal / limitNum)
         });
 
     } catch (error) {
@@ -1756,6 +1800,46 @@ router.delete('/:id', authMiddleware, requireAdmin, handleTicketDelete);
 router.post('/:id/delete', authMiddleware, requireAdmin, handleTicketDelete);
 
 /**
+ * GET /tickets/calendar-heatmap
+ * Returns daily ticket counts for the last 365 days
+ */
+router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin.rpc('get_ticket_heatmap');
+
+        if (error) {
+            console.log('RPC get_ticket_heatmap not found, falling back to raw query');
+
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+            const { data: tickets, error: queryError } = await supabaseAdmin
+                .from('tickets')
+                .select('createdat')
+                .gte('createdat', oneYearAgo.toISOString());
+
+            if (queryError) throw queryError;
+
+            const counts = {};
+            tickets.forEach(t => {
+                const date = (t.createdat || '').split('T')[0];
+                if (date) {
+                    counts[date] = (counts[date] || 0) + 1;
+                }
+            });
+
+            const result = Object.entries(counts).map(([date, count]) => ({ date, count }));
+            return res.json(result);
+        }
+
+        res.json(data);
+    } catch (error) {
+        console.error('Calendar heatmap error:', error);
+        res.status(500).json({ error: 'Failed to fetch heatmap data' });
+    }
+});
+
+/**
  * GET /tickets/:id
  * Get single ticket with full details
  * Role: admin
@@ -1773,6 +1857,19 @@ router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
 
         if (ticketError || !ticket) {
             return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        // Fetch creator details manually to ensure we get avatar
+        if (ticket.createdby) {
+            const { data: creator } = await supabaseAdmin
+                .from('users')
+                .select('fullname, avatar_url')
+                .eq('id', ticket.createdby)
+                .single();
+
+            if (creator) {
+                ticket.creator_details = creator;
+            }
         }
 
         // Get analysis results
@@ -2124,6 +2221,172 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('Delete ticket error:', error);
         res.status(500).json({ error: 'Failed to delete ticket' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FLAG TICKET ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * POST /tickets/:id/flag
+ * Flag a ticket with a mandatory reason and generate a shareable report link.
+ * Also logs the action to the activity log.
+ * Role: admin
+ */
+router.post('/:id/flag', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason, recipient_name, recipient_email } = req.body;
+
+        if (!reason || typeof reason !== 'string' || !reason.trim()) {
+            return res.status(400).json({ error: 'Reason is required when flagging a ticket' });
+        }
+
+        // Verify ticket exists
+        const { data: ticket, error: ticketError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, client_id, clientname, status')
+            .eq('id', id)
+            .is('deletedat', null)
+            .single();
+
+        if (ticketError || !ticket) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        // Check if already flagged
+        const { data: existingFlag } = await supabaseAdmin
+            .from('flagged_tickets')
+            .select('id')
+            .eq('ticket_id', id)
+            .limit(1)
+            .single();
+
+        if (existingFlag) {
+            return res.status(409).json({ error: 'This ticket is already flagged' });
+        }
+
+        // Generate a share link using the existing share token infrastructure
+        const expiresAtMs = Date.now() + REPORT_SHARE_TTL_MS;
+        const token = createReportShareToken(id, expiresAtMs);
+        const shareUrl = `${getRequestOrigin(req)}/tickets/report/shared/${token}`;
+
+        // Insert flag record
+        const flagRow = {
+            ticket_id: id,
+            flagged_by: req.user.id,
+            reason: reason.trim(),
+            recipient_name: recipient_name?.trim() || null,
+            recipient_email: recipient_email?.trim() || null,
+            share_url: shareUrl,
+        };
+
+        const { data: flag, error: insertError } = await supabaseAdmin
+            .from('flagged_tickets')
+            .insert(flagRow)
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error('Flag insert error:', insertError);
+            return res.status(500).json({ error: 'Failed to flag ticket' });
+        }
+
+        // Log to activity
+        await logActivity(req, 'ticket.flagged', {
+            ticket_id: id,
+            client_id: ticket.client_id,
+            reason: reason.trim(),
+            recipient_name: recipient_name?.trim() || null,
+            recipient_email: recipient_email?.trim() || null,
+            share_url: shareUrl,
+        });
+
+        res.json({
+            flag_id: flag.id,
+            ticket_id: id,
+            reason: flag.reason,
+            share_url: shareUrl,
+            expires_at: new Date(expiresAtMs).toISOString(),
+            created_at: flag.created_at,
+        });
+
+    } catch (error) {
+        console.error('Flag ticket error:', error);
+        res.status(500).json({ error: 'Failed to flag ticket' });
+    }
+});
+
+/**
+ * GET /tickets/:id/flag
+ * Check if a ticket is flagged, return flag details if so.
+ * Role: admin
+ */
+router.get('/:id/flag', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { data: flag, error } = await supabaseAdmin
+            .from('flagged_tickets')
+            .select('*, users:flagged_by(fullname, email)')
+            .eq('ticket_id', id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !flag) {
+            return res.json({ is_flagged: false, flag: null });
+        }
+
+        res.json({
+            is_flagged: true,
+            flag: {
+                id: flag.id,
+                ticket_id: flag.ticket_id,
+                reason: flag.reason,
+                recipient_name: flag.recipient_name,
+                recipient_email: flag.recipient_email,
+                share_url: flag.share_url,
+                created_at: flag.created_at,
+                flagged_by_name: flag.users?.fullname || null,
+                flagged_by_email: flag.users?.email || null,
+            },
+        });
+
+    } catch (error) {
+        console.error('Get flag error:', error);
+        res.status(500).json({ error: 'Failed to get flag status' });
+    }
+});
+
+/**
+ * DELETE /tickets/:id/flag
+ * Unflag a ticket. Logs the action to the activity log.
+ * Role: admin
+ */
+router.delete('/:id/flag', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { data: deleted, error } = await supabaseAdmin
+            .from('flagged_tickets')
+            .delete()
+            .eq('ticket_id', id)
+            .select('id')
+            .single();
+
+        if (error || !deleted) {
+            return res.status(404).json({ error: 'This ticket is not flagged' });
+        }
+
+        await logActivity(req, 'ticket.unflagged', { ticket_id: id });
+
+        res.json({ success: true, message: 'Ticket unflagged' });
+
+    } catch (error) {
+        console.error('Unflag ticket error:', error);
+        res.status(500).json({ error: 'Failed to unflag ticket' });
     }
 });
 

@@ -14,12 +14,18 @@ interface Ticket {
     createdat: string;
     durationseconds: number | null;
     createdby: string;
+    is_flagged?: boolean;
+    creator_details?: {
+        fullname: string;
+        avatar_url: string | null;
+    };
 }
 
 interface Employee {
     id: string;
     fullname: string;
     email: string;
+    avatar_url?: string | null;
 }
 
 interface Filters {
@@ -32,6 +38,7 @@ interface Filters {
     agentFilter: string;
     searchQuery: string;
     showLiveOnly: boolean;
+    showFlaggedOnly: boolean;
 }
 
 interface TicketsState {
@@ -69,6 +76,7 @@ const DEFAULT_FILTERS: Filters = {
     agentFilter: 'all',
     searchQuery: '',
     showLiveOnly: false,
+    showFlaggedOnly: false,
 };
 
 export const useTicketsStore = create<TicketsState>((set, get) => ({
@@ -98,6 +106,7 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
             if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
             if (filters.agentFilter !== 'all') params.append('createdBy', filters.agentFilter);
             if (filters.showLiveOnly) params.append('liveOnly', 'true');
+            if (filters.showFlaggedOnly) params.append('flaggedOnly', 'true');
             if (filters.searchQuery) params.append('search', filters.searchQuery);
             params.append('page', currentPage.toString());
             params.append('limit', ticketsPerPage.toString());

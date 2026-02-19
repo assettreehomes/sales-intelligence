@@ -7,15 +7,17 @@ description: How to deploy sales-intelligence (backend to Cloud Run, frontend to
 ## Critical Rules (DO NOT VIOLATE)
 
 1. **NEVER use `--set-env-vars`** in cloudbuild.yaml or gcloud commands — it **WIPES ALL existing env vars**. Always use `--update-env-vars` instead.
-2. **NEVER hardcode secrets** in cloudbuild.yaml or any committed file — GitHub Push Protection will block it. Use Cloud Build substitution variables (prefixed with `_`) instead.
-3. **Shell escaping**: When using gcloud CLI with values containing `!`, `$`, or other special chars, use a YAML env vars file (`--env-vars-file`) instead of inline values.
-4. **New frontend env vars** (e.g. `NEXT_PUBLIC_*`) must be added to **Vercel project settings** manually — they are NOT auto-deployed from `.env.local`.
-5. **Always verify** the new revision is healthy before moving on. Check Cloud Run console or use `gcloud run revisions describe`.
+2. **NEVER hardcode secrets** in cloudbuild.yaml or any committed file — GitHub Push Protection will block it.
+3. **NEVER pass env vars with special characters (`!`, `$`, `#`) via `--update-env-vars` in cloudbuild.yaml** — the shell strips/mangles them. Set these directly in Cloud Run console or via `--env-vars-file` with a YAML file.
+4. **HCAPTCHA_SECRET_KEY and TOTP_ENCRYPTION_KEY are set directly in Cloud Run** — they are NOT passed through cloudbuild.yaml because the `!` in the TOTP key gets shell-escaped. Do NOT add them back to cloudbuild.yaml.
+5. **New frontend env vars** (e.g. `NEXT_PUBLIC_*`) must be added to **Vercel project settings** manually — they are NOT auto-deployed from `.env.local`.
+6. **Always verify** the new revision is healthy before moving on. Check Cloud Run console or use `gcloud run revisions describe`.
 
 ## Backend Deployment (Cloud Run via Cloud Build)
 
 ### Adding New Backend Environment Variables
 
+**If the value contains NO special characters (`!`, `$`, `#`, etc.):**
 1. Add the variable to `backend/.env` for local development
 2. Add it to Cloud Build trigger as a **substitution variable** (must start with `_`):
    - Go to: Cloud Build → Triggers → Edit trigger
@@ -27,41 +29,71 @@ description: How to deploy sales-intelligence (backend to Cloud Run, frontend to
    **⚠️ Use `--update-env-vars` NOT `--set-env-vars`**
 4. Commit and push to trigger deployment
 
-### Emergency: Restoring Cloud Run Env Vars
+**If the value DOES contain special characters:**
+1. Add to `backend/.env` for local development
+2. Set it directly in Cloud Run via gcloud with a YAML file:
+   ```bash
+   # Create a temp YAML file (avoids all shell escaping issues)
+   cat > /tmp/env-fix.yaml << 'EOF'
+   MY_VAR: "value_with_special!chars"
+   EOF
+   # Apply — ⚠️ --env-vars-file REPLACES all vars, so include ALL vars
+   # OR use --update-env-vars with delimiter trick:
+   gcloud run services update sales-intelligence --region=asia-south1 \
+     --project=mystical-melody-486113-p0 \
+     --update-env-vars='^##^MY_VAR=value_with_special!chars'
+   ```
+3. Do NOT add it to cloudbuild.yaml
 
-If env vars get wiped, restore from a working revision:
+### Checking Current Cloud Run Env Vars
 
 ```bash
-# 1. Get env vars from working revision
+gcloud run services describe sales-intelligence --region=asia-south1 \
+  --project=mystical-melody-486113-p0 \
+  --format='value(spec.template.spec.containers[0].env)' | tr ';' '\n'
+```
+
+### Emergency: Restoring Cloud Run Env Vars
+
+If env vars get wiped or corrupted, restore from a working revision:
+
+```bash
+# 1. List revisions to find a working one
+gcloud run revisions list --service=sales-intelligence --region=asia-south1 \
+  --project=mystical-melody-486113-p0 --limit=5
+
+# 2. Get env vars from working revision
 gcloud run revisions describe <REVISION_NAME> --region=asia-south1 \
   --project=mystical-melody-486113-p0 --format='yaml(spec.containers[0].env)'
 
-# 2. Create a YAML file with all env vars (avoids shell escaping issues)
+# 3. Create a YAML file with all env vars (avoids shell escaping issues)
 # Format: KEY: "value"
 
-# 3. Apply using env-vars-file (avoids shell special char issues)
+# 4. Apply using env-vars-file
 gcloud run services update sales-intelligence --region=asia-south1 \
   --project=mystical-melody-486113-p0 --env-vars-file=env.yaml
 ```
 
 ### Current Cloud Run Env Vars (12 total)
 
-| Variable | Purpose |
-|----------|---------|
-| SUPABASE_URL | Supabase project URL |
-| SUPABASE_ANON_KEY | Supabase public key |
-| SUPABASE_SERVICE_KEY | Supabase admin key |
-| GCS_PROJECT_ID | Google Cloud project |
-| GCS_BUCKET_UPLOADS | Audio uploads bucket |
-| GCS_BUCKET_TRAINING | Training library bucket |
-| GCS_BUCKET_TEMP | Temp files bucket |
-| VERTEX_PROJECT | Vertex AI project |
-| VERTEX_LOCATION | Vertex AI region (us-central1) |
-| VERTEX_MODEL | AI model (gemini-2.5-pro) |
-| HCAPTCHA_SECRET_KEY | hCaptcha server verification |
-| TOTP_ENCRYPTION_KEY | AES-256-GCM key for TOTP secrets |
+| Variable | Purpose | Set via |
+|----------|---------|---------|
+| SUPABASE_URL | Supabase project URL | Cloud Run console |
+| SUPABASE_ANON_KEY | Supabase public key | Cloud Run console |
+| SUPABASE_SERVICE_KEY | Supabase admin key | Cloud Run console |
+| GCS_PROJECT_ID | Google Cloud project | Cloud Run console |
+| GCS_BUCKET_UPLOADS | Audio uploads bucket | Cloud Run console |
+| GCS_BUCKET_TRAINING | Training library bucket | Cloud Run console |
+| GCS_BUCKET_TEMP | Temp files bucket | Cloud Run console |
+| VERTEX_PROJECT | Vertex AI project | Cloud Run console |
+| VERTEX_LOCATION | Vertex AI region (us-central1) | Cloud Run console |
+| VERTEX_MODEL | AI model (gemini-2.5-pro) | Cloud Run console |
+| HCAPTCHA_SECRET_KEY | hCaptcha server verification | **Direct gcloud** (not cloudbuild) |
+| TOTP_ENCRYPTION_KEY | AES-256-GCM key for TOTP secrets | **Direct gcloud** (has `!` — shell-unsafe) |
 
 ## Frontend Deployment (Vercel)
+
+Frontend auto-deploys from GitHub push. No manual action needed unless adding new env vars.
 
 ### Adding New Frontend Environment Variables
 

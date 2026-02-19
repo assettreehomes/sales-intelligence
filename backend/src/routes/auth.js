@@ -76,12 +76,10 @@ router.post('/login', async (req, res) => {
 
         const isSuperadmin = existingUser.role === 'superadmin';
 
-        // 2b. Verify CAPTCHA — only required for superadmin
-        if (isSuperadmin) {
-            const captchaValid = await verifyCaptcha(captchaToken);
-            if (!captchaValid) {
-                return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
-            }
+        // 2b. Verify CAPTCHA — required for ALL users
+        const captchaValid = await verifyCaptcha(captchaToken);
+        if (!captchaValid) {
+            return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
         }
 
         // 3. Authenticate with Supabase (password)

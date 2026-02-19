@@ -35,9 +35,18 @@ import {
     Minus,
     Sparkles,
     Loader2,
-    Trash2
+    Trash2,
+    Flag,
+    Copy,
+    Share2,
+    X,
+    Link2,
+    Upload,
+    Camera
 } from 'lucide-react';
 import Link from 'next/link';
+import { Avatar } from '@/components/Avatar';
+import { useAuth } from '@/contexts/AuthContext';
 
 type HoveredChartPoint = {
     x: number;
@@ -128,6 +137,9 @@ const isEditableShortcutTarget = (target: EventTarget | null) => {
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const router = useRouter();
+    const { profile } = useAuth();
+    const isSuperAdmin = profile?.role === 'superadmin';
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Zustand store
     const {
@@ -176,6 +188,30 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
     const [reportActionLoading, setReportActionLoading] = useState<'download' | 'copy' | 'share' | null>(null);
     const [isDeletingTicket, setIsDeletingTicket] = useState(false);
+
+    // Flag state
+    const [flagModalStep, setFlagModalStep] = useState<'closed' | 'confirm' | 'share'>('closed');
+    const [flagReason, setFlagReason] = useState('');
+    const [flagRecipientName, setFlagRecipientName] = useState('');
+    const [flagRecipientEmail, setFlagRecipientEmail] = useState('');
+    const [flagLoading, setFlagLoading] = useState(false);
+    const [flagShareUrl, setFlagShareUrl] = useState('');
+    const [flagShareExpiry, setFlagShareExpiry] = useState('');
+    const [flagDetails, setFlagDetails] = useState<{
+        is_flagged: boolean;
+        flag: {
+            id: string;
+            reason: string;
+            recipient_name: string | null;
+            recipient_email: string | null;
+            share_url: string | null;
+            created_at: string;
+            flagged_by_name: string | null;
+            flagged_by_email: string | null;
+        } | null;
+    } | null>(null);
+    const [unflagging, setUnflagging] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
 
     // Parse timestamps from multiple formats (MM:SS, HH:MM:SS, seconds, or milliseconds)
     const parseTime = (value?: string | number | null): number => {
@@ -246,6 +282,172 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         void loadTicket();
         return () => { active = false; };
     }, [id, fetchTicket, fetchAudioUrl]);
+
+    // Fetch flag status on page load
+    useEffect(() => {
+        let active = true;
+        const fetchFlagStatus = async () => {
+            try {
+                const token = await getToken();
+                if (!token) return;
+                const res = await fetch(`${API_URL}/tickets/${id}/flag`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok && active) {
+                    const data = await res.json();
+                    setFlagDetails(data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch flag status:', err);
+            }
+        };
+        void fetchFlagStatus();
+        return () => { active = false; };
+    }, [id]);
+
+    const handleFlagTicket = useCallback(async () => {
+        if (!flagReason.trim()) {
+            notifyError('Please provide a reason for flagging this ticket.');
+            return;
+        }
+        setFlagLoading(true);
+        try {
+            const token = await getToken();
+            if (!token) throw new Error('Authentication required');
+            const res = await fetch(`${API_URL}/tickets/${id}/flag`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    reason: flagReason.trim(),
+                    recipient_name: flagRecipientName.trim() || undefined,
+                    recipient_email: flagRecipientEmail.trim() || undefined,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to flag ticket');
+
+            setFlagShareUrl(data.share_url);
+            setFlagShareExpiry(data.expires_at);
+            setFlagDetails({
+                is_flagged: true,
+                flag: {
+                    id: data.flag_id,
+                    reason: flagReason.trim(),
+                    recipient_name: flagRecipientName.trim() || null,
+                    recipient_email: flagRecipientEmail.trim() || null,
+                    share_url: data.share_url,
+                    created_at: data.created_at,
+                    flagged_by_name: null,
+                    flagged_by_email: null,
+                },
+            });
+            setFlagModalStep('share');
+            notifySuccess('Ticket flagged successfully!');
+        } catch (err) {
+            notifyError(err instanceof Error ? err.message : 'Failed to flag ticket');
+        } finally {
+            setFlagLoading(false);
+        }
+    }, [id, flagReason, flagRecipientName, flagRecipientEmail]);
+
+    const handleUnflagTicket = useCallback(async () => {
+        setUnflagging(true);
+        try {
+            const token = await getToken();
+            if (!token) throw new Error('Authentication required');
+            const res = await fetch(`${API_URL}/tickets/${id}/flag`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to unflag');
+            }
+            setFlagDetails({ is_flagged: false, flag: null });
+            notifySuccess('Ticket unflagged.');
+        } catch (err) {
+            notifyError(err instanceof Error ? err.message : 'Failed to unflag');
+        } finally {
+            setUnflagging(false);
+        }
+    }, [id]);
+
+    const handleCopyShareLink = useCallback(async (url: string) => {
+        try {
+            await navigator.clipboard.writeText(url);
+            setLinkCopied(true);
+            notifySuccess('Share link copied!');
+            setTimeout(() => setLinkCopied(false), 2500);
+        } catch {
+            notifyError('Failed to copy link');
+        }
+    }, []);
+
+    const handleNativeShare = useCallback(async (url: string, reason: string) => {
+        const shareText = `🚩 Flagged Ticket Report\n\nReason: ${reason}\n\nView Report: ${url}`;
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: `Flagged Ticket #${id.slice(0, 4).toUpperCase()}`,
+                    text: shareText,
+                    url,
+                });
+            } catch (err) {
+                if (err instanceof Error && err.name === 'AbortError') return;
+                notifyError('Share failed');
+            }
+        } else {
+            await handleCopyShareLink(url);
+        }
+    }, [id, handleCopyShareLink]);
+
+    const closeFlagModal = useCallback(() => {
+        setFlagModalStep('closed');
+        setFlagReason('');
+        setFlagRecipientName('');
+        setFlagRecipientEmail('');
+        setFlagShareUrl('');
+        setLinkCopied(false);
+        setLinkCopied(false);
+    }, []);
+
+    const handleAvatarClick = useCallback(() => {
+        if (isSuperAdmin && fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    }, [isSuperAdmin]);
+
+    const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !ticket?.createdby) return;
+
+        const formData = new FormData();
+        formData.append('avatar', file);
+
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/users/${ticket.createdby}/avatar`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (!res.ok) throw new Error('Failed to upload avatar');
+
+            notifySuccess('Avatar uploaded successfully');
+            // Refresh ticket to show new avatar
+            fetchTicket(id);
+        } catch (err) {
+            notifyError('Failed to upload avatar');
+            console.error(err);
+        }
+    }, [ticket?.createdby, id, fetchTicket]);
+
     const formatTime = (time: number) => {
         if (!Number.isFinite(time) || time < 0) return '00:00';
         const mins = Math.floor(time / 60);
@@ -1161,6 +1363,28 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                 )}
 
+                                {/* Flag / Unflag Button */}
+                                {flagDetails?.is_flagged ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handleUnflagTicket(); }}
+                                        disabled={unflagging}
+                                        className="ticket-no-print flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {unflagging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4 fill-red-600" />}
+                                        <span>{unflagging ? 'Unflagging...' : '🚩 Flagged'}</span>
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFlagModalStep('confirm')}
+                                        className="ticket-no-print flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 transition-colors hover:bg-orange-100 cursor-pointer"
+                                    >
+                                        <Flag className="h-4 w-4" />
+                                        <span>Flag</span>
+                                    </button>
+                                )}
+
                                 <button
                                     type="button"
                                     onClick={() => { void handleDeleteTicket(); }}
@@ -1213,6 +1437,59 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                         </div>
                     </header>
+
+                    {/* Flag Details Banner */}
+                    {flagDetails?.is_flagged && flagDetails.flag && (
+                        <div className="mx-5 mt-5 md:mx-7 max-w-[90rem] mx-auto">
+                            <div className="rounded-xl border-2 border-red-200 bg-gradient-to-r from-red-50 via-orange-50 to-red-50 p-4 shadow-sm">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100">
+                                        <Flag className="h-4 w-4 text-red-600 fill-red-600" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <h3 className="text-sm font-bold text-red-800">🚩 This ticket has been flagged</h3>
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-200 text-red-800 uppercase tracking-wide">Flagged</span>
+                                        </div>
+                                        <p className="text-sm text-red-700 font-medium mb-2">
+                                            <span className="text-red-500 font-semibold">Reason:</span> {flagDetails.flag.reason}
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-red-600">
+                                            {flagDetails.flag.flagged_by_name && (
+                                                <span>Flagged by <strong>{flagDetails.flag.flagged_by_name}</strong></span>
+                                            )}
+                                            {flagDetails.flag.created_at && (
+                                                <span>{new Date(flagDetails.flag.created_at).toLocaleString()}</span>
+                                            )}
+                                            {flagDetails.flag.recipient_name && (
+                                                <span>Shared with <strong>{flagDetails.flag.recipient_name}</strong></span>
+                                            )}
+                                        </div>
+                                        {flagDetails.flag.share_url && (
+                                            <div className="mt-3 flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { void handleCopyShareLink(flagDetails.flag!.share_url!); }}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 cursor-pointer"
+                                                >
+                                                    <Copy className="h-3 w-3" />
+                                                    Copy Report Link
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { void handleNativeShare(flagDetails.flag!.share_url!, flagDetails.flag!.reason); }}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 cursor-pointer"
+                                                >
+                                                    <Share2 className="h-3 w-3" />
+                                                    Share
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="px-5 py-7 md:px-7 max-w-[90rem] mx-auto space-y-5">
                         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -1464,9 +1741,40 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 </div>
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-2xl font-semibold text-gray-900">{metricCards.speakers}</span>
-                                    <div className="flex -space-x-2">
-                                        <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white" />
-                                        <div className="w-6 h-6 rounded-full bg-purple-200 border-2 border-white" />
+                                    <div className="flex items-center gap-2">
+                                        <div
+                                            className={`relative ${isSuperAdmin ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                                            onClick={handleAvatarClick}
+                                            title={isSuperAdmin ? "Click to upload avatar" : ticket?.creator_details?.fullname}
+                                        >
+                                            <Avatar
+                                                name={ticket?.creator_details?.fullname || 'Unknown'}
+                                                src={ticket?.creator_details?.avatar_url}
+                                                size="md"
+                                            />
+                                            {isSuperAdmin && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                                    <Camera className="w-4 h-4 text-white" />
+                                                </div>
+                                            )}
+                                            <input
+                                                ref={fileInputRef}
+                                                type="file"
+                                                className="hidden"
+                                                accept="image/*"
+                                                onChange={handleAvatarUpload}
+                                            />
+                                        </div>
+                                        {ticket?.creator_details && (
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-medium text-gray-900">
+                                                    {ticket.creator_details.fullname}
+                                                </span>
+                                                <span className="text-[10px] text-gray-500">
+                                                    Primary Speaker
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
@@ -1648,320 +1956,320 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         </div>
                                     </div>
 
-                            {comparisonChart ? (
-                                <div className="ticket-advanced-chart overflow-x-auto border border-gray-200/70 p-3 md:p-4">
-                                    {comparisonChartMode === 'line' || !comparisonRadarChart ? (
-                                        <svg
-                                            viewBox={`0 0 ${comparisonChart.width} ${comparisonChart.height}`}
-                                            className="w-full min-w-[520px]"
-                                            onMouseLeave={() => setHoveredChartPoint(null)}
-                                        >
-                                        <defs>
-                                            <linearGradient id="chart-current-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                                                <stop offset="0%" stopColor="#a855f7" />
-                                                <stop offset="100%" stopColor="#4f46e5" />
-                                            </linearGradient>
-                                            <linearGradient id="chart-current-area" x1="0%" y1="0%" x2="0%" y2="100%">
-                                                <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.45" />
-                                                <stop offset="100%" stopColor="var(--chart-current)" stopOpacity="0.03" />
-                                            </linearGradient>
-                                            <filter id="chart-current-glow" x="-20%" y="-20%" width="140%" height="140%">
-                                                <feGaussianBlur stdDeviation="3" result="blur" />
-                                                <feMerge>
-                                                    <feMergeNode in="blur" />
-                                                    <feMergeNode in="SourceGraphic" />
-                                                </feMerge>
-                                            </filter>
-                                        </defs>
-
-                                        {[...Array(comparisonChart.yTicks)].map((_, tickIndex) => {
-                                            const ratio = tickIndex / (comparisonChart.yTicks - 1);
-                                            const y = comparisonChart.padding.top + ratio * comparisonChart.chartHeight;
-                                            const value = Math.round((1 - ratio) * comparisonChart.maxValue);
-                                            return (
-                                                <g key={`y-grid-compact-${tickIndex}`}>
-                                                    <line
-                                                        x1={comparisonChart.padding.left}
-                                                        y1={y}
-                                                        x2={comparisonChart.padding.left + comparisonChart.chartWidth}
-                                                        y2={y}
-                                                        stroke="var(--chart-grid)"
-                                                        strokeOpacity="0.45"
-                                                        strokeWidth="1"
-                                                    />
-                                                    <text x={comparisonChart.padding.left - 8} y={y + 4} textAnchor="end" fontSize="11" fill="var(--chart-grid-label)">
-                                                        {value}
-                                                    </text>
-                                                </g>
-                                            );
-                                        })}
-
-                                        {comparisonChart.labels.map((label, index) => {
-                                            const point = comparisonChart.currentPoints[index];
-                                            return (
-                                                <g key={`compact-x-${label}-${index}`}>
-                                                    <line
-                                                        x1={point.x}
-                                                        y1={comparisonChart.padding.top}
-                                                        x2={point.x}
-                                                        y2={comparisonChart.padding.top + comparisonChart.chartHeight}
-                                                        stroke="var(--chart-grid)"
-                                                        strokeOpacity="0.16"
-                                                        strokeWidth="1"
-                                                    />
-                                                    <text
-                                                        x={point.x}
-                                                        y={comparisonChart.padding.top + comparisonChart.chartHeight + 26}
-                                                        textAnchor="middle"
-                                                        dominantBaseline="middle"
-                                                        fontSize="11"
-                                                        fill="var(--chart-grid-label)"
-                                                        className="font-medium"
-                                                    >
-                                                        {label}
-                                                    </text>
-                                                </g>
-                                            );
-                                        })}
-
-                                        <path d={comparisonChart.currentAreaPath} fill="url(#chart-current-area)" />
-                                        <path d={comparisonChart.previousPath} fill="none" stroke="var(--chart-previous)" strokeDasharray="7 6" strokeWidth="2.5" />
-                                        <path d={comparisonChart.currentPath} fill="none" stroke="url(#chart-current-stroke)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#chart-current-glow)" />
-
-                                        {comparisonChart.currentPoints.map((point, index) => (
-                                            <g
-                                                key={`compact-current-${index}`}
-                                                onMouseEnter={() => setHoveredChartPoint({
-                                                    x: point.x,
-                                                    y: point.y,
-                                                    label: comparisonChart.labels[index],
-                                                    current: point.value,
-                                                    previous: comparisonChart.previousPoints[index]?.value ?? 0
-                                                })}
-                                            >
-                                                <title>{`${comparisonChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
-                                                <circle cx={point.x} cy={point.y} r="7.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.4" />
-                                            </g>
-                                        ))}
-
-                                        {comparisonChart.previousPoints.map((point, index) => (
-                                            <g
-                                                key={`compact-prev-${index}`}
-                                                onMouseEnter={() => setHoveredChartPoint({
-                                                    x: point.x,
-                                                    y: point.y,
-                                                    label: comparisonChart.labels[index],
-                                                    current: comparisonChart.currentPoints[index]?.value ?? 0,
-                                                    previous: point.value
-                                                })}
-                                            >
-                                                <title>{`${comparisonChart.labels[index]}: previous ${Math.round(point.value)}/100`}</title>
-                                                <circle cx={point.x} cy={point.y} r="4.1" fill="var(--chart-previous)" />
-                                            </g>
-                                        ))}
-
-                                        {hoveredChartPoint && (
-                                            <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
-                                                <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
-                                            </g>
-                                        )}
-                                        </svg>
-                                    ) : (
-                                        <svg
-                                            viewBox={`0 0 ${comparisonRadarChart.width} ${comparisonRadarChart.height}`}
-                                            className="w-full min-w-[420px]"
-                                            onMouseLeave={() => setHoveredChartPoint(null)}
-                                        >
-                                            <defs>
-                                                <linearGradient id="radar-current-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                    <stop offset="0%" stopColor="#a855f7" />
-                                                    <stop offset="100%" stopColor="#4f46e5" />
-                                                </linearGradient>
-                                                <linearGradient id="radar-current-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-                                                    <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.35" />
-                                                    <stop offset="100%" stopColor="var(--chart-current)" stopOpacity="0.08" />
-                                                </linearGradient>
-                                            </defs>
-
-                                            {comparisonRadarChart.gridPolygons.map((grid) => (
-                                                <path
-                                                    key={`radar-grid-${grid.ratio}`}
-                                                    d={grid.path}
-                                                    fill="none"
-                                                    stroke="var(--chart-grid)"
-                                                    strokeOpacity={grid.ratio === 1 ? 0.55 : 0.3}
-                                                    strokeWidth="1"
-                                                />
-                                            ))}
-
-                                            {comparisonRadarChart.axes.map((axis, index) => (
-                                                <g key={`radar-axis-${axis.label}-${index}`}>
-                                                    <line
-                                                        x1={comparisonRadarChart.centerX}
-                                                        y1={comparisonRadarChart.centerY}
-                                                        x2={axis.edge.x}
-                                                        y2={axis.edge.y}
-                                                        stroke="var(--chart-grid)"
-                                                        strokeOpacity="0.24"
-                                                        strokeWidth="1"
-                                                    />
-                                                    <text
-                                                        x={axis.labelPoint.x}
-                                                        y={axis.labelPoint.y}
-                                                        textAnchor="middle"
-                                                        dominantBaseline="middle"
-                                                        fontSize="11"
-                                                        fill="var(--chart-grid-label)"
-                                                        className="font-medium"
-                                                    >
-                                                        {axis.label}
-                                                    </text>
-                                                </g>
-                                            ))}
-
-                                            <path d={comparisonRadarChart.previousPath} fill="rgba(100,116,139,0.09)" stroke="var(--chart-previous)" strokeDasharray="6 5" strokeWidth="2.2" />
-                                            <path d={comparisonRadarChart.currentPath} fill="url(#radar-current-fill)" stroke="url(#radar-current-stroke)" strokeWidth="3" />
-
-                                            {comparisonRadarChart.currentPoints.map((point, index) => (
-                                                <g
-                                                    key={`radar-current-${index}`}
-                                                    onMouseEnter={() => setHoveredChartPoint({
-                                                        x: point.x,
-                                                        y: point.y,
-                                                        label: comparisonRadarChart.labels[index],
-                                                        current: point.value,
-                                                        previous: comparisonRadarChart.previousPoints[index]?.value ?? 0
-                                                    })}
+                                    {comparisonChart ? (
+                                        <div className="ticket-advanced-chart overflow-x-auto border border-gray-200/70 p-3 md:p-4">
+                                            {comparisonChartMode === 'line' || !comparisonRadarChart ? (
+                                                <svg
+                                                    viewBox={`0 0 ${comparisonChart.width} ${comparisonChart.height}`}
+                                                    className="w-full min-w-[520px]"
+                                                    onMouseLeave={() => setHoveredChartPoint(null)}
                                                 >
-                                                    <title>{`${comparisonRadarChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
-                                                    <circle cx={point.x} cy={point.y} r="6.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                    <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.2" />
-                                                </g>
-                                            ))}
+                                                    <defs>
+                                                        <linearGradient id="chart-current-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                            <stop offset="0%" stopColor="#a855f7" />
+                                                            <stop offset="100%" stopColor="#4f46e5" />
+                                                        </linearGradient>
+                                                        <linearGradient id="chart-current-area" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                            <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.45" />
+                                                            <stop offset="100%" stopColor="var(--chart-current)" stopOpacity="0.03" />
+                                                        </linearGradient>
+                                                        <filter id="chart-current-glow" x="-20%" y="-20%" width="140%" height="140%">
+                                                            <feGaussianBlur stdDeviation="3" result="blur" />
+                                                            <feMerge>
+                                                                <feMergeNode in="blur" />
+                                                                <feMergeNode in="SourceGraphic" />
+                                                            </feMerge>
+                                                        </filter>
+                                                    </defs>
 
-                                            {comparisonRadarChart.previousPoints.map((point, index) => (
-                                                <g
-                                                    key={`radar-prev-${index}`}
-                                                    onMouseEnter={() => setHoveredChartPoint({
-                                                        x: point.x,
-                                                        y: point.y,
-                                                        label: comparisonRadarChart.labels[index],
-                                                        current: comparisonRadarChart.currentPoints[index]?.value ?? 0,
-                                                        previous: point.value
+                                                    {[...Array(comparisonChart.yTicks)].map((_, tickIndex) => {
+                                                        const ratio = tickIndex / (comparisonChart.yTicks - 1);
+                                                        const y = comparisonChart.padding.top + ratio * comparisonChart.chartHeight;
+                                                        const value = Math.round((1 - ratio) * comparisonChart.maxValue);
+                                                        return (
+                                                            <g key={`y-grid-compact-${tickIndex}`}>
+                                                                <line
+                                                                    x1={comparisonChart.padding.left}
+                                                                    y1={y}
+                                                                    x2={comparisonChart.padding.left + comparisonChart.chartWidth}
+                                                                    y2={y}
+                                                                    stroke="var(--chart-grid)"
+                                                                    strokeOpacity="0.45"
+                                                                    strokeWidth="1"
+                                                                />
+                                                                <text x={comparisonChart.padding.left - 8} y={y + 4} textAnchor="end" fontSize="11" fill="var(--chart-grid-label)">
+                                                                    {value}
+                                                                </text>
+                                                            </g>
+                                                        );
                                                     })}
-                                                >
-                                                    <title>{`${comparisonRadarChart.labels[index]}: previous ${Math.round(point.value)}/100`}</title>
-                                                    <circle cx={point.x} cy={point.y} r="3.6" fill="var(--chart-previous)" />
-                                                </g>
-                                            ))}
 
-                                            {hoveredChartPoint && (
-                                                <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonRadarChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
-                                                    <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                    <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                    <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                    <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
-                                                </g>
-                                            )}
-                                        </svg>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-gray-500 italic">No comparable previous analysis available.</p>
-                            )}
+                                                    {comparisonChart.labels.map((label, index) => {
+                                                        const point = comparisonChart.currentPoints[index];
+                                                        return (
+                                                            <g key={`compact-x-${label}-${index}`}>
+                                                                <line
+                                                                    x1={point.x}
+                                                                    y1={comparisonChart.padding.top}
+                                                                    x2={point.x}
+                                                                    y2={comparisonChart.padding.top + comparisonChart.chartHeight}
+                                                                    stroke="var(--chart-grid)"
+                                                                    strokeOpacity="0.16"
+                                                                    strokeWidth="1"
+                                                                />
+                                                                <text
+                                                                    x={point.x}
+                                                                    y={comparisonChart.padding.top + comparisonChart.chartHeight + 26}
+                                                                    textAnchor="middle"
+                                                                    dominantBaseline="middle"
+                                                                    fontSize="11"
+                                                                    fill="var(--chart-grid-label)"
+                                                                    className="font-medium"
+                                                                >
+                                                                    {label}
+                                                                </text>
+                                                            </g>
+                                                        );
+                                                    })}
 
-                            {comparisonInsights && (
-                                <div className="mt-5 space-y-3">
-                                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                                        <div className="lg:col-span-3 rounded-xl border border-gray-200 bg-white p-4">
-                                            <p className="text-[11px] uppercase tracking-wider text-purple-700 mb-2">Overall Narrative</p>
-                                            <p className="text-sm text-gray-700 leading-relaxed">
-                                                {comparisonInsights.overallNarrative || 'No narrative generated for this comparison yet.'}
-                                            </p>
-                                            {comparisonInsights.keyDifferences.length > 0 && (
-                                                <ul className="mt-3 space-y-1.5">
-                                                    {comparisonInsights.keyDifferences.map((item, idx) => (
-                                                        <li key={`${item}-${idx}`} className="text-xs text-gray-600 leading-relaxed">- {item}</li>
+                                                    <path d={comparisonChart.currentAreaPath} fill="url(#chart-current-area)" />
+                                                    <path d={comparisonChart.previousPath} fill="none" stroke="var(--chart-previous)" strokeDasharray="7 6" strokeWidth="2.5" />
+                                                    <path d={comparisonChart.currentPath} fill="none" stroke="url(#chart-current-stroke)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#chart-current-glow)" />
+
+                                                    {comparisonChart.currentPoints.map((point, index) => (
+                                                        <g
+                                                            key={`compact-current-${index}`}
+                                                            onMouseEnter={() => setHoveredChartPoint({
+                                                                x: point.x,
+                                                                y: point.y,
+                                                                label: comparisonChart.labels[index],
+                                                                current: point.value,
+                                                                previous: comparisonChart.previousPoints[index]?.value ?? 0
+                                                            })}
+                                                        >
+                                                            <title>{`${comparisonChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
+                                                            <circle cx={point.x} cy={point.y} r="7.8" fill="var(--chart-current)" fillOpacity="0.16" />
+                                                            <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.4" />
+                                                        </g>
                                                     ))}
-                                                </ul>
+
+                                                    {comparisonChart.previousPoints.map((point, index) => (
+                                                        <g
+                                                            key={`compact-prev-${index}`}
+                                                            onMouseEnter={() => setHoveredChartPoint({
+                                                                x: point.x,
+                                                                y: point.y,
+                                                                label: comparisonChart.labels[index],
+                                                                current: comparisonChart.currentPoints[index]?.value ?? 0,
+                                                                previous: point.value
+                                                            })}
+                                                        >
+                                                            <title>{`${comparisonChart.labels[index]}: previous ${Math.round(point.value)}/100`}</title>
+                                                            <circle cx={point.x} cy={point.y} r="4.1" fill="var(--chart-previous)" />
+                                                        </g>
+                                                    ))}
+
+                                                    {hoveredChartPoint && (
+                                                        <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
+                                                            <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
+                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
+                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
+                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
+                                                        </g>
+                                                    )}
+                                                </svg>
+                                            ) : (
+                                                <svg
+                                                    viewBox={`0 0 ${comparisonRadarChart.width} ${comparisonRadarChart.height}`}
+                                                    className="w-full min-w-[420px]"
+                                                    onMouseLeave={() => setHoveredChartPoint(null)}
+                                                >
+                                                    <defs>
+                                                        <linearGradient id="radar-current-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                            <stop offset="0%" stopColor="#a855f7" />
+                                                            <stop offset="100%" stopColor="#4f46e5" />
+                                                        </linearGradient>
+                                                        <linearGradient id="radar-current-fill" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                            <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.35" />
+                                                            <stop offset="100%" stopColor="var(--chart-current)" stopOpacity="0.08" />
+                                                        </linearGradient>
+                                                    </defs>
+
+                                                    {comparisonRadarChart.gridPolygons.map((grid) => (
+                                                        <path
+                                                            key={`radar-grid-${grid.ratio}`}
+                                                            d={grid.path}
+                                                            fill="none"
+                                                            stroke="var(--chart-grid)"
+                                                            strokeOpacity={grid.ratio === 1 ? 0.55 : 0.3}
+                                                            strokeWidth="1"
+                                                        />
+                                                    ))}
+
+                                                    {comparisonRadarChart.axes.map((axis, index) => (
+                                                        <g key={`radar-axis-${axis.label}-${index}`}>
+                                                            <line
+                                                                x1={comparisonRadarChart.centerX}
+                                                                y1={comparisonRadarChart.centerY}
+                                                                x2={axis.edge.x}
+                                                                y2={axis.edge.y}
+                                                                stroke="var(--chart-grid)"
+                                                                strokeOpacity="0.24"
+                                                                strokeWidth="1"
+                                                            />
+                                                            <text
+                                                                x={axis.labelPoint.x}
+                                                                y={axis.labelPoint.y}
+                                                                textAnchor="middle"
+                                                                dominantBaseline="middle"
+                                                                fontSize="11"
+                                                                fill="var(--chart-grid-label)"
+                                                                className="font-medium"
+                                                            >
+                                                                {axis.label}
+                                                            </text>
+                                                        </g>
+                                                    ))}
+
+                                                    <path d={comparisonRadarChart.previousPath} fill="rgba(100,116,139,0.09)" stroke="var(--chart-previous)" strokeDasharray="6 5" strokeWidth="2.2" />
+                                                    <path d={comparisonRadarChart.currentPath} fill="url(#radar-current-fill)" stroke="url(#radar-current-stroke)" strokeWidth="3" />
+
+                                                    {comparisonRadarChart.currentPoints.map((point, index) => (
+                                                        <g
+                                                            key={`radar-current-${index}`}
+                                                            onMouseEnter={() => setHoveredChartPoint({
+                                                                x: point.x,
+                                                                y: point.y,
+                                                                label: comparisonRadarChart.labels[index],
+                                                                current: point.value,
+                                                                previous: comparisonRadarChart.previousPoints[index]?.value ?? 0
+                                                            })}
+                                                        >
+                                                            <title>{`${comparisonRadarChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
+                                                            <circle cx={point.x} cy={point.y} r="6.8" fill="var(--chart-current)" fillOpacity="0.16" />
+                                                            <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.2" />
+                                                        </g>
+                                                    ))}
+
+                                                    {comparisonRadarChart.previousPoints.map((point, index) => (
+                                                        <g
+                                                            key={`radar-prev-${index}`}
+                                                            onMouseEnter={() => setHoveredChartPoint({
+                                                                x: point.x,
+                                                                y: point.y,
+                                                                label: comparisonRadarChart.labels[index],
+                                                                current: comparisonRadarChart.currentPoints[index]?.value ?? 0,
+                                                                previous: point.value
+                                                            })}
+                                                        >
+                                                            <title>{`${comparisonRadarChart.labels[index]}: previous ${Math.round(point.value)}/100`}</title>
+                                                            <circle cx={point.x} cy={point.y} r="3.6" fill="var(--chart-previous)" />
+                                                        </g>
+                                                    ))}
+
+                                                    {hoveredChartPoint && (
+                                                        <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonRadarChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
+                                                            <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
+                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
+                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
+                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
+                                                        </g>
+                                                    )}
+                                                </svg>
                                             )}
                                         </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500 italic">No comparable previous analysis available.</p>
+                                    )}
 
-                                        <div className={`rounded-xl border p-4 ${comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore >= 0 ? 'border-green-200 bg-green-50/60' : 'border-red-200 bg-red-50/60'}`}>
-                                            <p className="text-[11px] uppercase tracking-wider text-gray-600 mb-1">Delta Summary</p>
-                                            <div className="flex items-center justify-between">
-                                                <p className={`text-3xl font-semibold ${comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {comparisonInsights.deltaScore ?? 0}
-                                                </p>
-                                                {comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore > 0 ? <TrendingUp className="w-5 h-5 text-green-600" /> :
-                                                    comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore < 0 ? <TrendingDown className="w-5 h-5 text-red-600" /> :
-                                                        <Minus className="w-5 h-5 text-gray-500" />}
-                                            </div>
-                                            <p className="text-xs text-gray-500 mt-2">Overall movement vs previous visit</p>
-                                            {previousAnalysis?.rating !== undefined && (
-                                                <p className="mt-3 text-sm text-gray-600">
-                                                    Previous rating: <span className="font-semibold">{previousAnalysis.rating}</span>
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
+                                    {comparisonInsights && (
+                                        <div className="mt-5 space-y-3">
+                                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                                                <div className="lg:col-span-3 rounded-xl border border-gray-200 bg-white p-4">
+                                                    <p className="text-[11px] uppercase tracking-wider text-purple-700 mb-2">Overall Narrative</p>
+                                                    <p className="text-sm text-gray-700 leading-relaxed">
+                                                        {comparisonInsights.overallNarrative || 'No narrative generated for this comparison yet.'}
+                                                    </p>
+                                                    {comparisonInsights.keyDifferences.length > 0 && (
+                                                        <ul className="mt-3 space-y-1.5">
+                                                            {comparisonInsights.keyDifferences.map((item, idx) => (
+                                                                <li key={`${item}-${idx}`} className="text-xs text-gray-600 leading-relaxed">- {item}</li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </div>
 
-                                    {comparisonInsights.scoreChanges.length > 0 && (
-                                        <div className="rounded-xl border border-gray-200 bg-white p-4">
-                                            <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Skill Score Changes</p>
-                                            <div className="space-y-2.5">
-                                                {comparisonInsights.scoreChanges.map((row) => (
-                                                    <div key={row.key} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                                        <div className="flex items-center justify-between gap-3">
-                                                            <p className="text-sm font-semibold text-gray-900">{row.label}</p>
-                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${row.change > 0 ? 'bg-green-100 text-green-700' : row.change < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                {row.change > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : row.change < 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
-                                                                {row.change > 0 ? `+${row.change}` : row.change}
-                                                            </span>
-                                                        </div>
-                                                        <div className="mt-2 h-1.5 rounded-full bg-gray-200">
-                                                            <div className={`h-1.5 rounded-full ${row.change > 0 ? 'bg-green-500' : row.change < 0 ? 'bg-red-500' : 'bg-gray-400'}`} style={{ width: `${Math.min(100, Math.max(8, row.current))}%` }} />
-                                                        </div>
-                                                        <p className="mt-1.5 text-xs text-gray-500">{`Previous ${row.previous}/100 -> Current ${row.current}/100`}</p>
+                                                <div className={`rounded-xl border p-4 ${comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore >= 0 ? 'border-green-200 bg-green-50/60' : 'border-red-200 bg-red-50/60'}`}>
+                                                    <p className="text-[11px] uppercase tracking-wider text-gray-600 mb-1">Delta Summary</p>
+                                                    <div className="flex items-center justify-between">
+                                                        <p className={`text-3xl font-semibold ${comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {comparisonInsights.deltaScore ?? 0}
+                                                        </p>
+                                                        {comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore > 0 ? <TrendingUp className="w-5 h-5 text-green-600" /> :
+                                                            comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore < 0 ? <TrendingDown className="w-5 h-5 text-red-600" /> :
+                                                                <Minus className="w-5 h-5 text-gray-500" />}
                                                     </div>
-                                                ))}
+                                                    <p className="text-xs text-gray-500 mt-2">Overall movement vs previous visit</p>
+                                                    {previousAnalysis?.rating !== undefined && (
+                                                        <p className="mt-3 text-sm text-gray-600">
+                                                            Previous rating: <span className="font-semibold">{previousAnalysis.rating}</span>
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {comparisonInsights.scoreChanges.length > 0 && (
+                                                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                                                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Skill Score Changes</p>
+                                                    <div className="space-y-2.5">
+                                                        {comparisonInsights.scoreChanges.map((row) => (
+                                                            <div key={row.key} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <p className="text-sm font-semibold text-gray-900">{row.label}</p>
+                                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${row.change > 0 ? 'bg-green-100 text-green-700' : row.change < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                        {row.change > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : row.change < 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
+                                                                        {row.change > 0 ? `+${row.change}` : row.change}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-2 h-1.5 rounded-full bg-gray-200">
+                                                                    <div className={`h-1.5 rounded-full ${row.change > 0 ? 'bg-green-500' : row.change < 0 ? 'bg-red-500' : 'bg-gray-400'}`} style={{ width: `${Math.min(100, Math.max(8, row.current))}%` }} />
+                                                                </div>
+                                                                <p className="mt-1.5 text-xs text-gray-500">{`Previous ${row.previous}/100 -> Current ${row.current}/100`}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="rounded-xl border border-green-200 bg-white p-3">
+                                                    <p className="text-xs uppercase tracking-wide text-green-700 mb-2">Improvements</p>
+                                                    <ul className="space-y-1.5">
+                                                        {(comparisonInsights.improvements.length > 0 ? comparisonInsights.improvements : ['No explicit improvements listed.']).map((item, idx) => (
+                                                            <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                                <div className="rounded-xl border border-red-200 bg-white p-3">
+                                                    <p className="text-xs uppercase tracking-wide text-red-700 mb-2">Regressions</p>
+                                                    <ul className="space-y-1.5">
+                                                        {(comparisonInsights.regressions.length > 0 ? comparisonInsights.regressions : ['No regressions identified.']).map((item, idx) => (
+                                                            <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                                <div className="rounded-xl border border-gray-200 bg-white p-3">
+                                                    <p className="text-xs uppercase tracking-wide text-gray-600 mb-2">Unchanged</p>
+                                                    <ul className="space-y-1.5">
+                                                        {(comparisonInsights.unchanged.length > 0 ? comparisonInsights.unchanged : ['No unchanged items listed.']).map((item, idx) => (
+                                                            <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
-
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <div className="rounded-xl border border-green-200 bg-white p-3">
-                                            <p className="text-xs uppercase tracking-wide text-green-700 mb-2">Improvements</p>
-                                            <ul className="space-y-1.5">
-                                                {(comparisonInsights.improvements.length > 0 ? comparisonInsights.improvements : ['No explicit improvements listed.']).map((item, idx) => (
-                                                    <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                        <div className="rounded-xl border border-red-200 bg-white p-3">
-                                            <p className="text-xs uppercase tracking-wide text-red-700 mb-2">Regressions</p>
-                                            <ul className="space-y-1.5">
-                                                {(comparisonInsights.regressions.length > 0 ? comparisonInsights.regressions : ['No regressions identified.']).map((item, idx) => (
-                                                    <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                        <div className="rounded-xl border border-gray-200 bg-white p-3">
-                                            <p className="text-xs uppercase tracking-wide text-gray-600 mb-2">Unchanged</p>
-                                            <ul className="space-y-1.5">
-                                                {(comparisonInsights.unchanged.length > 0 ? comparisonInsights.unchanged : ['No unchanged items listed.']).map((item, idx) => (
-                                                    <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
                                 </div>
-                            )}
-                            </div>
                             </div>
 
                             <div className="xl:col-span-1 space-y-6">
@@ -2102,6 +2410,166 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                         )}
                     </div>
+
+                    {/* ── Flag Confirmation Modal ── */}
+                    {flagModalStep === 'confirm' && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeFlagModal}>
+                            <div
+                                className="relative w-full max-w-md mx-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <button type="button" onClick={closeFlagModal} className="absolute right-4 top-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+                                    <X className="h-5 w-5" />
+                                </button>
+
+                                <div className="flex items-center gap-3 mb-5">
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-red-100 to-orange-100 shadow-sm">
+                                        <Flag className="h-5 w-5 text-red-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-900">Flag This Ticket</h2>
+                                        <p className="text-sm text-gray-500">This action will be logged in the activity log</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                                            Reason <span className="text-red-500">*</span>
+                                        </label>
+                                        <textarea
+                                            value={flagReason}
+                                            onChange={(e) => setFlagReason(e.target.value)}
+                                            placeholder="Why are you flagging this ticket?"
+                                            rows={3}
+                                            className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-red-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-100 transition-all resize-none"
+                                            autoFocus
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="mb-1.5 block text-xs font-medium text-gray-500 uppercase tracking-wide">Recipient Name</label>
+                                            <input
+                                                type="text"
+                                                value={flagRecipientName}
+                                                onChange={(e) => setFlagRecipientName(e.target.value)}
+                                                placeholder="e.g. John (MD)"
+                                                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-red-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-100 transition-all"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-xs font-medium text-gray-500 uppercase tracking-wide">Recipient Email</label>
+                                            <input
+                                                type="email"
+                                                value={flagRecipientEmail}
+                                                onChange={(e) => setFlagRecipientEmail(e.target.value)}
+                                                placeholder="md@company.com"
+                                                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-red-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-100 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={closeFlagModal}
+                                        className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handleFlagTicket(); }}
+                                        disabled={flagLoading || !flagReason.trim()}
+                                        className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:from-red-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                    >
+                                        {flagLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
+                                        {flagLoading ? 'Flagging...' : 'Flag Ticket'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Share Modal (after flagging) ── */}
+                    {flagModalStep === 'share' && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeFlagModal}>
+                            <div
+                                className="relative w-full max-w-md mx-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <button type="button" onClick={closeFlagModal} className="absolute right-4 top-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+                                    <X className="h-5 w-5" />
+                                </button>
+
+                                <div className="flex items-center gap-3 mb-5">
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-green-100 to-emerald-100 shadow-sm">
+                                        <CheckCircle className="h-5 w-5 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-900">Ticket Flagged Successfully</h2>
+                                        <p className="text-sm text-gray-500">Share the report with the recipient</p>
+                                    </div>
+                                </div>
+
+                                {/* Reason summary */}
+                                <div className="rounded-xl border border-red-100 bg-red-50/60 p-3.5 mb-4">
+                                    <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">Flag Reason</p>
+                                    <p className="text-sm text-red-800 font-medium">{flagReason}</p>
+                                </div>
+
+                                {/* Share link */}
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-semibold text-gray-700">
+                                        <Link2 className="inline h-4 w-4 mr-1 -mt-0.5" />
+                                        Shareable Report Link
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                                            <p className="truncate text-xs text-gray-600 font-mono">{flagShareUrl}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => { void handleCopyShareLink(flagShareUrl); }}
+                                            className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all cursor-pointer ${linkCopied
+                                                ? 'border border-green-200 bg-green-50 text-green-700'
+                                                : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            {linkCopied ? <CheckCircle className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                            {linkCopied ? 'Copied!' : 'Copy'}
+                                        </button>
+                                    </div>
+                                    {flagShareExpiry && (
+                                        <p className="text-[11px] text-gray-400">
+                                            Link expires: {new Date(flagShareExpiry).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Action buttons */}
+                                <div className="mt-6 flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handleNativeShare(flagShareUrl, flagReason); }}
+                                        className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:from-purple-700 hover:to-indigo-700 cursor-pointer"
+                                    >
+                                        <Share2 className="h-4 w-4" />
+                                        Share with Recipient
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={closeFlagModal}
+                                        className="shrink-0 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 cursor-pointer"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </main>
             </AdminShell>
 

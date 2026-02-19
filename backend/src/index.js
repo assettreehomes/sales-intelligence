@@ -12,6 +12,8 @@ import excuseRoutes from './routes/excuses.js';
 import trainingRoutes from './routes/training.js';
 import userRoutes from './routes/users.js';
 import activityLogRoutes from './routes/activityLog.js';
+import analyticsRoutes from './routes/analytics.js';
+import employeeRoutes from './routes/employee.js';
 
 // Load environment variables
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -76,6 +78,8 @@ app.use('/excuses', excuseRoutes);
 app.use('/training', trainingRoutes);
 app.use('/users', userRoutes);
 app.use('/activity-log', activityLogRoutes);
+app.use('/analytics', analyticsRoutes);
+app.use('/employee', employeeRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

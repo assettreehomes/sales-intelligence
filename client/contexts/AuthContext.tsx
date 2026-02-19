@@ -12,6 +12,7 @@ export interface UserProfile {
     fullname: string;
     role: 'superadmin' | 'admin' | 'employee' | 'intern';
     status: 'active' | 'inactive';
+    lastlogin?: string;
 }
 
 /**
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             const { data, error } = await supabase
                 .from('users')
-                .select('id, email, fullname, role, status')
+                .select('id, email, fullname, role, status, lastlogin')
                 .eq('id', userId)
                 .abortSignal(controller.signal)
                 .single();
@@ -306,6 +307,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setProfileLoading(false);
     }, [supabase]);
+
+    // Superadmin Auto-Logout Check
+    useEffect(() => {
+        if (!profile || profile.role !== 'superadmin' || !profile.lastlogin) return;
+
+        const checkSession = () => {
+            if (!profile.lastlogin) return;
+
+            const loginTime = new Date(profile.lastlogin).getTime();
+            if (isNaN(loginTime)) {
+                console.warn('Invalid lastlogin date', profile.lastlogin);
+                return;
+            }
+
+            const now = Date.now();
+            const limit = 24 * 60 * 60 * 1000; // 24 hours
+            const elapsed = now - loginTime;
+            const remaining = limit - elapsed;
+
+            // Force logout if expired
+            if (remaining <= 0) {
+                console.log('Session expired for superadmin. Auto-logging out (DISABLED).');
+                // signOut(); // DISABLED per user request
+                return;
+            }
+        };
+
+        const interval = setInterval(checkSession, 60 * 1000); // Check every minute
+        checkSession(); // Check immediately on mount/profile load
+
+        return () => clearInterval(interval);
+    }, [profile, signOut]);
 
     const value = useMemo(() => ({
         user,

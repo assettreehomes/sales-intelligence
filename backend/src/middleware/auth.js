@@ -44,6 +44,20 @@ export async function authMiddleware(req, res, next) {
             });
         }
 
+        // 24h Session Limit for Superadmin
+        if (profile.role === 'superadmin' && profile.lastlogin) {
+            const lastLogin = new Date(profile.lastlogin).getTime();
+            const now = Date.now();
+            const limit = 24 * 60 * 60 * 1000; // 24 hours
+
+            if (now - lastLogin > limit) {
+                return res.status(401).json({
+                    error: 'Session expired. Please login again.',
+                    code: 'SESSION_EXPIRED'
+                });
+            }
+        }
+
         // Attach user info to request
         req.user = {
             id: user.id,

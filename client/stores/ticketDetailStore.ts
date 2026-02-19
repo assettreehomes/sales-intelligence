@@ -52,6 +52,10 @@ interface Ticket {
     status: string;
     createdat: string;
     createdby: string;
+    creator_details?: {
+        fullname: string;
+        avatar_url: string | null;
+    };
 }
 
 interface TicketExcuse {
