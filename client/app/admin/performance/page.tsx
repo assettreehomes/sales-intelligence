@@ -539,16 +539,19 @@ export default function PerformancePage() {
             const [empData, lbData, statusData] = await Promise.all([
                 empRes.json(),
                 lbRes.json(),
-                statusRes.ok ? statusRes.json() : Promise.resolve([])
+                statusRes.ok ? statusRes.json() : Promise.resolve({ statuses: [] })
             ]);
 
             setAnalytics(empData);
             setLeaderboard(lbData);
 
+            // API returns { statuses: [{ user: { id }, status: { is_online } }] }
             const statusMap: Record<string, boolean> = {};
-            if (Array.isArray(statusData)) {
-                statusData.forEach((s: { user_id?: string; is_online?: boolean }) => {
-                    if (s.user_id) statusMap[s.user_id] = !!s.is_online;
+            const rawStatuses = statusData?.statuses;
+            if (Array.isArray(rawStatuses)) {
+                rawStatuses.forEach((s: { user?: { id?: string }; status?: { is_online?: boolean } }) => {
+                    const uid = s.user?.id;
+                    if (uid) statusMap[uid] = !!s.status?.is_online;
                 });
             }
             setEmployeeStatuses(statusMap);
@@ -561,8 +564,27 @@ export default function PerformancePage() {
     }, [session, period]);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        void fetchData();
+        // Refresh status every 10s so the online dot stays current
+        const statusInterval = setInterval(async () => {
+            if (!session?.access_token) return;
+            const res = await fetch(`${API_URL}/employee/status`, {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const map: Record<string, boolean> = {};
+            const rawStatuses = data?.statuses;
+            if (Array.isArray(rawStatuses)) {
+                rawStatuses.forEach((s: { user?: { id?: string }; status?: { is_online?: boolean } }) => {
+                    const uid = s.user?.id;
+                    if (uid) map[uid] = !!s.status?.is_online;
+                });
+            }
+            setEmployeeStatuses(map);
+        }, 10_000);
+        return () => clearInterval(statusInterval);
+    }, [fetchData, session]);
 
     const skillKeys = useMemo(() => Object.keys(SKILL_LABELS), []);
 
