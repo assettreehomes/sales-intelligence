@@ -41,6 +41,15 @@ const ANALYTICS_PERIOD_DAYS = {
 
 const REPORT_SHARE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const REPORT_FALLBACK_SECRET = 'ticketintel-report-share-fallback';
+const REPORT_PDF_PAGE_WIDTH = 612;
+const REPORT_PDF_PAGE_HEIGHT = 792;
+const REPORT_PDF_MARGIN = 42;
+const REPORT_PDF_CONTENT_WIDTH = REPORT_PDF_PAGE_WIDTH - (REPORT_PDF_MARGIN * 2);
+const REPORT_PDF_COLOR_BLACK = [0, 0, 0];
+const REPORT_PDF_COLOR_CHARCOAL = [0.145, 0.145, 0.157];
+const REPORT_PDF_COLOR_OFF_WHITE = [0.843, 0.843, 0.804];
+const REPORT_PDF_COLOR_VIOLET = [0.549, 0.259, 0.784];
+const REPORT_PDF_COLOR_DEEP_PURPLE = [0.361, 0.078, 0.588];
 
 function escapePdfText(value) {
     return String(value ?? '')
@@ -53,9 +62,14 @@ function escapePdfText(value) {
         .trim();
 }
 
-function wrapReportText(value, maxChars = 92) {
+function normalizeReportText(value, fallback = 'N/A') {
     const normalized = escapePdfText(value);
-    if (!normalized) return ['-'];
+    return normalized || fallback;
+}
+
+function wrapReportText(value, maxChars = 92, fallback = '-') {
+    const normalized = escapePdfText(value);
+    if (!normalized) return [fallback];
 
     const words = normalized.split(' ');
     const lines = [];
@@ -85,33 +99,43 @@ function wrapReportText(value, maxChars = 92) {
     }
 
     if (current) lines.push(current);
-    return lines.length ? lines : ['-'];
+    return lines.length ? lines : [fallback];
 }
 
-function buildPdfPageContent(lines) {
-    const safeLines = lines.length ? lines : [''];
-    let stream = 'BT\n/F1 10 Tf\n14 TL\n50 760 Td\n';
-
-    safeLines.forEach((line, index) => {
-        if (index > 0) stream += 'T*\n';
-        stream += `(${escapePdfText(line)}) Tj\n`;
-    });
-
-    stream += 'ET';
-    return stream;
+function estimateCharsPerLine(width, fontSize = 10) {
+    const safeWidth = Number.isFinite(width) ? width : 240;
+    const safeFont = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 10;
+    return Math.max(14, Math.floor(safeWidth / (safeFont * 0.53)));
 }
 
-function buildSimplePdf(lines) {
-    const linesPerPage = 48;
-    const pages = [];
-    for (let index = 0; index < lines.length; index += linesPerPage) {
-        pages.push(lines.slice(index, index + linesPerPage));
+function toPdfNumber(value) {
+    const normalized = Number.isFinite(value) ? value : 0;
+    const stripped = normalized.toFixed(3).replace(/\.?0+$/, '');
+    return stripped || '0';
+}
+
+function toPdfColor(color) {
+    if (!Array.isArray(color) || color.length !== 3) {
+        return '0 0 0';
     }
-    if (pages.length === 0) pages.push(['No report data available.']);
+    return color
+        .map((value) => {
+            const normalized = Math.min(1, Math.max(0, Number(value) || 0));
+            return toPdfNumber(normalized);
+        })
+        .join(' ');
+}
 
-    const pageCount = pages.length;
-    const fontObjectNum = 3 + pageCount * 2;
-    const objectCount = fontObjectNum;
+function buildPdfFromPageStreams(pageStreams, pageWidth = REPORT_PDF_PAGE_WIDTH, pageHeight = REPORT_PDF_PAGE_HEIGHT) {
+    const streams = Array.isArray(pageStreams) && pageStreams.length > 0
+        ? pageStreams
+        : [['BT /F1 10 Tf 0 0 0 rg 1 0 0 1 42 740 Tm (No report data available.) Tj ET']];
+
+    const pageCount = streams.length;
+    const fontRegularObjectNum = 3 + pageCount * 2;
+    const fontBoldObjectNum = fontRegularObjectNum + 1;
+    const fontItalicObjectNum = fontRegularObjectNum + 2;
+    const objectCount = fontItalicObjectNum;
     const objectMap = new Map();
 
     objectMap.set(1, '<< /Type /Catalog /Pages 2 0 R >>');
@@ -126,13 +150,18 @@ function buildSimplePdf(lines) {
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
         const pageObjNum = 3 + pageIndex * 2;
         const contentObjNum = pageObjNum + 1;
-        const contentStream = buildPdfPageContent(pages[pageIndex]);
+        const contentStream = `${streams[pageIndex].join('\n')}\n`;
 
-        objectMap.set(pageObjNum, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontObjectNum} 0 R >> >> /Contents ${contentObjNum} 0 R >>`);
-        objectMap.set(contentObjNum, `<< /Length ${Buffer.byteLength(contentStream, 'utf8')} >>\nstream\n${contentStream}\nendstream`);
+        objectMap.set(
+            pageObjNum,
+            `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${toPdfNumber(pageWidth)} ${toPdfNumber(pageHeight)}] /Resources << /Font << /F1 ${fontRegularObjectNum} 0 R /F2 ${fontBoldObjectNum} 0 R /F3 ${fontItalicObjectNum} 0 R >> >> /Contents ${contentObjNum} 0 R >>`
+        );
+        objectMap.set(contentObjNum, `<< /Length ${Buffer.byteLength(contentStream, 'utf8')} >>\nstream\n${contentStream}endstream`);
     }
 
-    objectMap.set(fontObjectNum, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    objectMap.set(fontRegularObjectNum, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    objectMap.set(fontBoldObjectNum, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+    objectMap.set(fontItalicObjectNum, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>');
 
     let pdf = '%PDF-1.4\n';
     const offsets = [0];
@@ -188,115 +217,392 @@ function formatReportDate(value) {
     });
 }
 
-function buildTicketReportLines({ ticket, analysis, actionItems, excuses }) {
-    const lines = [];
-    const addLine = (value = '') => lines.push(value);
-    const addWrapped = (value) => {
-        const wrapped = wrapReportText(value);
-        wrapped.forEach((line) => addLine(line));
+function formatReportDuration(secondsValue) {
+    const numeric = Number(secondsValue);
+    if (!Number.isFinite(numeric) || numeric <= 0) return 'N/A';
+    const minutes = Math.floor(numeric / 60);
+    const seconds = Math.floor(numeric % 60);
+    return `${minutes} min ${seconds} sec`;
+}
+
+function buildStyledTicketReportPdf({ ticket, analysis, actionItems, excuses }) {
+    const pages = [[]];
+    let pageIndex = 0;
+    let cursorY = REPORT_PDF_PAGE_HEIGHT - REPORT_PDF_MARGIN;
+
+    const pushCommand = (command) => {
+        pages[pageIndex].push(command);
     };
-    const addSection = (title) => {
-        addLine('');
-        addLine(title);
-        addLine('----------------------------------------------------------------');
+
+    const addPage = () => {
+        pages.push([]);
+        pageIndex += 1;
+        cursorY = REPORT_PDF_PAGE_HEIGHT - REPORT_PDF_MARGIN;
     };
 
-    addLine('TicketIntel Detailed Report');
-    addLine(`Generated: ${formatReportDate(new Date().toISOString())}`);
-    addLine(`Ticket ID: ${ticket.id}`);
-    addLine(`Display ID: #${String(ticket.id || '').slice(0, 4).toUpperCase()}`);
+    const ensureSpace = (requiredHeight = 24) => {
+        if ((cursorY - requiredHeight) < (REPORT_PDF_MARGIN + 20)) {
+            addPage();
+        }
+    };
 
-    addSection('Ticket Overview');
-    addLine(`Client Name: ${ticket.clientname || ticket.client_name || 'Unknown'}`);
-    addLine(`Client ID: ${ticket.client_id || 'N/A'}`);
-    addLine(`Visit Type: ${formatReportVisitType(ticket.visittype || ticket.visit_type)}`);
-    addLine(`Visit Number: ${ticket.visitnumber || ticket.visit_number || 1}`);
-    addLine(`Status: ${ticket.status || 'unknown'}`);
-    addLine(`Created At: ${formatReportDate(ticket.createdat || ticket.created_at)}`);
-    if (ticket.durationseconds) {
-        addLine(`Duration: ${Math.floor(ticket.durationseconds / 60)} min ${ticket.durationseconds % 60} sec`);
-    }
+    const drawText = (text, x, y, options = {}) => {
+        const safeText = escapePdfText(text);
+        if (!safeText) return;
 
-    addSection('Analysis Summary');
-    if (!analysis) {
-        addLine('Analysis is not available yet for this ticket.');
-    } else {
-        addLine(`Overall Rating (0-10): ${analysis.rating ?? 'N/A'}`);
-        addLine(`Training Call: ${(ticket.istrainingcall || ticket.is_training_call) ? 'Yes' : 'No'}`);
-        addLine('');
-        addLine('Summary:');
-        addWrapped(analysis.summary || 'No summary generated.');
+        const font = options.font || 'F1';
+        const size = Number.isFinite(options.size) ? options.size : 10;
+        const color = options.color || REPORT_PDF_COLOR_CHARCOAL;
 
-        const scores = analysis.scores && typeof analysis.scores === 'object' ? analysis.scores : {};
-        const scoreEntries = Object.entries(scores).filter(([, raw]) => typeof raw === 'number' || typeof raw === 'string');
-        if (scoreEntries.length > 0) {
-            addLine('');
-            addLine('Key Scores:');
-            scoreEntries.slice(0, 12).forEach(([key, raw]) => {
-                addLine(`- ${formatMetricLabel(key)}: ${raw}`);
+        pushCommand(
+            `BT /${font} ${toPdfNumber(size)} Tf ${toPdfColor(color)} rg 1 0 0 1 ${toPdfNumber(x)} ${toPdfNumber(y)} Tm (${safeText}) Tj ET`
+        );
+    };
+
+    const drawLine = (x1, y1, x2, y2, options = {}) => {
+        const stroke = options.stroke || REPORT_PDF_COLOR_VIOLET;
+        const lineWidth = Number.isFinite(options.lineWidth) ? options.lineWidth : 1;
+        pushCommand(`${toPdfNumber(lineWidth)} w`);
+        pushCommand(`${toPdfColor(stroke)} RG`);
+        pushCommand(`${toPdfNumber(x1)} ${toPdfNumber(y1)} m ${toPdfNumber(x2)} ${toPdfNumber(y2)} l S`);
+    };
+
+    const drawFilledRect = (x, topY, width, height, fillColor) => {
+        const bottomY = topY - height;
+        pushCommand(`${toPdfColor(fillColor)} rg`);
+        pushCommand(`${toPdfNumber(x)} ${toPdfNumber(bottomY)} ${toPdfNumber(width)} ${toPdfNumber(height)} re f`);
+    };
+
+    const addSectionHeading = (title, subtitle = '') => {
+        const needed = subtitle ? 42 : 30;
+        ensureSpace(needed);
+
+        drawText(title, REPORT_PDF_MARGIN, cursorY, {
+            font: 'F2',
+            size: 14,
+            color: REPORT_PDF_COLOR_BLACK
+        });
+
+        const dividerY = subtitle ? (cursorY - 18) : (cursorY - 8);
+        if (subtitle) {
+            drawText(subtitle, REPORT_PDF_MARGIN, cursorY - 14, {
+                font: 'F3',
+                size: 9,
+                color: REPORT_PDF_COLOR_VIOLET
             });
         }
+
+        drawLine(REPORT_PDF_MARGIN, dividerY, REPORT_PDF_MARGIN + REPORT_PDF_CONTENT_WIDTH, dividerY, {
+            stroke: REPORT_PDF_COLOR_VIOLET,
+            lineWidth: 0.8
+        });
+
+        cursorY = dividerY - 12;
+    };
+
+    const addSubheading = (title) => {
+        ensureSpace(18);
+        drawText(title, REPORT_PDF_MARGIN, cursorY, {
+            font: 'F2',
+            size: 11,
+            color: REPORT_PDF_COLOR_DEEP_PURPLE
+        });
+        cursorY -= 14;
+    };
+
+    const addKeyValueRows = (rows) => {
+        const labelWidth = 122;
+        const valueX = REPORT_PDF_MARGIN + labelWidth;
+        const valueWidth = REPORT_PDF_CONTENT_WIDTH - labelWidth;
+        const lineHeight = 13.5;
+
+        rows.forEach((row) => {
+            const label = normalizeReportText(row.label, 'Label');
+            const value = normalizeReportText(row.value, 'N/A');
+            const lines = wrapReportText(value, estimateCharsPerLine(valueWidth, 10), 'N/A');
+            const blockHeight = Math.max(lineHeight, lines.length * lineHeight);
+
+            ensureSpace(blockHeight + 8);
+            drawText(`${label}:`, REPORT_PDF_MARGIN, cursorY, {
+                font: 'F2',
+                size: 10,
+                color: REPORT_PDF_COLOR_DEEP_PURPLE
+            });
+
+            lines.forEach((line, lineIndex) => {
+                drawText(line, valueX, cursorY - (lineIndex * lineHeight), {
+                    font: 'F1',
+                    size: 10,
+                    color: REPORT_PDF_COLOR_CHARCOAL
+                });
+            });
+
+            cursorY -= blockHeight + 6;
+        });
+    };
+
+    const addParagraph = (value, options = {}) => {
+        const indent = Number.isFinite(options.indent) ? options.indent : 0;
+        const font = options.font || 'F1';
+        const size = Number.isFinite(options.size) ? options.size : 10;
+        const color = options.color || REPORT_PDF_COLOR_CHARCOAL;
+        const fallback = options.fallback || '-';
+        const lineHeight = Number.isFinite(options.lineHeight) ? options.lineHeight : (size * 1.35);
+        const bottomGap = Number.isFinite(options.bottomGap) ? options.bottomGap : 8;
+        const width = Math.max(120, REPORT_PDF_CONTENT_WIDTH - indent);
+        const lines = wrapReportText(value, estimateCharsPerLine(width, size), fallback);
+
+        ensureSpace((lines.length * lineHeight) + bottomGap);
+        lines.forEach((line, lineIndex) => {
+            drawText(line, REPORT_PDF_MARGIN + indent, cursorY - (lineIndex * lineHeight), {
+                font,
+                size,
+                color
+            });
+        });
+        cursorY -= (lines.length * lineHeight) + bottomGap;
+    };
+
+    const addListItem = (marker, value, options = {}) => {
+        const indent = Number.isFinite(options.indent) ? options.indent : 0;
+        const markerWidth = Number.isFinite(options.markerWidth) ? options.markerWidth : 22;
+        const size = Number.isFinite(options.size) ? options.size : 10;
+        const lineHeight = Number.isFinite(options.lineHeight) ? options.lineHeight : (size * 1.35);
+        const bottomGap = Number.isFinite(options.bottomGap) ? options.bottomGap : 6;
+        const textWidth = Math.max(100, REPORT_PDF_CONTENT_WIDTH - indent - markerWidth);
+        const lines = wrapReportText(value, estimateCharsPerLine(textWidth, size), '-');
+        const x = REPORT_PDF_MARGIN + indent;
+        const textX = x + markerWidth;
+
+        ensureSpace((lines.length * lineHeight) + bottomGap);
+        drawText(marker, x, cursorY, {
+            font: 'F2',
+            size,
+            color: options.markerColor || REPORT_PDF_COLOR_VIOLET
+        });
+
+        lines.forEach((line, lineIndex) => {
+            drawText(line, textX, cursorY - (lineIndex * lineHeight), {
+                font: options.font || 'F1',
+                size,
+                color: options.color || REPORT_PDF_COLOR_CHARCOAL
+            });
+        });
+
+        cursorY -= (lines.length * lineHeight) + bottomGap;
+    };
+
+    const safeTicketId = normalizeReportText(ticket?.id, 'N/A');
+    const displayId = normalizeReportText(String(ticket?.id || '').slice(0, 4).toUpperCase(), 'N/A');
+    const generatedAt = formatReportDate(new Date().toISOString());
+
+    ensureSpace(96);
+    drawFilledRect(REPORT_PDF_MARGIN, cursorY, REPORT_PDF_CONTENT_WIDTH, 84, REPORT_PDF_COLOR_DEEP_PURPLE);
+    drawText('TicketIntel Detailed Report', REPORT_PDF_MARGIN + 16, cursorY - 28, {
+        font: 'F2',
+        size: 19,
+        color: REPORT_PDF_COLOR_OFF_WHITE
+    });
+    drawText(`Display ID: #${displayId}`, REPORT_PDF_MARGIN + 16, cursorY - 48, {
+        size: 10,
+        color: REPORT_PDF_COLOR_OFF_WHITE
+    });
+    drawText(`Generated: ${generatedAt}`, REPORT_PDF_MARGIN + 16, cursorY - 62, {
+        size: 10,
+        color: REPORT_PDF_COLOR_OFF_WHITE
+    });
+    drawText(`Ticket ID: ${safeTicketId}`, REPORT_PDF_MARGIN + (REPORT_PDF_CONTENT_WIDTH / 2), cursorY - 48, {
+        size: 10,
+        color: REPORT_PDF_COLOR_OFF_WHITE
+    });
+    drawText(`Status: ${formatStatusLabel(ticket?.status)}`, REPORT_PDF_MARGIN + (REPORT_PDF_CONTENT_WIDTH / 2), cursorY - 62, {
+        size: 10,
+        color: REPORT_PDF_COLOR_OFF_WHITE
+    });
+    cursorY -= 98;
+
+    addSectionHeading('Ticket Overview');
+    addKeyValueRows([
+        { label: 'Client Name', value: ticket?.clientname || ticket?.client_name || 'Unknown' },
+        { label: 'Client ID', value: ticket?.client_id || 'N/A' },
+        { label: 'Visit Type', value: formatReportVisitType(ticket?.visittype || ticket?.visit_type) },
+        { label: 'Visit Number', value: ticket?.visitnumber || ticket?.visit_number || 1 },
+        { label: 'Status', value: formatStatusLabel(ticket?.status) },
+        { label: 'Created At', value: formatReportDate(ticket?.createdat || ticket?.created_at) },
+        { label: 'Duration', value: formatReportDuration(ticket?.durationseconds) }
+    ]);
+
+    addSectionHeading('Analysis Summary');
+    addKeyValueRows([
+        { label: 'Overall Rating (0-10)', value: analysis?.rating ?? 'N/A' },
+        { label: 'Training Call', value: (ticket?.istrainingcall || ticket?.is_training_call) ? 'Yes' : 'No' }
+    ]);
+
+    addSubheading('Summary');
+    addParagraph(
+        analysis?.summary || 'Analysis is not available yet for this ticket.',
+        { bottomGap: 10, fallback: 'Analysis is not available yet for this ticket.' }
+    );
+
+    const scores = analysis?.scores && typeof analysis.scores === 'object' ? analysis.scores : {};
+    const scoreEntries = Object.entries(scores)
+        .filter(([, raw]) => raw !== null && raw !== undefined && String(raw).trim() !== '')
+        .slice(0, 12);
+
+    addSubheading('Score Highlights');
+    if (scoreEntries.length === 0) {
+        addParagraph('No score metrics available for this ticket.', {
+            size: 9.5,
+            color: REPORT_PDF_COLOR_CHARCOAL
+        });
+    } else {
+        scoreEntries.forEach(([key, raw]) => {
+            addListItem('-', `${formatMetricLabel(key)}: ${normalizeReportText(raw, 'N/A')}`, {
+                markerWidth: 14,
+                bottomGap: 4
+            });
+        });
     }
 
-    addSection('Key Moments');
+    addSectionHeading('Key Moments');
     const keyMoments = Array.isArray(analysis?.keymoments) ? analysis.keymoments : [];
     if (keyMoments.length === 0) {
-        addLine('No key moments captured.');
+        addParagraph('No key moments captured for this ticket.');
     } else {
         keyMoments.slice(0, 15).forEach((moment, index) => {
-            const time = moment.time || moment.timestamp || '00:00';
-            const sentiment = moment.sentiment || 'neutral';
-            addLine(`${index + 1}. [${time}] (${sentiment}) ${moment.label || 'Moment'}`);
-            if (moment.description) {
-                wrapReportText(moment.description, 86).forEach((line) => addLine(`   ${line}`));
+            const time = normalizeReportText(moment?.time || moment?.timestamp, '00:00');
+            const sentiment = normalizeReportText(moment?.sentiment, 'neutral').toLowerCase();
+            const label = normalizeReportText(moment?.label, 'Moment');
+            addListItem(`${index + 1}.`, `[${time}] ${label} (${sentiment})`, { bottomGap: 4 });
+
+            if (moment?.description) {
+                addParagraph(moment.description, {
+                    indent: 24,
+                    size: 9.5,
+                    color: REPORT_PDF_COLOR_CHARCOAL,
+                    bottomGap: 6
+                });
             }
         });
     }
 
-    addSection('Suggestions And Action Items');
-    const suggestions = Array.isArray(analysis?.improvementsuggestions) ? analysis.improvementsuggestions : [];
+    addSectionHeading('Suggestions And Action Items');
+    addSubheading('AI Suggestions');
+    const suggestions = Array.isArray(analysis?.improvementsuggestions)
+        ? analysis.improvementsuggestions
+        : [];
+
     if (suggestions.length === 0) {
-        addLine('No AI suggestions available.');
+        addParagraph('No AI suggestions available for this ticket.', {
+            size: 9.5,
+            color: REPORT_PDF_COLOR_CHARCOAL
+        });
     } else {
         suggestions.slice(0, 15).forEach((suggestion, index) => {
-            wrapReportText(`${index + 1}. ${suggestion}`, 90).forEach((line) => addLine(line));
+            addListItem(`${index + 1}.`, normalizeReportText(suggestion, 'No suggestion text provided.'), {
+                bottomGap: 5
+            });
         });
     }
 
-    if (Array.isArray(actionItems) && actionItems.length > 0) {
-        addLine('');
-        addLine('Tracked Action Items:');
+    addSubheading('Tracked Action Items');
+    if (!Array.isArray(actionItems) || actionItems.length === 0) {
+        addParagraph('No tracked action items for this ticket.', {
+            size: 9.5,
+            color: REPORT_PDF_COLOR_CHARCOAL
+        });
+    } else {
         actionItems.slice(0, 20).forEach((item, index) => {
-            addLine(`${index + 1}. ${item.title || 'Untitled'} [${item.completed ? 'Completed' : 'Pending'}]`);
-            if (item.description) {
-                wrapReportText(item.description, 86).forEach((line) => addLine(`   ${line}`));
+            const status = item?.completed ? 'Completed' : 'Pending';
+            addListItem(
+                `${index + 1}.`,
+                `${normalizeReportText(item?.title, 'Untitled')} [${status}]`,
+                { bottomGap: 4 }
+            );
+
+            if (item?.description) {
+                addParagraph(item.description, {
+                    indent: 24,
+                    size: 9.5,
+                    bottomGap: 4,
+                    color: REPORT_PDF_COLOR_CHARCOAL
+                });
             }
-            if (item.due_date) {
-                addLine(`   Due: ${formatReportDate(item.due_date)}`);
+
+            if (item?.due_date) {
+                addParagraph(`Due: ${formatReportDate(item.due_date)}`, {
+                    indent: 24,
+                    size: 9.2,
+                    bottomGap: 5,
+                    color: REPORT_PDF_COLOR_CHARCOAL
+                });
             }
         });
     }
 
-    addSection('Excuse Queue Timeline');
+    addSectionHeading('Excuse Queue Timeline');
     if (!Array.isArray(excuses) || excuses.length === 0) {
-        addLine('No excuse requests for this ticket.');
+        addParagraph('No excuse requests for this ticket.');
     } else {
         excuses.slice(0, 20).forEach((excuse, index) => {
-            addLine(`${index + 1}. ${formatReportExcuseReason(excuse.reason)} [${excuse.status || 'pending'}]`);
-            addLine(`   Submitted: ${formatReportDate(excuse.submitted_at || excuse.submittedat)}`);
-            if (excuse.reason_details || excuse.reasondetails) {
-                wrapReportText(excuse.reason_details || excuse.reasondetails, 84).forEach((line) => addLine(`   ${line}`));
+            const reason = formatReportExcuseReason(excuse?.reason);
+            const status = normalizeReportText(excuse?.status, 'pending').toLowerCase();
+            addListItem(`${index + 1}.`, `${reason} [${status}]`, { bottomGap: 4 });
+
+            addParagraph(`Submitted: ${formatReportDate(excuse?.submitted_at || excuse?.submittedat)}`, {
+                indent: 24,
+                size: 9.2,
+                bottomGap: 4,
+                color: REPORT_PDF_COLOR_CHARCOAL
+            });
+
+            if (excuse?.reason_details || excuse?.reasondetails) {
+                addParagraph(excuse.reason_details || excuse.reasondetails, {
+                    indent: 24,
+                    size: 9.4,
+                    bottomGap: 4,
+                    color: REPORT_PDF_COLOR_CHARCOAL
+                });
             }
-            if (excuse.admin_notes || excuse.adminnotes) {
-                wrapReportText(`Admin Notes: ${excuse.admin_notes || excuse.adminnotes}`, 84).forEach((line) => addLine(`   ${line}`));
+
+            if (excuse?.admin_notes || excuse?.adminnotes) {
+                addParagraph(`Admin Notes: ${excuse.admin_notes || excuse.adminnotes}`, {
+                    indent: 24,
+                    size: 9.4,
+                    bottomGap: 6,
+                    color: REPORT_PDF_COLOR_VIOLET
+                });
             }
         });
     }
 
-    addLine('');
-    addLine('End Of Report');
+    ensureSpace(24);
+    drawLine(
+        REPORT_PDF_MARGIN,
+        cursorY - 4,
+        REPORT_PDF_MARGIN + REPORT_PDF_CONTENT_WIDTH,
+        cursorY - 4,
+        { stroke: REPORT_PDF_COLOR_VIOLET, lineWidth: 0.8 }
+    );
+    drawText('End of report', REPORT_PDF_MARGIN, cursorY - 16, {
+        font: 'F3',
+        size: 9,
+        color: REPORT_PDF_COLOR_DEEP_PURPLE
+    });
 
-    return lines;
+    const totalPages = pages.length;
+    const footerLineY = REPORT_PDF_MARGIN - 6;
+    const footerTextY = REPORT_PDF_MARGIN - 18;
+
+    for (let index = 0; index < totalPages; index += 1) {
+        const footerText = `Ticket ${safeTicketId} - Page ${index + 1} of ${totalPages}`;
+        pages[index].push(`${toPdfNumber(0.6)} w`);
+        pages[index].push(`${toPdfColor(REPORT_PDF_COLOR_VIOLET)} RG`);
+        pages[index].push(`${toPdfNumber(REPORT_PDF_MARGIN)} ${toPdfNumber(footerLineY)} m ${toPdfNumber(REPORT_PDF_MARGIN + REPORT_PDF_CONTENT_WIDTH)} ${toPdfNumber(footerLineY)} l S`);
+        pages[index].push(`BT /F1 9 Tf ${toPdfColor(REPORT_PDF_COLOR_CHARCOAL)} rg 1 0 0 1 ${toPdfNumber(REPORT_PDF_MARGIN)} ${toPdfNumber(footerTextY)} Tm (${escapePdfText(footerText)}) Tj ET`);
+    }
+
+    return buildPdfFromPageStreams(pages);
 }
 
 function toBase64Url(value) {
@@ -418,8 +724,8 @@ async function fetchTicketReportContext(ticketId) {
     };
 }
 
-function sendTicketReportPdf(res, ticketId, lines, asAttachment = true) {
-    const pdfBuffer = buildSimplePdf(lines);
+function sendTicketReportPdf(res, ticketId, reportContext, asAttachment = true) {
+    const pdfBuffer = buildStyledTicketReportPdf(reportContext);
     const filename = `ticket-report-${String(ticketId).slice(0, 8)}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -1624,9 +1930,8 @@ router.get('/report/shared/:token', async (req, res) => {
             return res.status(404).json({ error: 'Ticket not found' });
         }
 
-        const lines = buildTicketReportLines(context);
         const shouldDownload = req.query.download === 'true' || req.query.download === '1';
-        sendTicketReportPdf(res, context.ticket.id, lines, shouldDownload);
+        sendTicketReportPdf(res, context.ticket.id, context, shouldDownload);
     } catch (error) {
         console.error('Shared report error:', error);
         res.status(500).json({ error: 'Failed to generate shared report' });
@@ -1646,10 +1951,9 @@ router.get('/:id/report', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(404).json({ error: 'Ticket not found' });
         }
 
-        const lines = buildTicketReportLines(context);
         const shouldDownload = req.query.download !== 'false' && req.query.download !== '0';
         await logActivity(req, 'ticket.report.download', { ticket_id: id });
-        sendTicketReportPdf(res, id, lines, shouldDownload);
+        sendTicketReportPdf(res, id, context, shouldDownload);
     } catch (error) {
         console.error('Ticket report error:', error);
         res.status(500).json({ error: 'Failed to generate ticket report' });

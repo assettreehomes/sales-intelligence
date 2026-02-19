@@ -780,66 +780,50 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         setReportActionLoading('download');
         try {
             setIsReportMenuOpen(false);
-            const container = reportContainerRef.current;
-            if (!container) {
-                throw new Error('Report content is not ready yet.');
+            const token = await getToken();
+            if (!token) {
+                throw new Error('Authentication required');
             }
 
-            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-                import('html2canvas-pro'),
-                import('jspdf')
-            ]);
-
-            const scale = Math.min(2, Math.max(1.25, window.devicePixelRatio || 1));
-            const canvas = await html2canvas(container, {
-                backgroundColor: '#ffffff',
-                useCORS: true,
-                scale,
-                scrollX: 0,
-                scrollY: -window.scrollY,
-                windowWidth: document.documentElement.scrollWidth,
-                windowHeight: document.documentElement.scrollHeight,
-                onclone: (clonedDocument) => {
-                    clonedDocument.documentElement.classList.add('ticket-exporting-pdf');
+            const response = await fetch(`${API_URL}/tickets/${id}/report?download=1`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
                 }
             });
 
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4',
-                compress: true
-            });
-
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const marginMm = 6;
-            const printableWidth = pageWidth - marginMm * 2;
-            const printableHeight = pageHeight - marginMm * 2;
-            const renderedHeight = (canvas.height * printableWidth) / canvas.width;
-            const imageData = canvas.toDataURL('image/jpeg', 0.95);
-
-            let offsetMm = 0;
-            while (offsetMm < renderedHeight) {
-                if (offsetMm > 0) {
-                    pdf.addPage();
-                }
-
-                const drawY = marginMm - offsetMm;
-                pdf.addImage(imageData, 'JPEG', marginMm, drawY, printableWidth, renderedHeight, undefined, 'FAST');
-                offsetMm += printableHeight;
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(
+                    typeof payload?.error === 'string'
+                        ? payload.error
+                        : 'Could not generate PDF'
+                );
             }
 
-            const fileSafeId = (ticket?.id || id).replace(/[^a-zA-Z0-9-_]/g, '');
-            const shortId = fileSafeId.slice(0, 8) || 'ticket';
-            pdf.save(`ticket-report-${shortId}.pdf`);
+            const blob = await response.blob();
+            if (blob.size === 0) {
+                throw new Error('Generated PDF is empty');
+            }
+
+            const disposition = response.headers.get('content-disposition') || '';
+            const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+            const downloadName = filenameMatch?.[1] || `ticket-report-${id.slice(0, 8)}.pdf`;
+
+            const blobUrl = window.URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = blobUrl;
+            anchor.download = downloadName;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.URL.revokeObjectURL(blobUrl);
             notifySuccess('PDF downloaded successfully.');
         } catch (error) {
             notifyError(error instanceof Error ? error.message : 'Could not generate PDF');
         } finally {
             setReportActionLoading(null);
         }
-    }, [id, ticket?.id]);
+    }, [id]);
 
     const handleDeleteTicket = useCallback(async () => {
         if (isDeletingTicket) return;
