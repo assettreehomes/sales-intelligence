@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
+import { logActivity } from '../services/activityLog.js';
 
 const router = Router();
 
@@ -315,6 +316,7 @@ router.post('/:id/accept', authMiddleware, requireAdmin, async (req, res) => {
         }
 
         console.log(`✅ Excuse ${id} accepted by ${req.user.fullname}`);
+        await logActivity(req, 'excuse.accept', { excuse_id: id, ticket_id: excuse.ticketid });
 
         res.json({
             success: true,
@@ -375,6 +377,7 @@ router.post('/:id/reject', authMiddleware, requireAdmin, async (req, res) => {
             .eq('id', excuse.ticketid);
 
         console.log(`❌ Excuse ${id} rejected by ${req.user.fullname}`);
+        await logActivity(req, 'excuse.reject', { excuse_id: id, ticket_id: excuse.ticketid });
 
         res.json({
             success: true,

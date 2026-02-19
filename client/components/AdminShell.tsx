@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertCircle,
+    ClipboardList,
     GraduationCap,
     LogOut,
     Menu,
@@ -20,7 +21,7 @@ import {
     Users
 } from 'lucide-react';
 
-type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training';
+type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training' | 'activity';
 
 interface AdminShellProps {
     activeSection: AdminSection;
@@ -168,7 +169,8 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         return [
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
-            { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' }
+            { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
+            { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' }
         ];
     }, [profile?.role]);
 

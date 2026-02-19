@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { logActivity } from '../services/activityLog.js';
 import { verifyCaptcha } from '../services/captcha.js';
 import {
     generateTOTPSecret,
@@ -52,11 +53,7 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        // 1. Verify CAPTCHA
-        const captchaValid = await verifyCaptcha(captchaToken);
-        if (!captchaValid) {
-            return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
-        }
+        // 1. CAPTCHA verified later — only required for superadmin
 
         // 2. Check if user exists and is active
         const { data: existingUser, error: userError } = await supabaseAdmin
@@ -75,6 +72,16 @@ router.post('/login', async (req, res) => {
             return res.status(403).json({
                 error: 'Account is not active. Please contact your administrator.'
             });
+        }
+
+        const isSuperadmin = existingUser.role === 'superadmin';
+
+        // 2b. Verify CAPTCHA — only required for superadmin
+        if (isSuperadmin) {
+            const captchaValid = await verifyCaptcha(captchaToken);
+            if (!captchaValid) {
+                return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
+            }
         }
 
         // 3. Authenticate with Supabase (password)
@@ -99,13 +106,6 @@ router.post('/login', async (req, res) => {
             return res.status(500).json({ error: 'Failed to fetch user profile' });
         }
 
-        // 5. Check TOTP status
-        const { data: totpRecord } = await supabaseAdmin
-            .from('totp_secrets')
-            .select('encrypted_secret, enabled')
-            .eq('user_id', authData.user.id)
-            .single();
-
         const sessionData = {
             access_token: authData.session.access_token,
             refresh_token: authData.session.refresh_token,
@@ -118,6 +118,30 @@ router.post('/login', async (req, res) => {
             fullname: profile.fullname,
             role: profile.role,
         };
+
+        // 5. Non-superadmin → skip TOTP, return session directly
+        if (!isSuperadmin) {
+            await supabaseAdmin
+                .from('users')
+                .update({ last_login: new Date().toISOString() })
+                .eq('id', authData.user.id);
+
+            req.user = { id: profile.id, fullname: profile.fullname, email: profile.email };
+            await logActivity(req, 'auth.login', { email: profile.email });
+
+            return res.json({
+                success: true,
+                user: userInfo,
+                session: sessionData,
+            });
+        }
+
+        // 6. Superadmin — check TOTP status
+        const { data: totpRecord } = await supabaseAdmin
+            .from('totp_secrets')
+            .select('encrypted_secret, enabled')
+            .eq('user_id', authData.user.id)
+            .single();
 
         // Case A: TOTP is enabled → require 6-digit code
         if (totpRecord?.enabled) {
@@ -243,6 +267,10 @@ router.post('/totp/verify', async (req, res) => {
             .eq('id', stored.userId)
             .single();
 
+        // Log successful login
+        req.user = { id: profile.id, fullname: profile.fullname, email: profile.email };
+        await logActivity(req, 'auth.login', { email: profile.email });
+
         res.json({
             success: true,
             user: {
@@ -319,6 +347,11 @@ router.post('/totp/confirm-setup', async (req, res) => {
 
         console.log(`✅ TOTP activated for user: ${profile.email}`);
 
+        // Log TOTP setup + login
+        req.user = { id: profile.id, fullname: profile.fullname, email: profile.email };
+        await logActivity(req, 'auth.totp.setup', { email: profile.email });
+        await logActivity(req, 'auth.login', { email: profile.email });
+
         res.json({
             success: true,
             user: {
@@ -386,6 +419,7 @@ router.post('/logout', authMiddleware, async (req, res) => {
     try {
         // Note: With JWT-based auth, logout is primarily client-side
         // The token will remain valid until expiry
+        await logActivity(req, 'auth.logout', { email: req.user?.email });
         res.json({ success: true, message: 'Logged out successfully' });
     } catch (error) {
         console.error('Logout error:', error);

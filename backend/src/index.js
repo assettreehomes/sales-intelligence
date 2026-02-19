@@ -11,12 +11,14 @@ import draftRoutes from './routes/drafts.js';
 import excuseRoutes from './routes/excuses.js';
 import trainingRoutes from './routes/training.js';
 import userRoutes from './routes/users.js';
+import activityLogRoutes from './routes/activityLog.js';
 
 // Load environment variables
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, '../.env') });
 
 const app = express();
+app.set('trust proxy', true); // Cloud Run sits behind a load balancer — trust x-forwarded-for
 const PORT = process.env.PORT || 3001;
 
 // Middleware
@@ -73,6 +75,7 @@ app.use('/drafts', draftRoutes);
 app.use('/excuses', excuseRoutes);
 app.use('/training', trainingRoutes);
 app.use('/users', userRoutes);
+app.use('/activity-log', activityLogRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

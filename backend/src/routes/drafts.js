@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
+import { logActivity } from '../services/activityLog.js';
 import { getVisitSequence } from '../services/visitSequencing.js';
 
 const router = Router();
@@ -84,6 +85,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
         }
 
         console.log(`📝 Created draft ticket: ${ticketId} for employee ${employee.fullname}`);
+        await logActivity(req, 'draft.assign', { ticket_id: ticketId, employee_name: employee.fullname, client_name: normalizedClientName });
 
         res.json({
             success: true,

@@ -75,10 +75,7 @@ export default function LoginPage() {
         e.preventDefault();
         setError('');
 
-        if (!captchaToken) {
-            setError('Please complete the CAPTCHA verification');
-            return;
-        }
+        // captchaToken is optional — backend decides based on role
 
         setLoading(true);
 
@@ -280,7 +277,7 @@ export default function LoginPage() {
                                 {/* Submit Button */}
                                 <button
                                     type="submit"
-                                    disabled={loading || authLoading || profileLoading || !captchaToken}
+                                    disabled={loading || authLoading || profileLoading}
                                     className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? (

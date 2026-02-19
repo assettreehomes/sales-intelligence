@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import crypto from 'crypto';
 import { supabaseAdmin } from '../config/supabase.js';
+import { logActivity } from '../services/activityLog.js';
 import { buckets, checkAudioExists, getAudioUri, generatePlaybackUrl, promoteToTraining } from '../config/gcs.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
@@ -1603,6 +1604,7 @@ router.get('/:id/report', authMiddleware, requireAdmin, async (req, res) => {
 
         const lines = buildTicketReportLines(context);
         const shouldDownload = req.query.download !== 'false' && req.query.download !== '0';
+        await logActivity(req, 'ticket.report.download', { ticket_id: id });
         sendTicketReportPdf(res, id, lines, shouldDownload);
     } catch (error) {
         console.error('Ticket report error:', error);
@@ -1626,6 +1628,8 @@ router.post('/:id/report/share-link', authMiddleware, requireAdmin, async (req, 
         const expiresAtMs = Date.now() + REPORT_SHARE_TTL_MS;
         const token = createReportShareToken(id, expiresAtMs);
         const shareUrl = `${getRequestOrigin(req)}/tickets/report/shared/${token}`;
+
+        await logActivity(req, 'ticket.report.share', { ticket_id: id, share_url: shareUrl });
 
         res.json({
             ticket_id: id,
@@ -1728,6 +1732,8 @@ async function handleTicketDelete(req, res) {
             console.error('Ticket asset cleanup warning:', cleanupError);
             assetWarnings = [`Audio cleanup skipped: ${warningMessage}`];
         }
+
+        await logActivity(req, 'ticket.delete', { ticket_id: id });
 
         res.json({
             success: true,
