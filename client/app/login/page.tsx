@@ -172,7 +172,7 @@ export default function LoginPage() {
 
             {/* Logo */}
             <div className="flex justify-center pt-12 pb-6">
-                <div className="w-28 h-28 bg-[#2d3a2d] rounded-lg flex items-center justify-center shadow-lg">
+                <div className="w-28 h-28 bg-purple-700 rounded-lg flex items-center justify-center shadow-lg">
                     <div className="text-center">
                         <div className="text-white text-xs font-semibold tracking-wide">TICKET</div>
                         <div className="text-3xl my-1">🌳</div>

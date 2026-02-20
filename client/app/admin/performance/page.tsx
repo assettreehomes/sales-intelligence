@@ -150,13 +150,15 @@ const PERIODS = [
 // SVG Chart Components (Zero Dependencies)
 // ═══════════════════════════════════════════════
 
-function SparklineSVG({ data, width = 120, height = 32, color = '#8b5cf6' }: {
+function SparklineSVG({ data, width = 120, height = 32, color = 'var(--performance-accent)' }: {
     data: number[];
     width?: number;
     height?: number;
     color?: string;
 }) {
     if (!data || data.length < 2) return <div style={{ width, height }} />;
+    const colorKey = color.replace(/[^a-zA-Z0-9_-]/g, '');
+    const gradientId = `spark-${colorKey || 'accent'}`;
     const max = Math.max(...data, 1);
     const min = Math.min(...data, 0);
     const range = max - min || 1;
@@ -170,12 +172,12 @@ function SparklineSVG({ data, width = 120, height = 32, color = '#8b5cf6' }: {
     return (
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
             <defs>
-                <linearGradient id={`spark-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity={0.3} />
                     <stop offset="100%" stopColor={color} stopOpacity={0.02} />
                 </linearGradient>
             </defs>
-            <polygon points={areaPoints.join(' ')} fill={`url(#spark-${color.replace('#', '')})`} />
+            <polygon points={areaPoints.join(' ')} fill={`url(#${gradientId})`} />
             <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
@@ -185,7 +187,7 @@ function RadarChartSVG({
     labels,
     values,
     size = 160,
-    color = '#8b5cf6',
+    color = 'var(--performance-accent)',
 }: {
     labels: string[];
     values: number[];
@@ -446,7 +448,7 @@ function BarChartSVG({
     );
 }
 
-function CircularProgress({ value, size = 56, strokeWidth = 5, color = '#8b5cf6' }: {
+function CircularProgress({ value, size = 56, strokeWidth = 5, color = 'var(--performance-accent)' }: {
     value: number;
     size?: number;
     strokeWidth?: number;

@@ -1950,8 +1950,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 >
                                                     <defs>
                                                         <linearGradient id="chart-current-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                                                            <stop offset="0%" stopColor="#a855f7" />
-                                                            <stop offset="100%" stopColor="#4f46e5" />
+                                                            <stop offset="0%" stopColor="var(--accent)" />
+                                                            <stop offset="100%" stopColor="var(--accent-strong)" />
                                                         </linearGradient>
                                                         <linearGradient id="chart-current-area" x1="0%" y1="0%" x2="0%" y2="100%">
                                                             <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.45" />
@@ -2033,7 +2033,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                         >
                                                             <title>{`${comparisonChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
                                                             <circle cx={point.x} cy={point.y} r="7.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                            <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.4" />
+                                                            <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="var(--surface)" strokeWidth="1.4" />
                                                         </g>
                                                     ))}
 
@@ -2056,9 +2056,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                     {hoveredChartPoint && (
                                                         <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
                                                             <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
+                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">{hoveredChartPoint.label}</text>
+                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="var(--accent)">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
+                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
                                                         </g>
                                                     )}
                                                 </svg>
@@ -2070,8 +2070,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 >
                                                     <defs>
                                                         <linearGradient id="radar-current-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                            <stop offset="0%" stopColor="#a855f7" />
-                                                            <stop offset="100%" stopColor="#4f46e5" />
+                                                            <stop offset="0%" stopColor="var(--accent)" />
+                                                            <stop offset="100%" stopColor="var(--accent-strong)" />
                                                         </linearGradient>
                                                         <linearGradient id="radar-current-fill" x1="0%" y1="0%" x2="0%" y2="100%">
                                                             <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.35" />
@@ -2131,7 +2131,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                         >
                                                             <title>{`${comparisonRadarChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
                                                             <circle cx={point.x} cy={point.y} r="6.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                            <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.2" />
+                                                            <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="var(--surface)" strokeWidth="1.2" />
                                                         </g>
                                                     ))}
 
@@ -2154,9 +2154,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                     {hoveredChartPoint && (
                                                         <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonRadarChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
                                                             <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
+                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">{hoveredChartPoint.label}</text>
+                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="var(--accent)">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
+                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
                                                         </g>
                                                     )}
                                                 </svg>

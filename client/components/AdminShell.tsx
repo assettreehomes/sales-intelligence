@@ -178,7 +178,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
     }, [profile?.role]);
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className={`admin-shell min-h-screen ${activeSection === 'performance' ? 'admin-shell--performance' : ''}`}>
             {!mobileOpen && (
                 <button
                     type="button"
@@ -190,7 +190,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                         dragStateRef.current = null;
                         suppressMenuClickRef.current = true;
                     }}
-                    className="fixed z-40 inline-flex h-10 w-10 select-none touch-none items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm print:hidden lg:hidden"
+                    className="admin-shell-mobile-trigger fixed z-40 inline-flex h-10 w-10 select-none touch-none items-center justify-center rounded-lg print:hidden lg:hidden"
                     aria-label="Open sidebar menu"
                     style={{ left: mobileMenuButtonPos.left, top: mobileMenuButtonPos.top }}
                 >
@@ -202,30 +202,30 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                 <button
                     type="button"
                     onClick={() => setMobileOpen(false)}
-                    className="fixed inset-0 z-40 bg-black/45 print:hidden lg:hidden"
+                    className="admin-shell-overlay fixed inset-0 z-40 bg-black/45 print:hidden lg:hidden"
                     aria-label="Close sidebar menu"
                 />
             )}
 
             <aside
-                className={`fixed inset-y-0 left-0 z-50 flex border-r border-gray-200 bg-white transition-all duration-300 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+                className={`admin-shell-sidebar fixed inset-y-0 left-0 z-50 flex transition-all duration-300 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                     } ${collapsed ? 'w-20' : 'w-64'}`}
             >
                 <div className="flex h-full w-full flex-col">
-                    <div className={`relative flex items-center border-b border-gray-200 px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+                    <div className={`admin-shell-brand relative flex items-center px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
                         <Link href={homeHref} className="flex items-center gap-2 overflow-hidden">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white">
+                            <div className="admin-shell-brand-badge flex h-8 w-8 items-center justify-center rounded-lg">
                                 <Sparkles className="h-4 w-4" />
                             </div>
                             {!collapsed && (
-                                <span className="text-base font-semibold text-gray-900">TicketIntel</span>
+                                <span className="admin-shell-brand-text text-base font-semibold">TicketIntel</span>
                             )}
                         </Link>
 
                         <button
                             type="button"
                             onClick={() => setCollapsed((prev) => !prev)}
-                            className={`hidden h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 lg:inline-flex ${collapsed ? 'absolute right-2' : ''}`}
+                            className={`admin-shell-collapse-btn hidden h-8 w-8 items-center justify-center rounded-lg transition-colors lg:inline-flex ${collapsed ? 'absolute right-2' : ''}`}
                             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                         >
                             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -235,12 +235,12 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                     <nav className="flex-1 space-y-1 px-3 py-4">
                         {navItems.map((item) => {
                             const active = item.id === activeSection;
-                            const baseClass = `group flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : 'gap-3'
+                            const baseClass = `admin-shell-nav-link group flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : 'gap-3'
                                 }`;
                             const activeClass = active
-                                ? 'bg-purple-600 text-white shadow-sm'
-                                : 'text-gray-600 hover:bg-gray-100';
-                            const iconClass = active ? 'text-white' : 'text-gray-500';
+                                ? 'is-active'
+                                : 'is-inactive';
+                            const iconClass = active ? 'is-active' : 'is-inactive';
 
                             return (
                                 <Link
@@ -249,20 +249,20 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                                     className={`${baseClass} ${activeClass}`}
                                     onClick={() => setMobileOpen(false)}
                                 >
-                                    <item.icon className={`h-5 w-5 ${iconClass}`} />
+                                    <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
                                     {!collapsed && <span>{item.label}</span>}
                                 </Link>
                             );
                         })}
                     </nav>
 
-                    <div className="border-t border-gray-200 px-3 py-4">
+                    <div className="admin-shell-footer px-3 py-4">
                         {!collapsed && (
-                            <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-                                <p className="text-[11px] uppercase tracking-wide text-gray-500">Current Plan</p>
+                            <div className="admin-shell-plan-card mb-3 rounded-lg px-3 py-2.5">
+                                <p className="admin-shell-plan-label text-[11px] uppercase tracking-wide">Current Plan</p>
                                 <div className="mt-1 flex items-center justify-between">
-                                    <span className="text-sm font-semibold text-gray-900">Enterprise</span>
-                                    <span className="h-2 w-2 rounded-full bg-purple-500" />
+                                    <span className="admin-shell-plan-value text-sm font-semibold">Enterprise</span>
+                                    <span className="admin-shell-plan-dot h-2 w-2 rounded-full" />
                                 </div>
                             </div>
                         )}
@@ -270,25 +270,25 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                         <button
                             type="button"
                             onClick={toggleTheme}
-                            className={`mb-3 flex w-full items-center rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 ${collapsed ? 'justify-center' : 'gap-2.5'
+                            className={`admin-shell-theme-toggle mb-3 flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${collapsed ? 'justify-center' : 'gap-2.5'
                                 }`}
                             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                         >
-                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 text-purple-700">
+                            <span className="admin-shell-theme-icon inline-flex h-6 w-6 items-center justify-center rounded-full">
                                 {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
                             </span>
                             {!collapsed && <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
                         </button>
 
-                        <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-100">
-                                <User className="h-5 w-5 text-purple-600" />
+                        <div className={`admin-shell-user-info flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
+                            <div className="admin-shell-user-avatar flex h-9 w-9 items-center justify-center rounded-full">
+                                <User className="h-5 w-5" />
                             </div>
                             {!collapsed && (
                                 <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium text-gray-900">{profile?.fullname || 'Admin'}</p>
-                                    <p className="truncate text-xs text-gray-500">{profile?.email || '-'}</p>
+                                    <p className="admin-shell-user-name truncate text-sm font-medium">{profile?.fullname || 'Admin'}</p>
+                                    <p className="admin-shell-user-email truncate text-xs">{profile?.email || '-'}</p>
                                 </div>
                             )}
                         </div>
@@ -298,7 +298,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                                 await signOut();
                                 router.push('/login');
                             }}
-                            className={`mt-3 flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 ${collapsed ? 'justify-center' : 'gap-2.5'
+                            className={`admin-shell-signout mt-3 flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${collapsed ? 'justify-center' : 'gap-2.5'
                                 }`}
                         >
                             <LogOut className="h-4 w-4" />
@@ -308,7 +308,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                 </div>
             </aside>
 
-            <div className={`transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+            <div className={`admin-shell-content transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
                 <div className="min-h-screen">{children}</div>
             </div>
         </div>
