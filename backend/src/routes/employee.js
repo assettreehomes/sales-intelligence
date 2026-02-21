@@ -2,30 +2,49 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
-import { logActivity } from '../services/activityLog.js';
 
 const router = Router();
 
 /**
  * POST /employee/heartbeat
- * Updates the employee's online status, recording state, and current client.
- * Called periodically by the frontend.
+ * Updates the employee's online status, recording state, current client/ticket, and battery.
+ * Called periodically by the frontend/mobile app (every 30s).
  */
 router.post('/heartbeat', authMiddleware, async (req, res) => {
     try {
-        const { is_online, is_recording, current_client_id } = req.body;
+        const {
+            is_online,
+            is_recording,
+            current_client_id,
+            current_ticket_id,
+            battery_level
+        } = req.body;
+
         const userId = req.user.id;
 
-        // Upsert status
+        // Validate battery_level if provided
+        const validBattery = (typeof battery_level === 'number' && battery_level >= 0 && battery_level <= 100)
+            ? battery_level
+            : null;
+
+        const upsertData = {
+            user_id: userId,
+            is_online: is_online ?? true,
+            is_recording: is_recording ?? false,
+            current_client_id: current_client_id || null,
+            current_ticket_id: current_ticket_id || null,
+            last_heartbeat: new Date().toISOString(),
+        };
+
+        // Only overwrite battery fields if a valid battery value was sent
+        if (validBattery !== null) {
+            upsertData.battery_level = validBattery;
+            upsertData.battery_updated_at = new Date().toISOString();
+        }
+
         const { error } = await supabaseAdmin
             .from('employee_status')
-            .upsert({
-                user_id: userId,
-                is_online: is_online ?? true, // Default to true if calling heartbeat
-                is_recording: is_recording ?? false,
-                current_client_id: current_client_id || null,
-                last_heartbeat: new Date().toISOString(),
-            }, { onConflict: 'user_id' });
+            .upsert(upsertData, { onConflict: 'user_id' });
 
         if (error) {
             console.error('Heartbeat upsert error:', error);
@@ -42,52 +61,90 @@ router.post('/heartbeat', authMiddleware, async (req, res) => {
 
 /**
  * GET /employee/status
- * Fetches the status of all employees/interns.
+ * Fetches the status of all employees/interns, enriched with:
+ *   - battery level + timestamp
+ *   - current ticket details (client name, visit info, draft vs live)
  * Role: Admin only
  */
 router.get('/status', authMiddleware, requireAdmin, async (req, res) => {
     try {
-        // 1. Get all users with role employee or intern
+        // 1. Get all employees/interns
         const { data: users, error: usersError } = await supabaseAdmin
             .from('users')
-            .select('id, fullname, email, role')
+            .select('id, fullname, email, role, avatar_url')
             .in('role', ['employee', 'intern']);
 
-        if (usersError) {
-            throw usersError;
-        }
+        if (usersError) throw usersError;
 
-        // 2. Get status for these users
+        // 2. Get their status rows
         const userIds = users.map(u => u.id);
         const { data: statuses, error: statusError } = await supabaseAdmin
             .from('employee_status')
             .select('*')
             .in('user_id', userIds);
 
-        if (statusError) {
-            throw statusError;
+        if (statusError) throw statusError;
+
+        // 3. Collect all non-null current_ticket_ids and batch-fetch those tickets
+        const ticketIds = (statuses || [])
+            .map(s => s.current_ticket_id)
+            .filter(Boolean);
+
+        let ticketMap = new Map();
+        if (ticketIds.length > 0) {
+            const { data: tickets, error: ticketError } = await supabaseAdmin
+                .from('tickets')
+                .select('id, clientname, client_name, visittype, visit_type, visitnumber, visit_number, status')
+                .in('id', ticketIds);
+
+            if (!ticketError && tickets) {
+                ticketMap = new Map(tickets.map(t => [t.id, t]));
+            }
         }
 
-        // 3. Merge and process
-        const statusMap = new Map(statuses?.map(s => [s.user_id, s]) || []);
+        // 4. Merge everything
+        const statusMap = new Map((statuses || []).map(s => [s.user_id, s]));
         const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
 
         const result = users.map(user => {
             const status = statusMap.get(user.id);
+
             let isOnline = false;
             let isRecording = false;
-            let currentClient = null;
+            let currentClientId = null;
+            let currentTicketId = null;
             let lastHeartbeat = null;
+            let batteryLevel = null;
+            let batteryUpdatedAt = null;
+            let currentTicket = null;
 
             if (status) {
+                lastHeartbeat = status.last_heartbeat;
+                batteryLevel = status.battery_level ?? null;
+                batteryUpdatedAt = status.battery_updated_at ?? null;
+
                 const heartbeatDate = new Date(status.last_heartbeat);
-                // If heartbeat is older than 2 mins, consider offline
                 if (heartbeatDate > twoMinutesAgo && status.is_online) {
                     isOnline = true;
-                    isRecording = status.is_recording; // Only trust recording if online
-                    currentClient = status.current_client_id;
+                    isRecording = status.is_recording;
+                    currentClientId = status.current_client_id;
+                    currentTicketId = status.current_ticket_id;
+
+                    // Enrich with ticket details if we have a current_ticket_id
+                    if (currentTicketId) {
+                        const t = ticketMap.get(currentTicketId);
+                        if (t) {
+                            currentTicket = {
+                                id: t.id,
+                                client_name: t.clientname || t.client_name || currentClientId || 'Unknown',
+                                visit_type: t.visittype || t.visit_type || 'site_visit',
+                                visit_number: t.visitnumber || t.visit_number || 1,
+                                is_draft: t.status === 'draft',
+                                ticket_status: t.status,
+                            };
+                        }
+                    }
                 }
-                lastHeartbeat = status.last_heartbeat;
             }
 
             return {
@@ -95,8 +152,12 @@ router.get('/status', authMiddleware, requireAdmin, async (req, res) => {
                 status: {
                     is_online: isOnline,
                     is_recording: isRecording,
-                    current_client_id: currentClient,
-                    last_heartbeat: lastHeartbeat
+                    current_client_id: currentClientId,
+                    current_ticket_id: currentTicketId,
+                    current_ticket: currentTicket,
+                    last_heartbeat: lastHeartbeat,
+                    battery_level: batteryLevel,
+                    battery_updated_at: batteryUpdatedAt,
                 }
             };
         });

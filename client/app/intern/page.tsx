@@ -5,13 +5,16 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { API_URL, getToken } from '@/stores/authStore';
 import { notifyError } from '@/lib/toast';
+import { useEmployeeHeartbeat, BATTERY_STORAGE_KEY } from '@/hooks/useEmployeeHeartbeat';
 import {
     Search,
     Star,
     Calendar,
     Headphones,
     Loader2,
-    ChevronRight
+    ChevronRight,
+    BatteryMedium,
+    Mic,
 } from 'lucide-react';
 
 interface TrainingTicket {
@@ -65,6 +68,46 @@ function renderStars(scoreOutOfFive: number | null) {
 }
 
 function InternDashboardContent() {
+    // ── Battery simulator ─────────────────────────────────────────────────────
+    const { triggerHeartbeat } = useEmployeeHeartbeat();
+    const [batteryLevel, setBatteryLevel] = useState<number>(() => {
+        try {
+            const stored = localStorage.getItem(BATTERY_STORAGE_KEY);
+            return stored !== null ? parseInt(stored, 10) : 75;
+        } catch { return 75; }
+    });
+
+    // Sync initial value into localStorage on first render if not set
+    useEffect(() => {
+        try {
+            if (localStorage.getItem(BATTERY_STORAGE_KEY) === null) {
+                localStorage.setItem(BATTERY_STORAGE_KEY, '75');
+            }
+        } catch { /* ignore */ }
+    }, []);
+
+    const handleBatteryChange = (value: number) => {
+        setBatteryLevel(value);
+        try { localStorage.setItem(BATTERY_STORAGE_KEY, String(value)); } catch { /* ignore */ }
+        triggerHeartbeat(); // fires an immediate beat so admin sees it in ~1s
+    };
+
+    const batteryColor = batteryLevel >= 50 ? 'text-green-600' : batteryLevel >= 20 ? 'text-amber-500' : 'text-red-500';
+    const batteryBg = batteryLevel >= 50 ? 'bg-green-50 border-green-200' : batteryLevel >= 20 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+
+    // ── Recording toggle ──────────────────────────────────────────────────────
+    const [isRecording, setIsRecording] = useState<boolean>(() => {
+        try { return sessionStorage.getItem('is_recording') === 'true'; } catch { return false; }
+    });
+
+    const handleRecordingToggle = () => {
+        const next = !isRecording;
+        setIsRecording(next);
+        try { sessionStorage.setItem('is_recording', String(next)); } catch { /* ignore */ }
+        triggerHeartbeat(); // admin sees the change within 1–2s
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
     const [tickets, setTickets] = useState<TrainingTicket[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -146,15 +189,50 @@ function InternDashboardContent() {
                             <p className="text-sm text-gray-500">{resultText}</p>
                         </div>
 
-                        <div className="relative w-full md:w-80">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(event) => setSearchQuery(event.target.value)}
-                                placeholder="Search client, ticket, or visit..."
-                                className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            {/* Battery simulator widget */}
+                            <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${batteryBg}`}>
+                                <BatteryMedium className={`h-4 w-4 flex-shrink-0 ${batteryColor}`} />
+                                <span className={`text-xs font-semibold w-8 ${batteryColor}`}>{batteryLevel}%</span>
+                                <input
+                                    id="battery-slider"
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={batteryLevel}
+                                    onChange={(e) => handleBatteryChange(Number(e.target.value))}
+                                    className="w-24 accent-purple-600 cursor-pointer"
+                                    title="Simulate battery level (sent to admin live view)"
+                                />
+                                <span className="text-[10px] text-gray-400 hidden sm:block">Sim. battery</span>
+                            </div>
+
+                            {/* Recording toggle */}
+                            <button
+                                type="button"
+                                onClick={handleRecordingToggle}
+                                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${isRecording
+                                        ? 'bg-red-50 border-red-200 text-red-700 animate-pulse'
+                                        : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
+                                    }`}
+                                title="Toggle recording state (sent to admin live view)"
+                            >
+                                <Mic className={`h-4 w-4 ${isRecording ? 'fill-red-600 text-red-600' : ''}`} />
+                                {isRecording ? 'Recording' : 'Idle'}
+                            </button>
+
+                            {/* Search */}
+                            <div className="relative w-full md:w-80">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(event) => setSearchQuery(event.target.value)}
+                                    placeholder="Search client, ticket, or visit..."
+                                    className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                            </div>
                         </div>
                     </div>
 
