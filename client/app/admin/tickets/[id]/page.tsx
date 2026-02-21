@@ -780,66 +780,50 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         setReportActionLoading('download');
         try {
             setIsReportMenuOpen(false);
-            const container = reportContainerRef.current;
-            if (!container) {
-                throw new Error('Report content is not ready yet.');
+            const token = await getToken();
+            if (!token) {
+                throw new Error('Authentication required');
             }
 
-            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-                import('html2canvas-pro'),
-                import('jspdf')
-            ]);
-
-            const scale = Math.min(2, Math.max(1.25, window.devicePixelRatio || 1));
-            const canvas = await html2canvas(container, {
-                backgroundColor: '#ffffff',
-                useCORS: true,
-                scale,
-                scrollX: 0,
-                scrollY: -window.scrollY,
-                windowWidth: document.documentElement.scrollWidth,
-                windowHeight: document.documentElement.scrollHeight,
-                onclone: (clonedDocument) => {
-                    clonedDocument.documentElement.classList.add('ticket-exporting-pdf');
+            const response = await fetch(`${API_URL}/tickets/${id}/report?download=1`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
                 }
             });
 
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4',
-                compress: true
-            });
-
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const marginMm = 6;
-            const printableWidth = pageWidth - marginMm * 2;
-            const printableHeight = pageHeight - marginMm * 2;
-            const renderedHeight = (canvas.height * printableWidth) / canvas.width;
-            const imageData = canvas.toDataURL('image/jpeg', 0.95);
-
-            let offsetMm = 0;
-            while (offsetMm < renderedHeight) {
-                if (offsetMm > 0) {
-                    pdf.addPage();
-                }
-
-                const drawY = marginMm - offsetMm;
-                pdf.addImage(imageData, 'JPEG', marginMm, drawY, printableWidth, renderedHeight, undefined, 'FAST');
-                offsetMm += printableHeight;
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(
+                    typeof payload?.error === 'string'
+                        ? payload.error
+                        : 'Could not generate PDF'
+                );
             }
 
-            const fileSafeId = (ticket?.id || id).replace(/[^a-zA-Z0-9-_]/g, '');
-            const shortId = fileSafeId.slice(0, 8) || 'ticket';
-            pdf.save(`ticket-report-${shortId}.pdf`);
+            const blob = await response.blob();
+            if (blob.size === 0) {
+                throw new Error('Generated PDF is empty');
+            }
+
+            const disposition = response.headers.get('content-disposition') || '';
+            const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+            const downloadName = filenameMatch?.[1] || `ticket-report-${id.slice(0, 8)}.pdf`;
+
+            const blobUrl = window.URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = blobUrl;
+            anchor.download = downloadName;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.URL.revokeObjectURL(blobUrl);
             notifySuccess('PDF downloaded successfully.');
         } catch (error) {
             notifyError(error instanceof Error ? error.message : 'Could not generate PDF');
         } finally {
             setReportActionLoading(null);
         }
-    }, [id, ticket?.id]);
+    }, [id]);
 
     const handleDeleteTicket = useCallback(async () => {
         if (isDeletingTicket) return;
@@ -1966,8 +1950,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 >
                                                     <defs>
                                                         <linearGradient id="chart-current-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                                                            <stop offset="0%" stopColor="#a855f7" />
-                                                            <stop offset="100%" stopColor="#4f46e5" />
+                                                            <stop offset="0%" stopColor="var(--accent)" />
+                                                            <stop offset="100%" stopColor="var(--accent-strong)" />
                                                         </linearGradient>
                                                         <linearGradient id="chart-current-area" x1="0%" y1="0%" x2="0%" y2="100%">
                                                             <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.45" />
@@ -2049,7 +2033,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                         >
                                                             <title>{`${comparisonChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
                                                             <circle cx={point.x} cy={point.y} r="7.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                            <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.4" />
+                                                            <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="var(--surface)" strokeWidth="1.4" />
                                                         </g>
                                                     ))}
 
@@ -2072,9 +2056,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                     {hoveredChartPoint && (
                                                         <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
                                                             <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
+                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">{hoveredChartPoint.label}</text>
+                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="var(--accent)">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
+                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
                                                         </g>
                                                     )}
                                                 </svg>
@@ -2086,8 +2070,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 >
                                                     <defs>
                                                         <linearGradient id="radar-current-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                            <stop offset="0%" stopColor="#a855f7" />
-                                                            <stop offset="100%" stopColor="#4f46e5" />
+                                                            <stop offset="0%" stopColor="var(--accent)" />
+                                                            <stop offset="100%" stopColor="var(--accent-strong)" />
                                                         </linearGradient>
                                                         <linearGradient id="radar-current-fill" x1="0%" y1="0%" x2="0%" y2="100%">
                                                             <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.35" />
@@ -2147,7 +2131,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                         >
                                                             <title>{`${comparisonRadarChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
                                                             <circle cx={point.x} cy={point.y} r="6.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                            <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="#ffffff" strokeWidth="1.2" />
+                                                            <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="var(--surface)" strokeWidth="1.2" />
                                                         </g>
                                                     ))}
 
@@ -2170,9 +2154,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                     {hoveredChartPoint && (
                                                         <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonRadarChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
                                                             <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="#c4b5fd">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="#d1d5db">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
+                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">{hoveredChartPoint.label}</text>
+                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="var(--accent)">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
+                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
                                                         </g>
                                                     )}
                                                 </svg>

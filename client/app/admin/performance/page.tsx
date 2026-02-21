@@ -121,6 +121,25 @@ const SKILL_LABELS: Record<string, string> = {
     professionalism: 'Professionalism',
 };
 
+const SKILL_CHART_LABELS: Record<string, string> = {
+    politeness: 'Polite',
+    confidence: 'Conf.',
+    interest: 'Interest',
+    rapport_building: 'Rapport',
+    objection_handling: 'Object.',
+    closing_techniques: 'Closing',
+    product_knowledge: 'Product',
+    professionalism: 'Prof.',
+};
+
+const RATING_DISTRIBUTION_COLOR_BY_LABEL: Record<string, string> = {
+    poor: 'var(--performance-dist-poor)',
+    fair: 'var(--performance-dist-fair)',
+    good: 'var(--performance-dist-good)',
+    great: 'var(--performance-dist-great)',
+    excellent: 'var(--performance-dist-excellent)',
+};
+
 const PERIODS = [
     { key: '7d', label: '7 Days' },
     { key: '30d', label: '30 Days' },
@@ -131,13 +150,15 @@ const PERIODS = [
 // SVG Chart Components (Zero Dependencies)
 // ═══════════════════════════════════════════════
 
-function SparklineSVG({ data, width = 120, height = 32, color = '#8b5cf6' }: {
+function SparklineSVG({ data, width = 120, height = 32, color = 'var(--performance-accent)' }: {
     data: number[];
     width?: number;
     height?: number;
     color?: string;
 }) {
     if (!data || data.length < 2) return <div style={{ width, height }} />;
+    const colorKey = color.replace(/[^a-zA-Z0-9_-]/g, '');
+    const gradientId = `spark-${colorKey || 'accent'}`;
     const max = Math.max(...data, 1);
     const min = Math.min(...data, 0);
     const range = max - min || 1;
@@ -151,12 +172,12 @@ function SparklineSVG({ data, width = 120, height = 32, color = '#8b5cf6' }: {
     return (
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
             <defs>
-                <linearGradient id={`spark-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity={0.3} />
                     <stop offset="100%" stopColor={color} stopOpacity={0.02} />
                 </linearGradient>
             </defs>
-            <polygon points={areaPoints.join(' ')} fill={`url(#spark-${color.replace('#', '')})`} />
+            <polygon points={areaPoints.join(' ')} fill={`url(#${gradientId})`} />
             <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
@@ -166,7 +187,7 @@ function RadarChartSVG({
     labels,
     values,
     size = 160,
-    color = '#8b5cf6',
+    color = 'var(--performance-accent)',
 }: {
     labels: string[];
     values: number[];
@@ -175,9 +196,12 @@ function RadarChartSVG({
 }) {
     const cx = size / 2;
     const cy = size / 2;
-    const r = size / 2 - 24;
+    const r = size / 2 - 30;
     const n = labels.length;
     const angleStep = (2 * Math.PI) / n;
+    const gridColor = 'var(--performance-chart-grid)';
+    const labelColor = 'var(--performance-chart-label)';
+    const labelRadius = r + 10;
 
     const getPoint = (i: number, val: number) => {
         const angle = (i * angleStep) - Math.PI / 2;
@@ -192,7 +216,7 @@ function RadarChartSVG({
     const levels = [0.25, 0.5, 0.75, 1.0];
 
     return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="drop-shadow-sm">
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="performance-radar-chart drop-shadow-sm">
             {/* Grid */}
             {levels.map((level) => {
                 const pts = Array.from({ length: n }, (_, i) => {
@@ -204,7 +228,7 @@ function RadarChartSVG({
                         key={level}
                         points={pts.join(' ')}
                         fill="none"
-                        stroke="#e5e7eb"
+                        stroke={gridColor}
                         strokeWidth={0.5}
                     />
                 );
@@ -219,7 +243,7 @@ function RadarChartSVG({
                         y1={cy}
                         x2={cx + r * Math.cos(angle)}
                         y2={cy + r * Math.sin(angle)}
-                        stroke="#e5e7eb"
+                        stroke={gridColor}
                         strokeWidth={0.5}
                     />
                 );
@@ -238,21 +262,28 @@ function RadarChartSVG({
             {/* Data points */}
             {values.map((v, i) => {
                 const p = getPoint(i, v);
-                return <circle key={i} cx={p.x} cy={p.y} r={3} fill={color} />;
+                return (
+                    <g key={i}>
+                        <circle cx={p.x} cy={p.y} r={3} fill={color} />
+                        <title>{`${labels[i]}: ${v.toFixed(1)}`}</title>
+                    </g>
+                );
             })}
             {/* Labels */}
             {labels.map((label, i) => {
                 const angle = (i * angleStep) - Math.PI / 2;
-                const lx = cx + (r + 16) * Math.cos(angle);
-                const ly = cy + (r + 16) * Math.sin(angle);
+                const lx = cx + labelRadius * Math.cos(angle);
+                const ly = cy + labelRadius * Math.sin(angle);
+                const anchor = Math.cos(angle) > 0.28 ? 'start' : Math.cos(angle) < -0.28 ? 'end' : 'middle';
                 return (
                     <text
                         key={i}
                         x={lx}
                         y={ly}
-                        textAnchor="middle"
+                        textAnchor={anchor}
                         dominantBaseline="central"
-                        className="fill-gray-500 text-[9px] font-medium"
+                        fill={labelColor}
+                        className="text-[10px] font-semibold"
                     >
                         {label}
                     </text>
@@ -266,29 +297,34 @@ function AreaChartSVG({
     data,
     width = 500,
     height = 180,
+    xAxisLabel = 'Date',
+    yAxisLabel = 'Average Rating (/5)',
 }: {
     data: { label: string; value: number | null }[];
     width?: number;
     height?: number;
+    xAxisLabel?: string;
+    yAxisLabel?: string;
 }) {
     const filtered = data.filter((d) => d.value !== null) as { label: string; value: number }[];
     if (filtered.length < 2) {
         return (
-            <div style={{ width, height }} className="flex items-center justify-center text-gray-400 text-sm">
+            <div style={{ width, height, color: 'var(--performance-muted)' }} className="flex items-center justify-center text-sm">
                 Not enough data
             </div>
         );
     }
 
-    const padL = 36;
+    const padL = 50;
     const padR = 12;
     const padT = 16;
-    const padB = 28;
+    const padB = 38;
     const chartW = width - padL - padR;
     const chartH = height - padT - padB;
     const maxVal = Math.max(...filtered.map((d) => d.value), 1);
     const minVal = Math.min(...filtered.map((d) => d.value), 0);
     const range = maxVal - minVal || 1;
+    const gradientId = 'performance-area-gradient';
 
     const points = filtered.map((d, i) => ({
         x: padL + (i / (filtered.length - 1)) * chartW,
@@ -307,9 +343,9 @@ function AreaChartSVG({
     return (
         <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
             <defs>
-                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.02} />
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--performance-accent)" stopOpacity={0.34} />
+                    <stop offset="100%" stopColor="var(--performance-accent)" stopOpacity={0.02} />
                 </linearGradient>
             </defs>
             {/* Y grid lines + labels */}
@@ -317,26 +353,42 @@ function AreaChartSVG({
                 const y = padT + chartH - ((val - minVal) / range) * chartH;
                 return (
                     <g key={i}>
-                        <line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke="#f3f4f6" strokeWidth={1} />
-                        <text x={padL - 6} y={y + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
+                        <line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke="var(--performance-chart-grid)" strokeWidth={1} />
+                        <text x={padL - 6} y={y + 3} textAnchor="end" fill="var(--performance-chart-label)" className="text-[10px]">
                             {val.toFixed(1)}
                         </text>
                     </g>
                 );
             })}
             {/* Area + Line */}
-            <path d={areaPath} fill="url(#areaGrad)" />
-            <path d={linePath} fill="none" stroke="#8b5cf6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={areaPath} fill={`url(#${gradientId})`} />
+            <path d={linePath} fill="none" stroke="var(--performance-accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
             {/* Data points */}
             {points.map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r={3} fill="#8b5cf6" stroke="white" strokeWidth={1.5} />
+                <g key={i}>
+                    <circle cx={p.x} cy={p.y} r={3} fill="var(--performance-accent)" stroke="var(--performance-surface-elevated)" strokeWidth={1.5} />
+                    <title>{`${p.label}: ${p.value.toFixed(2)}`}</title>
+                </g>
             ))}
             {/* X-axis labels (show max 8) */}
             {points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 8)) === 0 || i === points.length - 1).map((p, i) => (
-                <text key={i} x={p.x} y={height - 6} textAnchor="middle" className="fill-gray-400 text-[9px]">
-                    {p.label.slice(5)}
+                <text key={i} x={p.x} y={height - 6} textAnchor="middle" fill="var(--performance-chart-label)" className="text-[9px]">
+                    {p.label.length > 5 ? p.label.slice(5) : p.label}
                 </text>
             ))}
+            <text x={padL + chartW / 2} y={height - 20} textAnchor="middle" fill="var(--performance-chart-label)" className="text-[10px] font-semibold">
+                {xAxisLabel}
+            </text>
+            <text
+                x={14}
+                y={padT + chartH / 2}
+                textAnchor="middle"
+                transform={`rotate(-90 14 ${padT + chartH / 2})`}
+                fill="var(--performance-chart-label)"
+                className="text-[10px] font-semibold"
+            >
+                {yAxisLabel}
+            </text>
         </svg>
     );
 }
@@ -345,17 +397,21 @@ function BarChartSVG({
     data,
     width = 500,
     height = 200,
+    xAxisLabel = 'Value',
+    valueFormatter,
 }: {
     data: { label: string; value: number; color: string }[];
     width?: number;
     height?: number;
+    xAxisLabel?: string;
+    valueFormatter?: (value: number) => string;
 }) {
     if (data.length === 0) return null;
 
     const padL = 60;
     const padR = 16;
     const padT = 8;
-    const padB = 8;
+    const padB = 28;
     const chartW = width - padL - padR;
     const chartH = height - padT - padB;
     const maxVal = Math.max(...data.map((d) => d.value), 1);
@@ -370,25 +426,29 @@ function BarChartSVG({
                 return (
                     <g key={i}>
                         {/* Background track */}
-                        <rect x={padL} y={y} width={chartW} height={barH} rx={4} fill="#f3f4f6" />
+                        <rect x={padL} y={y} width={chartW} height={barH} rx={4} fill="var(--performance-chart-track)" />
                         {/* Bar */}
                         <rect x={padL} y={y} width={w} height={barH} rx={4} fill={d.color} opacity={0.85} />
                         {/* Label */}
-                        <text x={padL - 6} y={y + barH / 2 + 1} textAnchor="end" dominantBaseline="central" className="fill-gray-600 text-[11px] font-medium">
+                        <text x={padL - 6} y={y + barH / 2 + 1} textAnchor="end" dominantBaseline="central" fill="var(--performance-chart-label)" className="text-[11px] font-medium">
                             {d.label}
                         </text>
                         {/* Value */}
-                        <text x={padL + w + 6} y={y + barH / 2 + 1} dominantBaseline="central" className="fill-gray-500 text-[10px] font-semibold">
-                            {d.value}
+                        <text x={padL + w + 6} y={y + barH / 2 + 1} dominantBaseline="central" fill="var(--performance-chart-label)" className="text-[10px] font-semibold">
+                            {valueFormatter ? valueFormatter(d.value) : d.value}
                         </text>
+                        <title>{`${d.label}: ${valueFormatter ? valueFormatter(d.value) : d.value}`}</title>
                     </g>
                 );
             })}
+            <text x={padL + chartW} y={height - 8} textAnchor="end" fill="var(--performance-chart-label)" className="text-[10px] font-semibold">
+                {xAxisLabel}
+            </text>
         </svg>
     );
 }
 
-function CircularProgress({ value, size = 56, strokeWidth = 5, color = '#8b5cf6' }: {
+function CircularProgress({ value, size = 56, strokeWidth = 5, color = 'var(--performance-accent)' }: {
     value: number;
     size?: number;
     strokeWidth?: number;
@@ -398,8 +458,9 @@ function CircularProgress({ value, size = 56, strokeWidth = 5, color = '#8b5cf6'
     const circumference = 2 * Math.PI * r;
     const offset = circumference - (Math.min(value, 100) / 100) * circumference;
     return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={strokeWidth} />
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="performance-circular-progress">
+            <title>{`Completion: ${Math.round(value)}%`}</title>
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--performance-chart-track)" strokeWidth={strokeWidth} />
             <circle
                 cx={size / 2}
                 cy={size / 2}
@@ -413,7 +474,7 @@ function CircularProgress({ value, size = 56, strokeWidth = 5, color = '#8b5cf6'
                 transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 className="transition-all duration-700"
             />
-            <text x={size / 2} y={size / 2} textAnchor="middle" dominantBaseline="central" className="fill-gray-900 text-xs font-bold">
+            <text x={size / 2} y={size / 2} textAnchor="middle" dominantBaseline="central" fill="var(--performance-text-strong)" className="text-xs font-bold">
                 {Math.round(value)}%
             </text>
         </svg>
@@ -427,23 +488,25 @@ function CircularProgress({ value, size = 56, strokeWidth = 5, color = '#8b5cf6'
 
 
 function MedalBadge({ rank }: { rank: number }) {
-    if (rank === 1) return <span className="text-xl">🥇</span>;
-    if (rank === 2) return <span className="text-xl">🥈</span>;
-    if (rank === 3) return <span className="text-xl">🥉</span>;
-    return <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center">#{rank}</span>;
+    if (rank === 1) return <span className="performance-medal is-gold">1</span>;
+    if (rank === 2) return <span className="performance-medal is-silver">2</span>;
+    if (rank === 3) return <span className="performance-medal is-bronze">3</span>;
+    return <span className="performance-medal is-neutral">#{rank}</span>;
 }
 
 
-function SkillHeatmapCell({ value }: { value: number }) {
-    let bg = 'bg-gray-100 text-gray-400';
-    if (value >= 8) bg = 'bg-emerald-100 text-emerald-700';
-    else if (value >= 6) bg = 'bg-green-50 text-green-700';
-    else if (value >= 4) bg = 'bg-yellow-50 text-yellow-700';
-    else if (value >= 2) bg = 'bg-orange-50 text-orange-700';
-    else if (value > 0) bg = 'bg-red-50 text-red-600';
+function SkillHeatmapCell({ value, label }: { value: number; label?: string }) {
+    let tier = 'is-empty';
+    if (value >= 8) tier = 'is-elite';
+    else if (value >= 6) tier = 'is-strong';
+    else if (value >= 4) tier = 'is-steady';
+    else if (value >= 2) tier = 'is-low';
+    else if (value > 0) tier = 'is-risk';
+    const displayValue = value > 0 ? value.toFixed(1) : '--';
+    const title = label ? `${label}: ${displayValue}` : displayValue;
     return (
-        <div className={`${bg} rounded px-2 py-1 text-center text-[11px] font-semibold tabular-nums min-w-[40px]`}>
-            {value > 0 ? value.toFixed(1) : '—'}
+        <div className={`performance-skill-cell ${tier}`} title={title}>
+            {displayValue}
         </div>
     );
 }
@@ -465,15 +528,6 @@ export default function PerformancePage() {
     // Avatar upload logic
     const [uploadingUserId, setUploadingUserId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Actually useAuth provides `profile`? Let's check imports. useAuth context usually provides profile.
-    // Line 5: import { useAuth } from '@/contexts/AuthContext';
-    // Line 451: const { session } = useAuth();
-    // I should check what useAuth returns.
-
-    // Let's assume useAuth returns 'profile' as well based on previous knowledge.
-    // Retrying replacement with assumption or derived logic.
-
 
     const isSuperAdmin = profile?.role === 'superadmin';
 
@@ -607,7 +661,7 @@ export default function PerformancePage() {
         return analytics.rating_distribution.map((b) => ({
             label: b.label,
             value: b.count,
-            color: b.color,
+            color: RATING_DISTRIBUTION_COLOR_BY_LABEL[b.label.trim().toLowerCase()] ?? 'var(--performance-dist-default)',
         }));
     }, [analytics]);
 
@@ -623,10 +677,10 @@ export default function PerformancePage() {
     if (loading && !analytics) {
         return (
             <AdminShell activeSection="performance">
-                <div className="flex items-center justify-center min-h-screen">
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="w-10 h-10 border-3 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
-                        <p className="text-gray-500 text-sm">Loading analytics...</p>
+                <div className="performance-dashboard min-h-screen">
+                    <div className="performance-shell performance-loading">
+                        <div className="performance-loading-spinner" />
+                        <p className="performance-loading-text">Loading analytics...</p>
                     </div>
                 </div>
             </AdminShell>
@@ -637,27 +691,25 @@ export default function PerformancePage() {
 
     return (
         <AdminShell activeSection="performance">
-            <div className="min-h-screen bg-gray-50">
-                {/* ───────── Header ───────── */}
-                <div className="bg-gradient-to-r from-purple-700 via-indigo-700 to-violet-800 px-6 py-8">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <div>
-                                <h1 className="text-2xl font-bold text-white">Performance Dashboard</h1>
-                                <p className="text-purple-200 text-sm mt-1">
-                                    Employee analytics & team insights
-                                </p>
+            <div className="performance-dashboard min-h-screen">
+                <header className="performance-hero">
+                    <div className="performance-hero-glow is-left" />
+                    <div className="performance-hero-glow is-right" />
+                    <div className="performance-shell">
+                        <div className="performance-hero-row">
+                            <div className="performance-hero-copy performance-fade-up">
+                                <p className="performance-eyebrow">Team Operations Intelligence</p>
+                                <h1 className="performance-title">Performance Dashboard</h1>
+                                <p className="performance-subtitle">Track coaching impact, quality trends, and individual momentum in one place.</p>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="flex bg-white/10 backdrop-blur-sm rounded-lg p-1">
+                            <div className="performance-controls performance-fade-up" style={{ animationDelay: '80ms' }}>
+                                <div className="performance-period-switch">
                                     {PERIODS.map((p) => (
                                         <button
                                             key={p.key}
                                             onClick={() => setPeriod(p.key)}
-                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${period === p.key
-                                                ? 'bg-white text-purple-700 shadow-sm'
-                                                : 'text-white/80 hover:text-white hover:bg-white/10'
-                                                }`}
+                                            className={`performance-period-btn ${period === p.key ? 'is-active' : ''}`}
+                                            title={`View metrics for last ${p.label}`}
                                         >
                                             {p.label}
                                         </button>
@@ -666,127 +718,132 @@ export default function PerformancePage() {
                                 <button
                                     onClick={fetchData}
                                     disabled={loading}
-                                    className="p-2 rounded-lg bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all disabled:opacity-50"
+                                    className="performance-refresh-btn"
+                                    aria-label="Refresh analytics data"
+                                    title="Refresh dashboard data"
                                 >
-                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                    <RefreshCw className={`perf-refresh-icon w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
+                </header>
 
                 {error && (
-                    <div className="max-w-7xl mx-auto px-6 mt-4">
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-600 text-sm">{error}</div>
+                    <div className="performance-shell">
+                        <div className="performance-alert">{error}</div>
                     </div>
                 )}
 
-                <div className="max-w-7xl mx-auto px-6 -mt-6 pb-12 space-y-6">
-                    {/* ───────── Row 1: KPI Cards ───────── */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Total Tickets */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="p-2 bg-purple-50 rounded-lg">
-                                    <BarChart3 className="w-5 h-5 text-purple-600" />
-                                </div>
+                <div className="performance-shell performance-content">
+                    <section className="performance-kpi-grid">
+                        <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '100ms' }} title="Total number of tickets in selected period">
+                            <div className="performance-kpi-top">
+                                <span className="performance-kpi-icon is-tickets">
+                                    <BarChart3 className="w-5 h-5" />
+                                </span>
+                                <span className="performance-kpi-meta">Workload</span>
                             </div>
-                            <p className="text-2xl font-bold text-gray-900">{s?.total_tickets ?? 0}</p>
-                            <p className="text-xs text-gray-500 mt-1">Total Tickets</p>
-                        </div>
+                            <p className="performance-kpi-value">{s?.total_tickets ?? 0}</p>
+                            <p className="performance-kpi-label">Total Tickets</p>
+                        </article>
 
-                        {/* Avg Rating */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="p-2 bg-yellow-50 rounded-lg">
-                                    <Star className="w-5 h-5 text-yellow-500" />
-                                </div>
-                                <div className="flex gap-0.5">
+                        <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '140ms' }} title="Average ticket quality rating (out of 5)">
+                            <div className="performance-kpi-top">
+                                <span className="performance-kpi-icon is-rating">
+                                    <Star className="w-5 h-5" />
+                                </span>
+                                <div className="performance-stars">
                                     {[1, 2, 3, 4, 5].map((i) => (
                                         <Star
                                             key={i}
-                                            className={`w-3 h-3 ${i <= Math.round(s?.avg_rating_5 ?? 0) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}
+                                            className={`w-3 h-3 ${i <= Math.round(s?.avg_rating_5 ?? 0) ? 'fill-current' : ''}`}
+                                            style={{ color: i <= Math.round(s?.avg_rating_5 ?? 0) ? 'var(--performance-rating-star)' : 'var(--performance-rating-star-muted)' }}
                                         />
                                     ))}
                                 </div>
                             </div>
-                            <p className="text-2xl font-bold text-gray-900">{s?.avg_rating_5?.toFixed(1) ?? '0.0'}<span className="text-sm text-gray-400 font-normal">/5</span></p>
-                            <p className="text-xs text-gray-500 mt-1">Avg Rating</p>
-                        </div>
+                            <p className="performance-kpi-value">
+                                {s?.avg_rating_5?.toFixed(1) ?? '0.0'}
+                                <span className="performance-kpi-unit">/5</span>
+                            </p>
+                            <p className="performance-kpi-label">Average Rating</p>
+                        </article>
 
-                        {/* Completion Rate */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-1">
-                                <div className="p-2 bg-emerald-50 rounded-lg">
-                                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                                </div>
-                                <CircularProgress value={s?.completion_rate ?? 0} size={48} strokeWidth={4} color="#10b981" />
+                        <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '180ms' }} title="Percent of tickets completed by AI analysis">
+                            <div className="performance-kpi-top">
+                                <span className="performance-kpi-icon is-completion">
+                                    <CheckCircle2 className="w-5 h-5" />
+                                </span>
+                                <CircularProgress value={s?.completion_rate ?? 0} size={52} strokeWidth={4.5} color="var(--performance-completion)" />
                             </div>
-                            <p className="text-xs text-gray-500 mt-2">Completion Rate</p>
-                        </div>
+                            <p className="performance-kpi-value">{(s?.completion_rate ?? 0).toFixed(0)}%</p>
+                            <p className="performance-kpi-label">Completion Rate</p>
+                        </article>
 
-                        {/* Training Calls */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="p-2 bg-violet-50 rounded-lg">
-                                    <Trophy className="w-5 h-5 text-violet-600" />
-                                </div>
+                        <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '220ms' }} title="Number of calls sent for coaching">
+                            <div className="performance-kpi-top">
+                                <span className="performance-kpi-icon is-training">
+                                    <Trophy className="w-5 h-5" />
+                                </span>
+                                <span className="performance-kpi-meta">Coaching Calls</span>
                             </div>
-                            <p className="text-2xl font-bold text-gray-900">{s?.training_calls ?? 0}</p>
-                            <p className="text-xs text-gray-500 mt-1">Training Calls <span className="text-gray-400">({s?.total_tickets ? ((s.training_calls / s.total_tickets) * 100).toFixed(0) : 0}%)</span></p>
-                        </div>
-                    </div>
+                            <p className="performance-kpi-value">{s?.training_calls ?? 0}</p>
+                            <p className="performance-kpi-label">
+                                {s?.total_tickets ? ((s.training_calls / s.total_tickets) * 100).toFixed(0) : 0}% of total ticket flow
+                            </p>
+                        </article>
+                    </section>
 
-                    {/* ───────── Row 2: Leaderboard + Top Performer ───────── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Leaderboard */}
-                        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                                <Trophy className="w-5 h-5 text-purple-600" />
-                                <h2 className="font-semibold text-gray-900">Leaderboard</h2>
+                    <section className="performance-main-grid">
+                        <div className="performance-card performance-panel performance-fade-up" style={{ animationDelay: '240ms' }}>
+                            <div className="performance-panel-head">
+                                <div className="performance-panel-title-wrap">
+                                    <Trophy className="performance-panel-icon" />
+                                    <h2 className="performance-panel-title">Leaderboard</h2>
+                                </div>
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                                <table className="performance-table">
                                     <thead>
-                                        <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide border-b border-gray-50">
-                                            <th className="px-5 py-3 w-12">#</th>
-                                            <th className="px-3 py-3">Employee</th>
-                                            <th className="px-3 py-3 text-center">Tickets</th>
-                                            <th className="px-3 py-3 text-center">Rating</th>
-                                            <th className="px-3 py-3 text-center">Completion</th>
-                                            <th className="px-3 py-3 text-center">Skills</th>
-                                            <th className="px-3 py-3 text-right">Score</th>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Employee</th>
+                                            <th className="text-center">Tickets</th>
+                                            <th className="text-center">Rating</th>
+                                            <th className="text-center">Completion</th>
+                                            <th className="text-center">Skills</th>
+                                            <th className="text-right">Score</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {leaderboard?.leaderboard?.map((entry) => (
                                             <tr
                                                 key={entry.user_id}
-                                                className={`border-b border-gray-50 hover:bg-purple-50/30 transition-colors ${entry.rank <= 3 ? 'bg-purple-50/20' : ''}`}
+                                                className={`performance-table-row ${entry.rank <= 3 ? 'is-podium' : ''}`}
+                                                title={`${entry.fullname}: ${entry.composite_score.toFixed(1)} score`}
                                             >
-                                                <td className="px-5 py-3">
-                                                    <MedalBadge rank={entry.rank} />
-                                                </td>
-                                                <td className="px-3 py-3">
-                                                    <div className="flex items-center gap-2.5">
+                                                <td><MedalBadge rank={entry.rank} /></td>
+                                                <td>
+                                                    <div className="performance-table-user">
                                                         <Avatar name={entry.fullname} src={entry.avatar_url} size="sm" />
-                                                        <div>
-                                                            <p className="font-medium text-gray-900 text-sm">{entry.fullname}</p>
-                                                            <p className="text-[11px] text-gray-400">{entry.role}</p>
+                                                        <div className="min-w-0">
+                                                            <p className="performance-table-user-name">{entry.fullname}</p>
+                                                            <p className="performance-table-user-role">{entry.role}</p>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-3 text-center text-gray-700 font-medium">{entry.total_tickets}</td>
-                                                <td className="px-3 py-3 text-center">
-                                                    <span className="inline-flex items-center gap-1 text-gray-700">
-                                                        <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                                                <td className="text-center performance-table-value">{entry.total_tickets}</td>
+                                                <td className="text-center performance-table-value">
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <Star className="w-3 h-3 fill-current" style={{ color: 'var(--performance-rating-star)' }} />
                                                         {entry.avg_rating_5.toFixed(1)}
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-3 text-center text-gray-700">{entry.completion_rate.toFixed(0)}%</td>
-                                                <td className="px-3 py-3 text-center text-gray-700">{entry.skill_avg.toFixed(1)}</td>
-                                                <td className="px-3 py-3 text-right">
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                                                <td className="text-center performance-table-value">{entry.completion_rate.toFixed(0)}%</td>
+                                                <td className="text-center performance-table-value">{entry.skill_avg.toFixed(1)}</td>
+                                                <td className="text-right">
+                                                    <span className="performance-score-pill" title="Composite performance score">
                                                         {entry.composite_score.toFixed(1)}
                                                     </span>
                                                 </td>
@@ -794,9 +851,7 @@ export default function PerformancePage() {
                                         ))}
                                         {(!leaderboard?.leaderboard || leaderboard.leaderboard.length === 0) && (
                                             <tr>
-                                                <td colSpan={7} className="px-5 py-8 text-center text-gray-400">
-                                                    No data available for this period
-                                                </td>
+                                                <td colSpan={7} className="performance-empty">No data available for this period</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -804,94 +859,94 @@ export default function PerformancePage() {
                             </div>
                         </div>
 
-                        {/* Top Performer Spotlight */}
-                        <div className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-xl shadow-lg p-6 text-white">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="text-2xl">🏆</span>
-                                <h2 className="font-semibold">Top Performer</h2>
+                        <aside className="performance-spotlight performance-fade-up" style={{ animationDelay: '280ms' }}>
+                            <div className="performance-spotlight-head">
+                                <Trophy className="w-5 h-5" />
+                                <h2>Top Performer</h2>
                             </div>
                             {topPerformer && topPerformerEmployee ? (
                                 <div className="flex flex-col items-center text-center">
                                     <Avatar name={topPerformer.fullname} src={topPerformer.avatar_url} size="lg" />
-                                    <h3 className="text-lg font-bold mt-3">{topPerformer.fullname}</h3>
-                                    <p className="text-purple-200 text-sm">{topPerformer.role}</p>
-                                    <div className="mt-4 w-full">
+                                    <h3 className="performance-spotlight-name">{topPerformer.fullname}</h3>
+                                    <p className="performance-spotlight-role">{topPerformer.role}</p>
+                                    <div className="performance-spotlight-chart">
                                         <RadarChartSVG
-                                            labels={skillKeys.slice(0, 6).map((k) => SKILL_LABELS[k])}
+                                            labels={skillKeys.slice(0, 6).map((k) => SKILL_CHART_LABELS[k])}
                                             values={skillKeys.slice(0, 6).map((k) => topPerformerEmployee.skills[k] || 0)}
-                                            size={160}
-                                            color="#e9d5ff"
+                                            size={168}
+                                            color="var(--performance-spotlight-radar)"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-3 gap-3 mt-4 w-full">
-                                        <div className="bg-white/10 rounded-lg p-2">
-                                            <p className="text-xs text-purple-200">Tickets</p>
-                                            <p className="text-lg font-bold">{topPerformer.total_tickets}</p>
+                                    <div className="performance-spotlight-stats">
+                                        <div className="performance-spotlight-stat" title="Total tickets handled">
+                                            <p className="performance-spotlight-stat-label">Tickets</p>
+                                            <p className="performance-spotlight-stat-value">{topPerformer.total_tickets}</p>
                                         </div>
-                                        <div className="bg-white/10 rounded-lg p-2">
-                                            <p className="text-xs text-purple-200">Rating</p>
-                                            <p className="text-lg font-bold">{topPerformer.avg_rating_5.toFixed(1)}</p>
+                                        <div className="performance-spotlight-stat" title="Average rating (out of 5)">
+                                            <p className="performance-spotlight-stat-label">Rating</p>
+                                            <p className="performance-spotlight-stat-value">{topPerformer.avg_rating_5.toFixed(1)}</p>
                                         </div>
-                                        <div className="bg-white/10 rounded-lg p-2">
-                                            <p className="text-xs text-purple-200">Score</p>
-                                            <p className="text-lg font-bold">{topPerformer.composite_score.toFixed(1)}</p>
+                                        <div className="performance-spotlight-stat" title="Composite performance score">
+                                            <p className="performance-spotlight-stat-label">Score</p>
+                                            <p className="performance-spotlight-stat-value">{topPerformer.composite_score.toFixed(1)}</p>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-purple-200 text-sm text-center mt-8">No data yet</p>
+                                <p className="performance-spotlight-empty">No data yet for this period.</p>
                             )}
-                        </div>
-                    </div>
+                        </aside>
+                    </section>
 
-                    {/* ───────── Row 3: Trend + Comparison ───────── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Rating Trend */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                            <div className="flex items-center gap-2 mb-4">
-                                <TrendingUp className="w-5 h-5 text-purple-600" />
-                                <h2 className="font-semibold text-gray-900">Team Rating Trend</h2>
+                    <section className="performance-dual-grid">
+                        <div className="performance-card performance-panel performance-fade-up" style={{ animationDelay: '300ms' }}>
+                            <div className="performance-panel-head">
+                                <div className="performance-panel-title-wrap">
+                                    <TrendingUp className="performance-panel-icon" />
+                                    <h2 className="performance-panel-title">Team Rating Trend</h2>
+                                </div>
                             </div>
-                            <AreaChartSVG data={trendChartData} width={520} height={180} />
+                            <AreaChartSVG data={trendChartData} width={520} height={188} xAxisLabel="Date" yAxisLabel="Avg Rating (/5)" />
                         </div>
 
-                        {/* Employee Comparison */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                            <div className="flex items-center gap-2 mb-4">
-                                <Users className="w-5 h-5 text-purple-600" />
-                                <h2 className="font-semibold text-gray-900">Top Employees by Rating</h2>
+                        <div className="performance-card performance-panel performance-fade-up" style={{ animationDelay: '340ms' }}>
+                            <div className="performance-panel-head">
+                                <div className="performance-panel-title-wrap">
+                                    <Users className="performance-panel-icon" />
+                                    <h2 className="performance-panel-title">Top Employees by Rating</h2>
+                                </div>
                             </div>
                             <BarChartSVG
                                 data={topEmployeesForComparison.map((e) => ({
                                     label: e.fullname.split(' ')[0],
                                     value: e.avg_rating_10,
-                                    color: '#8b5cf6',
+                                    color: 'var(--performance-accent)',
                                 }))}
                                 width={520}
-                                height={Math.max(140, topEmployeesForComparison.length * 34 + 16)}
+                                height={Math.max(140, topEmployeesForComparison.length * 34 + 18)}
+                                xAxisLabel="Rating (0 to 10)"
+                                valueFormatter={(value) => value.toFixed(2)}
                             />
                         </div>
-                    </div>
+                    </section>
 
-                    {/* ───────── Row 4: Skills Heatmap + Rating Distribution ───────── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Skills Heatmap */}
-                        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                                <Target className="w-5 h-5 text-purple-600" />
-                                <h2 className="font-semibold text-gray-900">Skills Heatmap</h2>
+                    <section className="performance-wide-grid">
+                        <div className="performance-card performance-panel performance-fade-up performance-panel-heatmap" style={{ animationDelay: '360ms' }}>
+                            <div className="performance-panel-head">
+                                <div className="performance-panel-title-wrap">
+                                    <Target className="performance-panel-icon" />
+                                    <h2 className="performance-panel-title">Skills Heatmap</h2>
+                                </div>
                             </div>
-                            <div className="overflow-x-auto p-4">
-                                <table className="w-full text-sm">
+                            <div className="overflow-x-auto">
+                                <table className="performance-heatmap-table">
                                     <thead>
                                         <tr>
-                                            <th className="text-left pb-2 pr-3 text-xs font-medium text-gray-500">Employee</th>
+                                            <th className="text-left">Employee</th>
                                             {skillKeys.map((k) => (
-                                                <th key={k} className="pb-2 px-1 text-center text-[10px] font-medium text-gray-500 whitespace-nowrap">
-                                                    {SKILL_LABELS[k]}
-                                                </th>
+                                                <th key={k}>{SKILL_LABELS[k]}</th>
                                             ))}
-                                            <th className="pb-2 px-1 text-center text-[10px] font-semibold text-purple-600">AVG</th>
+                                            <th className="performance-heatmap-avg-head">AVG</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -899,32 +954,28 @@ export default function PerformancePage() {
                                             ?.filter((e) => e.analyzed_tickets > 0)
                                             .sort((a, b) => b.skill_avg - a.skill_avg)
                                             .map((emp) => (
-                                                <tr key={emp.user_id} className="border-t border-gray-50">
-                                                    <td className="py-2 pr-3">
-                                                        <div className="flex items-center gap-2">
+                                                <tr key={emp.user_id} className="performance-heatmap-row">
+                                                    <td>
+                                                        <div className="performance-heatmap-user">
                                                             <Avatar name={emp.fullname} size="sm" />
-                                                            <span className="text-sm font-medium text-gray-800 whitespace-nowrap">
-                                                                {emp.fullname}
-                                                            </span>
+                                                            <span className="performance-heatmap-user-name">{emp.fullname}</span>
                                                         </div>
                                                     </td>
                                                     {skillKeys.map((k) => (
-                                                        <td key={k} className="py-2 px-1">
-                                                            <SkillHeatmapCell value={emp.skills[k]} />
+                                                        <td key={k}>
+                                                            <SkillHeatmapCell value={emp.skills[k]} label={SKILL_LABELS[k]} />
                                                         </td>
                                                     ))}
-                                                    <td className="py-2 px-1">
-                                                        <div className="bg-purple-50 text-purple-700 rounded px-2 py-1 text-center text-[11px] font-bold min-w-[40px]">
+                                                    <td>
+                                                        <span className="performance-skill-avg" title={`Average skill score: ${emp.skill_avg.toFixed(1)}`}>
                                                             {emp.skill_avg.toFixed(1)}
-                                                        </div>
+                                                        </span>
                                                     </td>
                                                 </tr>
                                             ))}
                                         {analytics?.employees?.filter((e) => e.analyzed_tickets > 0).length === 0 && (
                                             <tr>
-                                                <td colSpan={skillKeys.length + 2} className="py-6 text-center text-gray-400 text-sm">
-                                                    No analyzed tickets in this period
-                                                </td>
+                                                <td colSpan={skillKeys.length + 2} className="performance-empty">No analyzed tickets in this period</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -932,93 +983,95 @@ export default function PerformancePage() {
                             </div>
                         </div>
 
-                        {/* Rating Distribution */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                            <div className="flex items-center gap-2 mb-4">
-                                <BarChart3 className="w-5 h-5 text-purple-600" />
-                                <h2 className="font-semibold text-gray-900">Rating Distribution</h2>
+                        <div className="performance-card performance-panel performance-fade-up" style={{ animationDelay: '400ms' }}>
+                            <div className="performance-panel-head">
+                                <div className="performance-panel-title-wrap">
+                                    <BarChart3 className="performance-panel-icon" />
+                                    <h2 className="performance-panel-title">Rating Distribution</h2>
+                                </div>
                             </div>
                             <BarChartSVG
                                 data={ratingDistChart}
                                 width={320}
                                 height={200}
+                                xAxisLabel="Number of Employees"
                             />
                         </div>
-                    </div>
+                    </section>
 
-                    {/* ───────── Row 5: Employee Cards ───────── */}
-                    <div>
-                        <div className="flex items-center gap-2 mb-4">
-                            <Users className="w-5 h-5 text-purple-600" />
-                            <h2 className="font-semibold text-gray-900">Individual Performance</h2>
-                            <span className="text-xs text-gray-400">({analytics?.employees?.length ?? 0} employees)</span>
+                    <section className="performance-fade-up" style={{ animationDelay: '440ms' }}>
+                        <div className="performance-section-head">
+                            <div className="performance-panel-title-wrap">
+                                <Users className="performance-panel-icon" />
+                                <h2 className="performance-panel-title">Individual Performance</h2>
+                            </div>
+                            <span className="performance-employee-count">({analytics?.employees?.length ?? 0} employees)</span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {analytics?.employees?.map((emp) => (
-                                <div
+                        <div className="performance-employee-grid">
+                            {analytics?.employees?.map((emp, index) => (
+                                <article
                                     key={emp.user_id}
-                                    className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-purple-200 transition-all group"
+                                    className="performance-card performance-employee-card group performance-fade-up"
+                                    style={{ animationDelay: `${480 + Math.min(index, 6) * 40}ms` }}
+                                    title={`${emp.fullname}: ${emp.avg_rating_5.toFixed(1)} rating, ${emp.completion_rate.toFixed(0)}% completion`}
                                 >
-                                    <div className="flex items-center gap-3 mb-4">
+                                    <div className="performance-employee-head">
                                         <div
                                             className={`relative ${isSuperAdmin ? 'cursor-pointer group/avatar' : ''}`}
                                             onClick={() => handleAvatarClick(emp.user_id)}
                                         >
                                             <Avatar
                                                 name={emp.fullname}
-                                                src={emp.avatar_url} // Ensure API returns avatar_url. Previously verified users endpoint does. Analytics endpoint might need it.
+                                                src={emp.avatar_url}
                                                 onlineStatus={!!employeeStatuses[emp.user_id]}
                                             />
                                             {isSuperAdmin && (
-                                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                                                <div className="performance-avatar-overlay">
                                                     <Camera className="w-4 h-4 text-white" />
                                                 </div>
                                             )}
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="font-semibold text-gray-900 text-sm truncate">{emp.fullname}</p>
-                                            <p className="text-[11px] text-gray-400 capitalize">{emp.role}</p>
+                                            <p className="performance-employee-name">{emp.fullname}</p>
+                                            <p className="performance-employee-role">{emp.role}</p>
                                         </div>
                                     </div>
 
-                                    {/* Mini Radar */}
                                     <div className="flex justify-center mb-3">
                                         <RadarChartSVG
-                                            labels={skillKeys.slice(0, 6).map((k) => SKILL_LABELS[k])}
+                                            labels={skillKeys.slice(0, 6).map((k) => SKILL_CHART_LABELS[k])}
                                             values={skillKeys.slice(0, 6).map((k) => emp.skills[k] || 0)}
-                                            size={130}
+                                            size={134}
                                         />
                                     </div>
 
-                                    {/* Stats Row */}
-                                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                                        <div className="text-center">
-                                            <p className="text-lg font-bold text-gray-900">{emp.total_tickets}</p>
-                                            <p className="text-[10px] text-gray-400">Tickets</p>
+                                    <div className="performance-employee-stats">
+                                        <div className="performance-employee-stat">
+                                            <p className="performance-employee-stat-value">{emp.total_tickets}</p>
+                                            <p className="performance-employee-stat-label">Tickets</p>
                                         </div>
-                                        <div className="text-center">
-                                            <p className="text-lg font-bold text-gray-900 flex items-center gap-1 justify-center">
-                                                <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                                        <div className="performance-employee-stat">
+                                            <p className="performance-employee-stat-value inline-flex items-center justify-center gap-1">
+                                                <Star className="w-3.5 h-3.5 fill-current" style={{ color: 'var(--performance-rating-star)' }} />
                                                 {emp.avg_rating_5.toFixed(1)}
                                             </p>
-                                            <p className="text-[10px] text-gray-400">Rating</p>
+                                            <p className="performance-employee-stat-label">Rating</p>
                                         </div>
-                                        <div className="text-center">
-                                            <p className="text-lg font-bold text-gray-900">{emp.completion_rate.toFixed(0)}%</p>
-                                            <p className="text-[10px] text-gray-400">Complete</p>
+                                        <div className="performance-employee-stat">
+                                            <p className="performance-employee-stat-value">{emp.completion_rate.toFixed(0)}%</p>
+                                            <p className="performance-employee-stat-label">Complete</p>
                                         </div>
                                     </div>
 
-                                    {/* Sparkline */}
                                     {emp.recent_ratings.length >= 2 && (
-                                        <div className="mt-3 flex justify-center">
-                                            <SparklineSVG data={emp.recent_ratings.map((r) => r.rating)} width={140} height={28} />
+                                        <div className="performance-employee-sparkline">
+                                            <SparklineSVG data={emp.recent_ratings.map((r) => r.rating)} width={152} height={30} />
                                         </div>
                                     )}
-                                </div>
+                                </article>
                             ))}
                         </div>
-                    </div>
+                    </section>
                 </div>
                 <input
                     type="file"
