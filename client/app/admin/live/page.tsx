@@ -1,15 +1,26 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminShell } from '@/components/AdminShell';
 import { getToken, API_URL } from '@/stores/authStore';
 import {
-    Loader2, User, Mic, Wifi, WifiOff, Clock,
-    BatteryLow, BatteryMedium, BatteryFull, BatteryWarning,
-    MapPin, FileText, Radio
+    Loader2,
+    User,
+    Mic,
+    Wifi,
+    WifiOff,
+    Clock,
+    BatteryLow,
+    BatteryMedium,
+    BatteryFull,
+    BatteryWarning,
+    MapPin,
+    FileText,
+    Radio,
+    Users,
+    RefreshCw
 } from 'lucide-react';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import type { LucideIcon } from 'lucide-react';
 
 interface CurrentTicket {
     id: string;
@@ -40,7 +51,14 @@ interface EmployeeStatus {
     };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type BatteryTone = 'good' | 'warn' | 'critical' | 'unknown';
+
+interface BatteryState {
+    level: number | null;
+    tone: BatteryTone;
+    icon: LucideIcon;
+    label: string;
+}
 
 function relativeTime(iso: string | null): string {
     if (!iso) return '';
@@ -48,46 +66,101 @@ function relativeTime(iso: string | null): string {
     if (diff < 10) return 'just now';
     if (diff < 60) return `${diff}s ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    return new Date(iso).toLocaleTimeString();
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatLastSeen(iso: string | null): string {
+    if (!iso) return 'Awaiting signal';
+    const dt = new Date(iso);
+    const today = new Date();
+    const sameDay = dt.toDateString() === today.toDateString();
+    if (sameDay) {
+        return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    return dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) + `, ${dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
 function formatVisitType(raw: string): string {
     return raw.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+function initialsFromName(name: string): string {
+    const cleaned = name.trim();
+    if (!cleaned) return 'NA';
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    return parts
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() || '')
+        .join('') || cleaned.slice(0, 2).toUpperCase();
+}
 
-function BatteryIndicator({ level, updatedAt }: { level: number | null; updatedAt: string | null }) {
-    if (level === null) return null;
-    const color = level >= 50 ? 'text-green-600' : level >= 20 ? 'text-amber-500' : 'text-red-500';
-    const BgColor = level >= 50 ? 'bg-green-50' : level >= 20 ? 'bg-amber-50' : 'bg-red-50';
-    const BorderColor = level >= 50 ? 'border-green-100' : level >= 20 ? 'border-amber-100' : 'border-red-100';
-    const Icon = level >= 75 ? BatteryFull : level >= 50 ? BatteryMedium : level >= 20 ? BatteryLow : BatteryWarning;
+function getBatteryState(level: number | null | undefined): BatteryState {
+    const normalizedLevel = typeof level === 'number' && Number.isFinite(level)
+        ? Math.max(0, Math.min(100, Math.round(level)))
+        : null;
+
+    const tone: BatteryTone = normalizedLevel === null
+        ? 'unknown'
+        : normalizedLevel >= 70
+            ? 'good'
+            : normalizedLevel >= 35
+                ? 'warn'
+                : 'critical';
+
+    const icon = normalizedLevel === null
+        ? BatteryWarning
+        : normalizedLevel >= 80
+            ? BatteryFull
+            : normalizedLevel >= 50
+                ? BatteryMedium
+                : normalizedLevel >= 20
+                    ? BatteryLow
+                    : BatteryWarning;
+
+    return {
+        level: normalizedLevel,
+        tone,
+        icon,
+        label: normalizedLevel === null ? 'Not reported' : `${normalizedLevel}%`
+    };
+}
+
+function BatteryIndicator({ level, updatedAt }: { level: number | null | undefined; updatedAt: string | null }) {
+    const batteryState = getBatteryState(level);
+    const Icon = batteryState.icon;
 
     return (
-        <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Battery</span>
-            <div className={`flex items-center gap-1.5 rounded-full ${BgColor} border ${BorderColor} px-2.5 py-1`}>
-                <Icon className={`h-3.5 w-3.5 ${color}`} />
-                <span className={`text-xs font-semibold ${color}`}>{level}%</span>
-                {updatedAt && (
-                    <span className="text-xs text-gray-400 ml-0.5">{relativeTime(updatedAt)}</span>
-                )}
+        <div className="live-meta-row">
+            <span className="live-meta-label">Battery</span>
+            <div className={`live-battery-pill is-${batteryState.tone}`}>
+                <Icon className="h-3.5 w-3.5" />
+                <span className="live-battery-value">{batteryState.label}</span>
+                {updatedAt && <span className="live-battery-time">{relativeTime(updatedAt)}</span>}
             </div>
         </div>
     );
 }
 
-function ActivityBadge({ isRecording }: { isRecording: boolean }) {
+function ActivityBadge({ isRecording, isOnline }: { isRecording: boolean; isOnline: boolean }) {
     if (isRecording) {
         return (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 border border-red-100 animate-pulse">
-                <Mic className="h-3 w-3 fill-red-600 text-red-600" />
+            <span className="live-activity-pill is-recording">
+                <Mic className="h-3 w-3 fill-current" />
                 Recording
             </span>
         );
     }
-    return <span className="text-xs text-gray-400 italic">Idle</span>;
+
+    if (isOnline) {
+        return (
+            <span className="live-activity-pill is-idle">
+                <span className="live-activity-dot" />
+                Idle
+            </span>
+        );
+    }
+
+    return <span className="live-activity-pill is-offline">Idle</span>;
 }
 
 function AssignedRow({ ticket, clientId }: { ticket: CurrentTicket | null; clientId: string | null }) {
@@ -95,25 +168,25 @@ function AssignedRow({ ticket, clientId }: { ticket: CurrentTicket | null; clien
     if (!label) return null;
 
     return (
-        <div className="flex items-start justify-between gap-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide flex-shrink-0 mt-0.5">Assigned</span>
-            <div className="flex flex-col items-end gap-1 min-w-0">
-                <div className="flex items-center gap-1.5 min-w-0">
-                    <MapPin className="h-3 w-3 text-purple-400 flex-shrink-0" />
-                    <span className="text-xs font-medium text-gray-800 truncate max-w-[130px]">{label}</span>
+        <div className="live-meta-row is-assigned">
+            <span className="live-meta-label">Assigned</span>
+            <div className="live-assigned-wrap">
+                <div className="live-assigned-client-wrap">
+                    <MapPin className="h-3 w-3 live-assigned-icon" />
+                    <span className="live-assigned-client">{label}</span>
                 </div>
                 {ticket && (
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400">
+                    <div className="live-assigned-ticket">
+                        <span className="live-assigned-ticket-info">
                             {formatVisitType(ticket.visit_type)} #{ticket.visit_number}
                         </span>
                         {ticket.is_draft ? (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            <span className="live-mini-pill is-draft">
                                 <FileText className="h-2.5 w-2.5" />
                                 Draft
                             </span>
                         ) : (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 border border-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
+                            <span className="live-mini-pill is-live">
                                 <Radio className="h-2.5 w-2.5" />
                                 Live
                             </span>
@@ -125,12 +198,21 @@ function AssignedRow({ ticket, clientId }: { ticket: CurrentTicket | null; clien
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
 export default function LiveStatusPage() {
     const [statuses, setStatuses] = useState<EmployeeStatus[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+    const [updatedPulse, setUpdatedPulse] = useState(false);
+    const [avatarErrorMap, setAvatarErrorMap] = useState<Record<string, boolean>>({});
+    const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const triggerUpdatePulse = () => {
+        setUpdatedPulse(true);
+        if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
+        pulseTimeoutRef.current = setTimeout(() => {
+            setUpdatedPulse(false);
+        }, 1100);
+    };
 
     const fetchStatus = useCallback(async () => {
         try {
@@ -138,13 +220,14 @@ export default function LiveStatusPage() {
             if (!token) return;
 
             const res = await fetch(`${API_URL}/employee/status`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` }
             });
 
             if (res.ok) {
                 const data = await res.json();
-                setStatuses(data.statuses);
+                setStatuses(Array.isArray(data.statuses) ? data.statuses : []);
                 setLastUpdated(new Date());
+                triggerUpdatePulse();
             }
         } catch (error) {
             console.error('Failed to fetch status:', error);
@@ -155,133 +238,160 @@ export default function LiveStatusPage() {
 
     useEffect(() => {
         void fetchStatus();
-        const interval = setInterval(() => { void fetchStatus(); }, 10000);
-        return () => clearInterval(interval);
+        const interval = setInterval(() => {
+            void fetchStatus();
+        }, 10000);
+
+        return () => {
+            clearInterval(interval);
+            if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
+        };
     }, [fetchStatus]);
 
-    // Sort: online employees first
-    const sorted = [...statuses].sort((a, b) =>
-        Number(b.status.is_online) - Number(a.status.is_online)
-    );
+    const sorted = [...statuses].sort((a, b) => Number(b.status.is_online) - Number(a.status.is_online));
+    const onlineCount = sorted.filter((entry) => entry.status.is_online).length;
+    const recordingCount = sorted.filter((entry) => entry.status.is_online && entry.status.is_recording).length;
 
     return (
         <AdminShell activeSection="live">
-            <div className="mb-6 flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Live Employee Status</h1>
-                    <p className="text-sm text-gray-500">Real-time monitoring of team activity</p>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
-                </div>
-            </div>
+            <section className={`live-status-page ${updatedPulse ? 'is-fresh' : ''}`}>
+                <div className="live-status-head">
+                    <div className="live-status-copy">
+                        <h1 className="live-status-title">Live Employee Status</h1>
+                        <p className="live-status-subtitle">Real-time monitoring of team activity</p>
+                    </div>
 
-            {loading ? (
-                <div className="flex justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {sorted.map(({ user, status }) => (
-                        <div
-                            key={user.id}
-                            className={`relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm transition-all hover:shadow-md ${status.is_online ? 'border-green-200' : 'border-gray-100 opacity-75'
-                                }`}
-                        >
-                            {/* Online indicator bar */}
-                            <div className={`absolute top-0 left-0 h-1 w-full ${status.is_online ? 'bg-green-500' : 'bg-gray-200'}`} />
+                    <div className="live-status-metrics">
+                        <div className="live-status-chip is-team">
+                            <Users className="h-3.5 w-3.5" />
+                            <span className="live-status-chip-label">Team</span>
+                            <span className={`live-status-chip-value ${updatedPulse ? 'is-fresh' : ''}`}>{sorted.length}</span>
+                        </div>
+                        <div className="live-status-chip is-online">
+                            <Wifi className="h-3.5 w-3.5" />
+                            <span className="live-status-chip-label">Online</span>
+                            <span className={`live-status-chip-value ${updatedPulse ? 'is-fresh' : ''}`}>{onlineCount}</span>
+                        </div>
+                        <div className="live-status-chip is-recording">
+                            <Mic className="h-3.5 w-3.5" />
+                            <span className="live-status-chip-label">Recording</span>
+                            <span className={`live-status-chip-value ${updatedPulse ? 'is-fresh' : ''}`}>{recordingCount}</span>
+                        </div>
+                    </div>
 
-                            {/* Header: avatar + name + wifi */}
-                            <div className="flex items-start justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className={`flex h-12 w-12 items-center justify-center rounded-full border-2 ${status.is_online ? 'border-green-100 bg-green-50' : 'border-gray-100 bg-gray-50'}`}>
-                                        {user.avatar_url ? (
-                                            <img src={user.avatar_url} alt={user.fullname} className="h-full w-full rounded-full object-cover" />
-                                        ) : (
-                                            <User className={`h-6 w-6 ${status.is_online ? 'text-green-600' : 'text-gray-400'}`} />
+                    <div className="live-status-updated" aria-live="polite">
+                        <RefreshCw className={`live-status-refresh-icon ${updatedPulse ? 'is-refreshing' : ''}`} />
+                        <span className="live-status-live-indicator">
+                            <span className="live-status-live-dot" />
+                            Live
+                        </span>
+                        <span className="live-status-updated-time">{lastUpdated.toLocaleTimeString()}</span>
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div className="live-status-loading">
+                        <Loader2 className="live-status-loading-spinner" />
+                        <span className="live-status-loading-text">Syncing employee heartbeat...</span>
+                    </div>
+                ) : (
+                    <div className="live-status-grid">
+                        {sorted.map(({ user, status }, index) => {
+                            const stateTone = status.is_recording ? 'recording' : status.is_online ? 'online' : 'offline';
+                            const lastSeen = formatLastSeen(status.last_heartbeat);
+                            const batteryState = getBatteryState(status.battery_level);
+                            const BatteryIcon = batteryState.icon;
+                            const showAvatarImage = Boolean(user.avatar_url) && !avatarErrorMap[user.id];
+                            const initials = initialsFromName(user.fullname);
+
+                            return (
+                                <article
+                                    key={user.id}
+                                    className={`live-status-card is-${stateTone}`}
+                                    style={{ animationDelay: `${Math.min(index * 48, 320)}ms` }}
+                                >
+                                    <span className={`live-status-rail is-${stateTone}`} />
+
+                                    <div className="live-card-head">
+                                        <div className="live-card-user">
+                                            <div className={`live-avatar is-${stateTone}`}>
+                                                {showAvatarImage ? (
+                                                    <img
+                                                        src={user.avatar_url}
+                                                        alt={user.fullname}
+                                                        className="live-avatar-image"
+                                                        onError={() => {
+                                                            setAvatarErrorMap((prev) => ({ ...prev, [user.id]: true }));
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <span className="live-avatar-initials">{initials}</span>
+                                                )}
+                                                <span className={`live-avatar-signal is-${stateTone}`} />
+                                            </div>
+                                            <div className="live-user-copy">
+                                                <h3 className="live-employee-name">{user.fullname}</h3>
+                                                <p className="live-employee-email">{user.email}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className={`live-head-status is-${stateTone}`}>
+                                            <span className="live-head-status-main">
+                                                {status.is_online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+                                                {status.is_recording ? 'Recording' : status.is_online ? 'Online' : 'Offline'}
+                                            </span>
+                                            {!status.is_online && (
+                                                <span className="live-head-status-meta">
+                                                    <Clock className="h-3 w-3" />
+                                                    Seen {lastSeen}
+                                                </span>
+                                            )}
+                                            {status.is_online && (
+                                                <span className={`live-head-status-meta is-battery is-${batteryState.tone}`}>
+                                                    <BatteryIcon className="h-3 w-3" />
+                                                    {batteryState.label}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="live-card-body">
+                                        <div className="live-activity-block">
+                                            <span className="live-block-label">Activity:</span>
+                                            <ActivityBadge isRecording={status.is_recording} isOnline={status.is_online} />
+                                        </div>
+
+                                        {status.is_online && (status.current_ticket || status.current_client_id) && (
+                                            <AssignedRow ticket={status.current_ticket} clientId={status.current_client_id} />
+                                        )}
+
+                                        {status.is_online && (
+                                            <BatteryIndicator level={status.battery_level} updatedAt={status.battery_updated_at} />
                                         )}
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900">{user.fullname}</h3>
-                                        <p className="text-xs text-gray-500">{user.email}</p>
-                                    </div>
-                                </div>
 
-                                {status.is_online ? (
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100" title="Online">
-                                        <Wifi className="h-3.5 w-3.5 text-green-600" />
-                                    </div>
-                                ) : (
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100" title="Offline">
-                                        <WifiOff className="h-3.5 w-3.5 text-gray-400" />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="mt-5 space-y-3">
-                                {/* Status badge */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status</span>
-                                    {status.is_online ? (
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 border border-green-100">
-                                            <span className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                                            </span>
-                                            Online
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
-                                            Offline
+                                    {status.is_recording && (
+                                        <span className="live-recording-ribbon">
+                                            <Mic className="h-3 w-3 fill-current" />
+                                            Recording
                                         </span>
                                     )}
+                                </article>
+                            );
+                        })}
+
+                        {statuses.length === 0 && (
+                            <div className="live-status-empty">
+                                <div className="live-status-empty-icon">
+                                    <User className="h-8 w-8" />
                                 </div>
-
-                                {/* Activity: Recording / Idle */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Activity</span>
-                                    <ActivityBadge isRecording={status.is_recording} />
-                                </div>
-
-                                {/* Assigned ticket/client (only when online + has context) */}
-                                {status.is_online && (status.current_ticket || status.current_client_id) && (
-                                    <AssignedRow
-                                        ticket={status.current_ticket}
-                                        clientId={status.current_client_id}
-                                    />
-                                )}
-
-                                {/* Battery (only when online + battery reported) */}
-                                {status.is_online && (
-                                    <BatteryIndicator
-                                        level={status.battery_level}
-                                        updatedAt={status.battery_updated_at}
-                                    />
-                                )}
-
-                                {/* Last seen (offline only) */}
-                                {!status.is_online && status.last_heartbeat && (
-                                    <div className="pt-2 mt-2 border-t border-gray-50 flex items-center gap-1.5 text-xs text-gray-400">
-                                        <Clock className="h-3 w-3" />
-                                        <span>Last seen: {new Date(status.last_heartbeat).toLocaleString()}</span>
-                                    </div>
-                                )}
+                                <h3 className="live-status-empty-title">No Employees Found</h3>
+                                <p className="live-status-empty-text">No users with &apos;employee&apos; or &apos;intern&apos; role found.</p>
                             </div>
-                        </div>
-                    ))}
-
-                    {statuses.length === 0 && (
-                        <div className="col-span-full py-12 text-center">
-                            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 mb-4">
-                                <User className="h-8 w-8 text-gray-300" />
-                            </div>
-                            <h3 className="text-lg font-medium text-gray-900">No Employees Found</h3>
-                            <p className="text-gray-500 mt-1">No users with &apos;employee&apos; or &apos;intern&apos; role found.</p>
-                        </div>
-                    )}
-                </div>
-            )}
+                        )}
+                    </div>
+                )}
+            </section>
         </AdminShell>
     );
 }

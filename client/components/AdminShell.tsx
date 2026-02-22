@@ -209,7 +209,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
 
             <aside
                 className={`admin-shell-sidebar fixed inset-y-0 left-0 z-50 flex transition-all duration-300 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-                    } ${collapsed ? 'w-20' : 'w-64'}`}
+                    } ${collapsed ? 'w-20' : 'w-[240px]'}`}
             >
                 <div className="flex h-full w-full flex-col">
                     <div className={`admin-shell-brand relative flex items-center px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
@@ -308,7 +308,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                 </div>
             </aside>
 
-            <div className={`admin-shell-content transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+            <div className={`admin-shell-content transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-[240px]'}`}>
                 <div className="min-h-screen">{children}</div>
             </div>
         </div>
