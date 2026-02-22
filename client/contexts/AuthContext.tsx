@@ -328,8 +328,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             // Force logout if expired
             if (remaining <= 0) {
-                console.log('Session expired for superadmin. Auto-logging out (DISABLED).');
-                // signOut(); // DISABLED per user request
+                console.log('Session expired for superadmin. Auto-logging out.');
+                void signOut();
                 return;
             }
         };
