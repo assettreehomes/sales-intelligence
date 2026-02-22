@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 interface HeatmapData {
@@ -16,6 +17,150 @@ interface TicketHeatmapProps {
 
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+type HeatmapTone = {
+    bg: string;
+    hoverBg: string;
+    border: string;
+    text: string;
+    badgeBg: string;
+    badgeBorder: string;
+    badgeText: string;
+};
+
+const LIGHT_HEATMAP_TONES: HeatmapTone[] = [
+    {
+        bg: '#ffffff',
+        hoverBg: '#f4f7fb',
+        border: '#d9e2ee',
+        text: '#243246',
+        badgeBg: 'rgba(255, 255, 255, 0.9)',
+        badgeBorder: '#c6d3e4',
+        badgeText: '#2f445e',
+    },
+    {
+        bg: '#f3eeff',
+        hoverBg: '#ebe2ff',
+        border: '#e1d3ff',
+        text: '#38245a',
+        badgeBg: 'rgba(250, 246, 255, 0.92)',
+        badgeBorder: '#d0b9ff',
+        badgeText: '#6530b0',
+    },
+    {
+        bg: '#e5d8ff',
+        hoverBg: '#dbc8ff',
+        border: '#cdb3ff',
+        text: '#321b55',
+        badgeBg: 'rgba(247, 240, 255, 0.9)',
+        badgeBorder: '#be9dff',
+        badgeText: '#5d2ba8',
+    },
+    {
+        bg: '#cdb1ff',
+        hoverBg: '#c3a0ff',
+        border: '#b08df1',
+        text: '#2b114f',
+        badgeBg: 'rgba(241, 232, 255, 0.9)',
+        badgeBorder: '#a27de8',
+        badgeText: '#4d1f93',
+    },
+    {
+        bg: '#ab7df3',
+        hoverBg: '#9a68eb',
+        border: '#935adf',
+        text: '#ffffff',
+        badgeBg: 'rgba(8, 10, 22, 0.34)',
+        badgeBorder: 'rgba(255, 255, 255, 0.38)',
+        badgeText: '#ffffff',
+    },
+    {
+        bg: '#833fd8',
+        hoverBg: '#742ec7',
+        border: '#6a24bb',
+        text: '#ffffff',
+        badgeBg: 'rgba(7, 9, 19, 0.38)',
+        badgeBorder: 'rgba(255, 255, 255, 0.4)',
+        badgeText: '#ffffff',
+    },
+];
+
+const DARK_HEATMAP_TONES: HeatmapTone[] = [
+    {
+        bg: '#102447',
+        hoverBg: '#16315a',
+        border: '#2c4a71',
+        text: '#cfe0fb',
+        badgeBg: 'rgba(20, 39, 73, 0.9)',
+        badgeBorder: '#3a5a85',
+        badgeText: '#cfe0fb',
+    },
+    {
+        bg: '#1b2f5a',
+        hoverBg: '#253b6c',
+        border: '#36517f',
+        text: '#d8e5ff',
+        badgeBg: 'rgba(39, 56, 98, 0.88)',
+        badgeBorder: '#4f69a0',
+        badgeText: '#d8e5ff',
+    },
+    {
+        bg: '#2a3168',
+        hoverBg: '#353c77',
+        border: '#46508f',
+        text: '#ece7ff',
+        badgeBg: 'rgba(54, 59, 114, 0.88)',
+        badgeBorder: '#646eb2',
+        badgeText: '#ece7ff',
+    },
+    {
+        bg: '#3d3a7e',
+        hoverBg: '#4a458d',
+        border: '#6159a9',
+        text: '#f3edff',
+        badgeBg: 'rgba(66, 61, 134, 0.9)',
+        badgeBorder: '#7b74c9',
+        badgeText: '#f3edff',
+    },
+    {
+        bg: '#58449a',
+        hoverBg: '#654fac',
+        border: '#7a63c3',
+        text: '#ffffff',
+        badgeBg: 'rgba(11, 16, 35, 0.5)',
+        badgeBorder: 'rgba(255, 255, 255, 0.42)',
+        badgeText: '#ffffff',
+    },
+    {
+        bg: '#724dca',
+        hoverBg: '#7e5ad7',
+        border: '#9573e6',
+        text: '#ffffff',
+        badgeBg: 'rgba(9, 12, 28, 0.56)',
+        badgeBorder: 'rgba(255, 255, 255, 0.44)',
+        badgeText: '#ffffff',
+    },
+];
+
+const LIGHT_SELECTED_TONE: HeatmapTone = {
+    bg: '#6a24bb',
+    hoverBg: '#5d1fa7',
+    border: '#5a199f',
+    text: '#ffffff',
+    badgeBg: 'rgba(7, 9, 19, 0.46)',
+    badgeBorder: 'rgba(255, 255, 255, 0.44)',
+    badgeText: '#ffffff',
+};
+
+const DARK_SELECTED_TONE: HeatmapTone = {
+    bg: '#8a63ea',
+    hoverBg: '#7d58de',
+    border: '#aa8dfa',
+    text: '#ffffff',
+    badgeBg: 'rgba(8, 12, 28, 0.62)',
+    badgeBorder: 'rgba(255, 255, 255, 0.45)',
+    badgeText: '#ffffff',
+};
+
 function getIntensityLevel(count: number, max: number): number {
     if (count <= 0 || max <= 0) return 0;
     const ratio = count / max;
@@ -26,8 +171,17 @@ function getIntensityLevel(count: number, max: number): number {
     return 1;
 }
 
+function getHeatmapTone(level: number, isSelected: boolean, isDarkTheme: boolean): HeatmapTone {
+    if (isSelected) return isDarkTheme ? DARK_SELECTED_TONE : LIGHT_SELECTED_TONE;
+
+    const tones = isDarkTheme ? DARK_HEATMAP_TONES : LIGHT_HEATMAP_TONES;
+    const normalizedLevel = Math.max(0, Math.min(5, level));
+    return tones[normalizedLevel];
+}
+
 export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps) {
     const { session } = useAuth();
+    const { theme } = useTheme();
     const [data, setData] = useState<HeatmapData[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -128,15 +282,8 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
         year: 'numeric',
     });
 
-    const getLevelClasses = (level: number, isSelected: boolean) => {
-        if (isSelected) return 'bg-purple-700 border-purple-600 text-white shadow-sm';
-        if (level >= 5) return 'bg-purple-400 border-purple-400 text-gray-900 hover:bg-purple-500';
-        if (level === 4) return 'bg-purple-300 border-purple-300 text-gray-900 hover:bg-purple-400';
-        if (level === 3) return 'bg-purple-200 border-purple-200 text-gray-900 hover:bg-purple-300';
-        if (level === 2) return 'bg-purple-100 border-purple-200 text-gray-900 hover:bg-purple-200';
-        if (level === 1) return 'bg-purple-50 border-purple-100 text-gray-900 hover:bg-purple-100';
-        return 'bg-white border-gray-200 text-gray-900 hover:bg-gray-50';
-    };
+    const isDarkTheme = theme === 'dark';
+    const legendTones = (isDarkTheme ? DARK_HEATMAP_TONES : LIGHT_HEATMAP_TONES).slice(1);
 
     if (loading) {
         return (
@@ -206,11 +353,13 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
 
                 <div className="inline-flex flex-wrap items-center gap-2 text-sm text-gray-500" aria-label="Heatmap intensity scale">
                     <span>Low</span>
-                    <span className="h-3 w-3 rounded bg-purple-50" />
-                    <span className="h-3 w-3 rounded bg-purple-100" />
-                    <span className="h-3 w-3 rounded bg-purple-200" />
-                    <span className="h-3 w-3 rounded bg-purple-300" />
-                    <span className="h-3 w-3 rounded bg-purple-400" />
+                    {legendTones.map((tone, index) => (
+                        <span
+                            key={`legend-${index + 1}`}
+                            className="h-3 w-3 rounded border"
+                            style={{ backgroundColor: tone.bg, borderColor: tone.border }}
+                        />
+                    ))}
                     <span>High</span>
                     <span className="font-medium text-gray-600">0 to {monthStats.max} tickets</span>
                 </div>
@@ -246,7 +395,33 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
                             ? `${Math.abs(deltaPct).toFixed(0)}% ${deltaPct >= 0 ? 'above' : 'below'} month avg`
                             : 'No month average yet';
                         const tooltip = `${dateForCompare.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${count} ${count === 1 ? 'ticket' : 'tickets'} - ${deltaText}`;
+                        const tone = getHeatmapTone(level, isSelected, isDarkTheme);
                         const isStrong = level >= 4 || isSelected;
+                        const dayNumberStyle: React.CSSProperties = isToday
+                            ? {
+                                backgroundColor: isDarkTheme ? '#f8fafc' : '#0f172a',
+                                color: isDarkTheme ? '#0f172a' : '#ffffff',
+                            }
+                            : {
+                                color: tone.text,
+                            };
+                        const cellStyle = {
+                            '--heatmap-bg': tone.bg,
+                            '--heatmap-bg-hover': tone.hoverBg,
+                            '--heatmap-border': tone.border,
+                            '--heatmap-text': tone.text,
+                        } as React.CSSProperties;
+                        const badgeStyle: React.CSSProperties = isStrong
+                            ? {
+                                borderColor: 'rgba(255, 255, 255, 0.4)',
+                                backgroundColor: isDarkTheme ? 'rgba(9, 12, 28, 0.55)' : 'rgba(17, 24, 39, 0.32)',
+                                color: '#ffffff',
+                            }
+                            : {
+                                borderColor: tone.badgeBorder,
+                                backgroundColor: tone.badgeBg,
+                                color: tone.badgeText,
+                            };
 
                         return (
                             <button
@@ -254,18 +429,14 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
                                 type="button"
                                 onClick={() => onDateSelect?.(isSelected ? null : dateStr)}
                                 title={tooltip}
-                                className={`group relative min-h-[88px] rounded-lg border p-2 text-left transition-all ${getLevelClasses(level, isSelected)}`}
+                                style={cellStyle}
+                                className="group relative min-h-[88px] rounded-lg border p-2 text-left transition-colors duration-200 [background-color:var(--heatmap-bg)] hover:[background-color:var(--heatmap-bg-hover)] [border-color:var(--heatmap-border)] [color:var(--heatmap-text)]"
                                 aria-label={tooltip}
                             >
                                 <div className="flex items-start justify-start">
                                     <span
-                                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                                            isToday
-                                                ? 'bg-black text-white'
-                                                : isStrong
-                                                    ? 'text-white'
-                                                    : 'text-gray-800'
-                                        }`}
+                                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-semibold"
+                                        style={dayNumberStyle}
                                     >
                                         {dayNumber}
                                     </span>
@@ -273,11 +444,8 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
 
                                 {count > 0 && (
                                     <span
-                                        className={`absolute bottom-2 right-2 inline-flex min-w-6 items-center justify-center rounded-full border px-1.5 py-0.5 text-xs font-bold ${
-                                            isStrong
-                                                ? 'border-white/35 bg-black/25 text-white'
-                                                : 'border-purple-300 bg-white/80 text-purple-800'
-                                        }`}
+                                        style={badgeStyle}
+                                        className="absolute bottom-2 right-2 inline-flex min-w-6 items-center justify-center rounded-full border px-1.5 py-0.5 text-xs font-bold"
                                     >
                                         {count}
                                     </span>

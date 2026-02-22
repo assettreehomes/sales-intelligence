@@ -1294,6 +1294,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         );
     }
 
+    const agentName = ticket.creator_details?.fullname?.trim() || 'Unknown Agent';
+    const agentInitials = agentName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join('') || 'NA';
+
     return (
         <ProtectedRoute allowedRoles={['superadmin', 'admin']}>
             <AdminShell activeSection="tickets">
@@ -1496,9 +1504,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>
                                         <div className="flex items-center gap-2.5">
                                             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
-                                                <span className="text-xs font-semibold text-gray-700">JD</span>
+                                                <span className="text-xs font-semibold text-gray-700">{agentInitials}</span>
                                             </div>
-                                            <p className="text-lg font-semibold leading-none text-gray-900">John Doe</p>
+                                            <p className="text-lg font-semibold leading-none text-gray-900">{agentName}</p>
                                         </div>
                                     </div>
                                 </div>
