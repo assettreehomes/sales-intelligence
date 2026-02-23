@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.space-dark, .space-dark *));
 
 :root {
@@ -864,10 +865,12 @@ html.space-dark .ticket-advanced-chart {
 }
 
 @keyframes ticket-audio-play-pulse {
+
     0%,
     100% {
         box-shadow: 0 0 0 0 rgba(103, 40, 142, 0.35);
     }
+
     50% {
         box-shadow: 0 0 0 8px rgba(103, 40, 142, 0.06);
     }
@@ -2715,6 +2718,7 @@ html.space-dark .live-battery-pill.is-unknown {
 }
 
 @keyframes live-recording-pulse {
+
     0%,
     100% {
         box-shadow: 0 0 0 0 color-mix(in srgb, var(--live-recording), transparent 78%);
@@ -4205,6 +4209,7 @@ html.space-dark .performance-skill-cell.is-risk {
 }
 
 @keyframes performanceFloat {
+
     0%,
     100% {
         transform: translateY(0);
@@ -4216,6 +4221,7 @@ html.space-dark .performance-skill-cell.is-risk {
 }
 
 @keyframes performanceSweep {
+
     0%,
     100% {
         transform: translateY(0) translateX(0) scale(1);
@@ -4371,4 +4377,3 @@ html.space-dark .performance-skill-cell.is-risk {
         break-inside: avoid-page;
     }
 }
-

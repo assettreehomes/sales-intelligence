@@ -26,46 +26,19 @@ const mimeTypes = {
 };
 
 /**
- * Build the analysis prompt based on visit context
+ * Phase 1: Build the core analysis prompt (NO comparison data)
  */
 function buildAnalysisPrompt(ticketInfo) {
-  const { client_id, client_name, visit_number, previous_analysis } = ticketInfo;
+  const { client_id, client_name, visit_number } = ticketInfo;
 
-  let prompt = `You are an expert sales call analyst for a real estate company. 
+  return `You are an expert sales call analyst for a real estate company. 
 Analyze this audio recording and provide a comprehensive assessment.
 
 ## Context
 - Client ID: ${client_id || 'Unknown'}
 - Client Name: ${client_name || 'Not Provided'}
 - Visit Number: ${visit_number || 1}
-`;
 
-
-  // Add previous visit context if available
-  if (previous_analysis && visit_number > 1) {
-    console.log('🔍 Previous analysis data:', JSON.stringify(previous_analysis, null, 2));
-    prompt += `
-## Previous Visit Analysis (Visit #${visit_number - 1})
-- Previous Rating: ${previous_analysis.rating || 'N/A'}/10
-- Previous Summary: ${previous_analysis.summary || 'N/A'}
-- Previous Improvement Suggestions: ${JSON.stringify(previous_analysis.improvement_suggestions || [])}
-- Previous Objections: ${JSON.stringify(previous_analysis.objections || [])}
-- Previous Scores: ${JSON.stringify(previous_analysis.scores || {})}
-
-
-## Important: Compare Against Previous Visit
-Since this is a repeat visit, you MUST:
-1. Compare the current call against the previous visit
-2. Note improvements or regressions in:
-   - Objection handling
-   - Rapport building
-   - Sales techniques
-   - Customer engagement
-3. Provide a delta summary of what changed
-`;
-  }
-
-  prompt += `
 ## Required Output (JSON format)
 Return a valid JSON object with this exact structure:
 
@@ -105,49 +78,52 @@ Return a valid JSON object with this exact structure:
   "recommendations": [
     "Specific improvement suggestion for future calls"
   ],
-  "comparison_with_previous": ${previous_analysis && visit_number > 1 ? `{
-    "overall_narrative": "A 2-3 sentence summary comparing this visit to the previous one, highlighting overall trajectory (improved, declined, or same)",
-    "score_changes": {
-      "rapport_building": {"previous": ${previous_analysis.scores?.rapport_building || 0}, "current": <current score>, "change": <+/- number>},
-      "needs_discovery": {"previous": ${previous_analysis.scores?.needs_discovery || 0}, "current": <current score>, "change": <+/- number>},
-      "objection_handling": {"previous": ${previous_analysis.scores?.objection_handling || 0}, "current": <current score>, "change": <+/- number>},
-      "closing_techniques": {"previous": ${previous_analysis.scores?.closing_techniques || 0}, "current": <current score>, "change": <+/- number>},
-      "product_knowledge": {"previous": ${previous_analysis.scores?.product_knowledge || 0}, "current": <current score>, "change": <+/- number>},
-      "professionalism": {"previous": ${previous_analysis.scores?.professionalism || 0}, "current": <current score>, "change": <+/- number>}
-    },
-    "improvements": ["Specific areas that improved since last visit, with concrete examples"],
-    "regressions": ["Specific areas that got worse since last visit, with concrete examples"],
-    "unchanged": ["Specific areas that remained consistent"],
-    "delta_score": <positive number if better, negative if worse, 0 if same>,
-    "key_differences": ["Major behavioral or tactical changes between visits"]
-  }` : 'null // VALID ONLY FOR VISIT #1. FOR VISIT #2+, THIS MUST BE A FULL OBJECT'}
+  "comparison_with_previous": null
 }
 
-IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.`;
-
-  // Add mandatory comparison reminder for repeat visits
-  if (previous_analysis && visit_number > 1) {
-    prompt += `
-
-CRITICAL FOR VISIT #${visit_number}: The "comparison_with_previous" field is MANDATORY and must be fully populated with real comparison data. You are analyzing Visit #${visit_number}, which is a REPEAT VISIT.
-    
-    FORBIDDEN OUTPUT: "comparison_with_previous": null
-    REQUIRED OUTPUT: "comparison_with_previous": { ... full object ... }
-    
-    If you return null, the system will fail. You MUST generate the comparison.`;
-  }
-
-  console.log('🔍 DEBUG: Full prompt being sent to Gemini (first 2000 chars):', prompt.substring(0, 2000));
-  console.log('🔍 DEBUG: Prompt includes comparison?', prompt.includes('comparison_with_previous'));
-
-  return prompt;
+IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.
+The comparison_with_previous field must always be null — comparison is handled separately.`;
 }
 
 /**
- * Analyze audio using Vertex AI Gemini
+ * Phase 2: Build the comparison prompt (text-only, no audio)
+ */
+function buildComparisonPrompt(currentAnalysis, previousAnalysis, visitNumber) {
+  return `You are an expert sales performance analyst. Compare two visit analyses for the same client and produce a detailed comparison.
+
+## Current Visit (#${visitNumber}) Analysis
+${JSON.stringify(currentAnalysis, null, 2)}
+
+## Previous Visit (#${visitNumber - 1}) Analysis
+${JSON.stringify(previousAnalysis, null, 2)}
+
+## Required Output (JSON format)
+Return a valid JSON object with this exact structure:
+
+{
+  "overall_narrative": "A 2-3 sentence summary comparing this visit to the previous one, highlighting overall trajectory",
+  "score_changes": {
+    "rapport_building": {"previous": <number>, "current": <number>, "change": <+/- number>},
+    "needs_discovery": {"previous": <number>, "current": <number>, "change": <+/- number>},
+    "objection_handling": {"previous": <number>, "current": <number>, "change": <+/- number>},
+    "closing_techniques": {"previous": <number>, "current": <number>, "change": <+/- number>},
+    "product_knowledge": {"previous": <number>, "current": <number>, "change": <+/- number>},
+    "professionalism": {"previous": <number>, "current": <number>, "change": <+/- number>}
+  },
+  "improvements": ["Specific areas that improved since last visit, with concrete examples"],
+  "regressions": ["Specific areas that got worse since last visit, with concrete examples"],
+  "unchanged": ["Specific areas that remained consistent"],
+  "delta_score": <positive number if better, negative if worse, 0 if same>,
+  "key_differences": ["Major behavioral or tactical changes between visits"]
+}
+
+IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.`;
+}
+
+/**
+ * Phase 1: Analyze audio using Vertex AI Gemini (core analysis only)
  */
 export async function analyzeAudio(ticketId, ticketInfo = {}) {
-  // Check if audio exists
   const { exists, extension } = await checkAudioExists(ticketId);
   if (!exists) {
     throw new Error(`Audio not found for ticket ${ticketId}. Upload may have failed.`);
@@ -157,10 +133,7 @@ export async function analyzeAudio(ticketId, ticketInfo = {}) {
   const mimeType = mimeTypes[extension] || 'audio/mpeg';
   const prompt = buildAnalysisPrompt(ticketInfo);
 
-  console.log(`🎯 Analyzing audio: ${audioUri} (${mimeType})`);
-  if (ticketInfo.previous_analysis) {
-    console.log(`📊 Comparing with previous visit (Score: ${ticketInfo.previous_analysis.rating})`);
-  }
+  console.log(`🎯 Phase 1: Analyzing audio: ${audioUri} (${mimeType})`);
 
   try {
     const response = await model.generateContent({
@@ -179,22 +152,50 @@ export async function analyzeAudio(ticketId, ticketInfo = {}) {
     });
 
     const text = response.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('No response text from Vertex AI');
 
-    if (!text) {
-      throw new Error('No response text from Vertex AI');
-    }
-
-    // Parse and validate JSON
     const analysis = JSON.parse(text);
-
-    console.log(`✅ Analysis complete. Score: ${analysis.overall_score}/10`);
-
+    console.log(`✅ Phase 1 complete. Score: ${analysis.overall_score}/10`);
     return analysis;
 
   } catch (error) {
-    console.error('❌ Vertex AI error:', error);
+    console.error('❌ Phase 1 Vertex AI error:', error);
     throw new Error(`Failed to analyze audio: ${error.message}`);
   }
 }
 
-export default { analyzeAudio };
+/**
+ * Phase 2: Run comparison analysis (text-only, no audio processing)
+ */
+export async function runComparisonAnalysis(currentAnalysis, previousAnalysis, visitNumber) {
+  const prompt = buildComparisonPrompt(currentAnalysis, previousAnalysis, visitNumber);
+
+  console.log(`📊 Phase 2: Running comparison (Visit #${visitNumber} vs Visit #${visitNumber - 1})`);
+
+  try {
+    const response = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const text = response.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('No response from Vertex AI for comparison');
+
+    const comparison = JSON.parse(text);
+    console.log(`✅ Phase 2 complete. Delta score: ${comparison.delta_score}`);
+    return comparison;
+
+  } catch (error) {
+    console.error('❌ Phase 2 comparison error:', error);
+    return null;
+  }
+}
+
+export default { analyzeAudio, runComparisonAnalysis };

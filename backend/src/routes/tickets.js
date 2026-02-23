@@ -8,7 +8,7 @@ import { buckets, checkAudioExists, getAudioUri, generatePlaybackUrl, promoteToT
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
 import { getVisitSequence, getPreviousAnalysis, getVisitChain } from '../services/visitSequencing.js';
-import { analyzeAudio } from '../services/vertexai.js';
+import { analyzeAudio, runComparisonAnalysis } from '../services/vertexai.js';
 
 const router = Router();
 
@@ -1169,27 +1169,33 @@ async function triggerAnalysis(ticketId, ticket) {
             })
             .eq('id', ticketId);
 
-        console.log(`🔍 Starting analysis for ticket: ${ticketId} (Client ID: ${ticket.client_id})`);
+        // Determine visit number — robust fallback for old tickets missing visitnumber
+        let visitNumber = Math.max(ticket.visit_number || 0, ticket.visitnumber || 0);
 
-        // Get previous analysis for comparison if previous ticket exists
-        let previousAnalysis = null;
-        const previousTicketId = ticket.previous_visit_ticket_id || ticket.previousvisitticketid || null;
-        if (previousTicketId) {
-            previousAnalysis = await getPreviousAnalysis(previousTicketId);
-            const visitNumber = ticket.visit_number || ticket.visitnumber || 1;
-            console.log(`📊 Found previous analysis for comparison (Visit #${visitNumber - 1})`);
+        if (!visitNumber && ticket.client_id) {
+            const { data: clientTickets } = await supabaseAdmin
+                .from('tickets')
+                .select('id')
+                .eq('client_id', ticket.client_id)
+                .order('createdat', { ascending: true });
+            if (clientTickets && clientTickets.length > 0) {
+                const idx = clientTickets.findIndex(t => t.id === ticketId);
+                visitNumber = idx >= 0 ? idx + 1 : clientTickets.length;
+            }
+        } else if (!visitNumber) {
+            visitNumber = 1;
         }
 
-        // Run AI analysis
-        // analyzeAudio expects (ticketId, ticketInfo)
+        console.log(`🔍 Phase 1: Analyzing ticket ${ticketId} (Visit #${visitNumber})`);
+
+        // ── Phase 1: Core audio analysis (no comparison) ──
         const analysis = await analyzeAudio(ticketId, {
             client_id: ticket.client_id,
             client_name: ticket.client_name || ticket.clientname,
-            visit_number: ticket.visit_number || ticket.visitnumber,
-            previous_analysis: previousAnalysis
+            visit_number: visitNumber
         });
 
-        // Normalize scores: merge top-level Gemini fields into scores object
+        // Normalize scores
         const normalizedScores = {
             ...(analysis.scores || {}),
             politeness: analysis.politeness_score ?? analysis.scores?.politeness ?? null,
@@ -1198,7 +1204,7 @@ async function triggerAnalysis(ticketId, ticket) {
             speakers: analysis.speakers_detected ?? analysis.scores?.speakers ?? null
         };
 
-        // Store analysis results in analysisresults table (using actual column names)
+        // Store Phase 1 results
         const { error: analysisError } = await supabaseAdmin
             .from('analysisresults')
             .upsert({
@@ -1208,50 +1214,82 @@ async function triggerAnalysis(ticketId, ticket) {
                 summary: analysis.summary || null,
                 keymoments: analysis.key_moments ? analysis.key_moments.map(m => ({
                     ...m,
-                    time: m.timestamp || m.start_time_ms // Map timestamp to time for frontend compatibility
+                    time: m.timestamp || m.start_time_ms
                 })) : [],
                 improvementsuggestions: analysis.recommendations || analysis.improvement_suggestions || [],
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,
-                comparisonwithprevious: analysis.comparison_with_previous || null
+                comparisonwithprevious: null
             }, { onConflict: 'ticketid' });
 
         if (analysisError) {
             console.error('Failed to store analysis results:', analysisError);
         }
 
-        // Update ticket status and cache key metrics + comparison data
-        const ticketUpdate = {
-            status: 'analyzed',
-            rating: analysis.overall_score || null,
-            analysiscompletedat: new Date().toISOString(),
-            istrainingcall: (analysis.overall_score || 0) >= 4.0
-        };
-
-        // Store comparison results if available
-        if (analysis.comparison_with_previous) {
-            ticketUpdate.improveconntsvsprevious = analysis.comparison_with_previous;
-            console.log(`📈 Comparison: Delta score ${analysis.comparison_with_previous.delta_score}`);
-        }
-
+        // Update ticket status
         await supabaseAdmin
             .from('tickets')
-            .update(ticketUpdate)
+            .update({
+                status: 'analyzed',
+                rating: analysis.overall_score || null,
+                analysiscompletedat: new Date().toISOString(),
+                istrainingcall: (analysis.overall_score || 0) >= 4.0
+            })
             .eq('id', ticketId);
 
-        console.log(`✅ Analysis complete for ticket: ${ticketId} (Score: ${analysis.overall_score})`);
+        console.log(`✅ Phase 1 complete for ticket: ${ticketId} (Score: ${analysis.overall_score})`);
+
+        // ── Phase 2: Comparison (only for visitNumber > 1) ──
+        if (visitNumber > 1) {
+            let resolvedPrevTicketId = ticket.previous_visit_ticket_id || ticket.previousvisitticketid || null;
+
+            if (!resolvedPrevTicketId && ticket.client_id) {
+                console.log(`🔍 Phase 2: No previousvisitticketid — falling back to client_id lookup...`);
+                const { data: prevTickets } = await supabaseAdmin
+                    .from('tickets')
+                    .select('id, visitnumber')
+                    .eq('client_id', ticket.client_id)
+                    .neq('id', ticketId)
+                    .order('visitnumber', { ascending: false })
+                    .limit(1);
+
+                if (prevTickets && prevTickets.length > 0) {
+                    resolvedPrevTicketId = prevTickets[0].id;
+                    console.log(`✅ Found previous ticket by client_id: ${resolvedPrevTicketId}`);
+                }
+            }
+
+            if (resolvedPrevTicketId) {
+                try {
+                    const previousAnalysis = await getPreviousAnalysis(resolvedPrevTicketId);
+                    if (previousAnalysis) {
+                        console.log(`📊 Phase 2: Comparing Visit #${visitNumber} with Visit #${visitNumber - 1}`);
+                        const comparison = await runComparisonAnalysis(analysis, previousAnalysis, visitNumber);
+                        if (comparison) {
+                            await supabaseAdmin
+                                .from('analysisresults')
+                                .update({ comparisonwithprevious: comparison })
+                                .eq('ticketid', ticketId);
+                            console.log(`✅ Phase 2 complete. Delta: ${comparison.delta_score}`);
+                        }
+                    }
+                } catch (compErr) {
+                    console.warn(`⚠️ Phase 2 comparison failed (non-fatal):`, compErr.message);
+                }
+            } else {
+                console.warn(`⚠️ Could not find previous ticket for comparison (Visit #${visitNumber})`);
+            }
+        }
 
         // Auto-promote to training if rating >= 4.0
         if ((analysis.overall_score || 0) >= 4.0) {
             try {
-                // Check if audio exists first (needed for promotion)
                 const { exists, extension } = await checkAudioExists(ticketId);
                 if (exists) {
                     await promoteToTraining(ticketId, extension);
                     console.log(`🎓 Auto-promoted ticket ${ticketId} to training library`);
 
-                    // Add record to trainingtickets
                     await supabaseAdmin
                         .from('trainingtickets')
                         .insert({
@@ -2367,38 +2405,34 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(400).json({ error: 'Audio file not found for this ticket' });
         }
 
-
-
-        // Helper to get visit number (handle inconsistent DB naming)
-        let visitNumber = ticket.visit_number || ticket.visitnumber || 1;
-        console.log(`🔍 DEBUG: Derived Visit Number: ${visitNumber} (Raw: visit_number=${ticket.visit_number}, visitnumber=${ticket.visitnumber})`);
-
-        // EMERGENCY FIX: If visit is 1 but previous ticket exists, FORCE it to 2 to enable comparison
-        const prevTicketIdRaw = ticket.previous_visit_ticket_id || ticket.previousvisitticketid;
-        if (visitNumber === 1 && prevTicketIdRaw) {
-            console.log("ℹ️ Auto-correcting visit number to 2 based on previous ticket existence.");
-            visitNumber = 2;
-        }
-
-        // Get previous analysis for comparison if available
-        let previousAnalysis = null;
+        // Determine visit number — robust fallback for old tickets missing visitnumber
+        let visitNumber = Math.max(ticket.visit_number || 0, ticket.visitnumber || 0);
         const prevTicketId = ticket.previous_visit_ticket_id || ticket.previousvisitticketid;
-        if (prevTicketId) {
-            previousAnalysis = await getPreviousAnalysis(prevTicketId);
-            console.log(`📊 Found previous analysis for comparison (Visit #${visitNumber - 1})`);
-            console.log('🔍 DEBUG: Previous analysis object:', JSON.stringify(previousAnalysis, null, 2));
-            console.log('🔍 DEBUG: Previous scores:', previousAnalysis?.scores);
+
+        // If visitnumber is missing or 0, count tickets for this client to determine it
+        if (!visitNumber && ticket.client_id) {
+            const { data: clientTickets } = await supabaseAdmin
+                .from('tickets')
+                .select('id')
+                .eq('client_id', ticket.client_id)
+                .order('createdat', { ascending: true });
+            if (clientTickets && clientTickets.length > 0) {
+                const idx = clientTickets.findIndex(t => t.id === id);
+                visitNumber = idx >= 0 ? idx + 1 : clientTickets.length;
+            }
+        } else if (!visitNumber) {
+            visitNumber = 1;
         }
 
-        // Run analysis
+        // ── Phase 1: Core audio analysis (no comparison) ──
+        console.log(`🔍 Phase 1: Re-analyzing ticket ${id} (Visit #${visitNumber})`);
         const analysis = await analyzeAudio(id, {
             client_id: ticket.client_id,
             client_name: ticket.clientname,
-            visit_number: visitNumber,
-            previous_analysis: previousAnalysis
+            visit_number: visitNumber
         });
 
-        // Normalize scores: merge top-level Gemini fields into scores object
+        // Normalize scores
         const normalizedScores = {
             ...(analysis.scores || {}),
             politeness: analysis.politeness_score ?? analysis.scores?.politeness ?? null,
@@ -2407,7 +2441,7 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             speakers: analysis.speakers_detected ?? analysis.scores?.speakers ?? null
         };
 
-        // Update database with new results
+        // Store Phase 1 results
         const { error: analysisError } = await supabaseAdmin
             .from('analysisresults')
             .upsert({
@@ -2423,7 +2457,7 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,
-                comparisonwithprevious: analysis.comparison_with_previous || null
+                comparisonwithprevious: null
             }, { onConflict: 'ticketid' });
 
         if (analysisError) {
@@ -2431,21 +2465,59 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
         }
 
         // Update ticket status
-        const ticketUpdate = {
-            status: 'analyzed',
-            rating: analysis.overall_score || null,
-            analysiscompletedat: new Date().toISOString(),
-            istrainingcall: (analysis.overall_score || 0) >= 4.0
-        };
-
-        if (analysis.comparison_with_previous) {
-            ticketUpdate.improveconntsvsprevious = analysis.comparison_with_previous;
-        }
-
         await supabaseAdmin
             .from('tickets')
-            .update(ticketUpdate)
+            .update({
+                status: 'analyzed',
+                rating: analysis.overall_score || null,
+                analysiscompletedat: new Date().toISOString(),
+                istrainingcall: (analysis.overall_score || 0) >= 4.0
+            })
             .eq('id', id);
+
+        console.log(`✅ Phase 1 complete for re-analysis: ${id} (Score: ${analysis.overall_score})`);
+
+        // ── Phase 2: Comparison (only for visitNumber > 1) ──
+        if (visitNumber > 1) {
+            // Resolve the previous ticket ID — use stored value or fallback to querying by client_id
+            let resolvedPrevTicketId = prevTicketId;
+            if (!resolvedPrevTicketId && ticket.client_id) {
+                console.log(`🔍 Phase 2: No previousvisitticketid set. Falling back to client_id lookup...`);
+                const { data: prevTickets } = await supabaseAdmin
+                    .from('tickets')
+                    .select('id, visitnumber')
+                    .eq('client_id', ticket.client_id)
+                    .neq('id', id)
+                    .order('visitnumber', { ascending: false })
+                    .limit(1);
+
+                if (prevTickets && prevTickets.length > 0) {
+                    resolvedPrevTicketId = prevTickets[0].id;
+                    console.log(`✅ Found previous ticket by client_id: ${resolvedPrevTicketId} (Visit #${prevTickets[0].visitnumber})`);
+                }
+            }
+
+            if (resolvedPrevTicketId) {
+                try {
+                    const previousAnalysis = await getPreviousAnalysis(resolvedPrevTicketId);
+                    if (previousAnalysis) {
+                        console.log(`📊 Phase 2: Comparing Visit #${visitNumber} with Visit #${visitNumber - 1}`);
+                        const comparison = await runComparisonAnalysis(analysis, previousAnalysis, visitNumber);
+                        if (comparison) {
+                            await supabaseAdmin
+                                .from('analysisresults')
+                                .update({ comparisonwithprevious: comparison })
+                                .eq('ticketid', id);
+                            console.log(`✅ Phase 2 complete. Delta: ${comparison.delta_score}`);
+                        }
+                    }
+                } catch (compErr) {
+                    console.warn(`⚠️ Phase 2 comparison failed (non-fatal):`, compErr.message);
+                }
+            } else {
+                console.warn(`⚠️ Could not find previous ticket for comparison (Visit #${visitNumber})`);
+            }
+        }
 
         // Fetch final updated data to return
         const { data: updatedTicket } = await supabaseAdmin
@@ -2531,6 +2603,34 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 // FLAG TICKET ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * PATCH /tickets/:id/notes
+ * Save markdown notes for a ticket
+ * Role: admin
+ */
+router.patch('/:id/notes', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { notes } = req.body;
+
+        if (typeof notes !== 'string') {
+            return res.status(400).json({ error: 'Notes must be a string' });
+        }
+
+        const { error } = await supabaseAdmin
+            .from('tickets')
+            .update({ notes })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        res.json({ message: 'Notes saved', notes });
+    } catch (error) {
+        console.error('Save notes error:', error);
+        res.status(500).json({ error: 'Failed to save notes' });
+    }
+});
 
 /**
  * POST /tickets/:id/flag

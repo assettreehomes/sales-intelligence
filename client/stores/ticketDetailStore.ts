@@ -52,6 +52,7 @@ interface Ticket {
     status: string;
     createdat: string;
     createdby: string;
+    notes?: string;
     creator_details?: {
         fullname: string;
         avatar_url: string | null;
