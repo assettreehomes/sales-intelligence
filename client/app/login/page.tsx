@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import type { LoginResult } from '@/contexts/AuthContext';
@@ -172,13 +173,14 @@ export default function LoginPage() {
 
             {/* Logo */}
             <div className="flex justify-center pt-12 pb-6">
-                <div className="w-28 h-28 bg-purple-700 rounded-lg flex items-center justify-center shadow-lg">
-                    <div className="text-center">
-                        <div className="text-white text-xs font-semibold tracking-wide">TICKET</div>
-                        <div className="text-3xl my-1">🌳</div>
-                        <div className="text-white text-xs font-semibold tracking-wide">INTEL</div>
-                    </div>
-                </div>
+                <Image
+                    src="/ATH%20logo/ATH-full-logo.png"
+                    alt="ATH"
+                    width={280}
+                    height={86}
+                    priority
+                    className="h-auto w-[240px] object-contain sm:w-[280px]"
+                />
             </div>
 
             {/* Login Card */}
@@ -466,3 +468,4 @@ export default function LoginPage() {
         </div>
     );
 }
+

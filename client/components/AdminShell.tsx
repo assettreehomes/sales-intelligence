@@ -2,6 +2,7 @@
 
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -16,7 +17,6 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Radio,
-    Sparkles,
     Sun,
     User,
     Users
@@ -214,9 +214,14 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                 <div className="flex h-full w-full flex-col">
                     <div className={`admin-shell-brand relative flex items-center px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
                         <Link href={homeHref} className="flex items-center gap-2 overflow-hidden">
-                            <div className="admin-shell-brand-badge flex h-8 w-8 items-center justify-center rounded-lg">
-                                <Sparkles className="h-4 w-4" />
-                            </div>
+                            <Image
+                                src="/ATH%20logo/ATH-small-logo.png"
+                                alt="ATH"
+                                width={32}
+                                height={32}
+                                priority
+                                className="h-8 w-8 shrink-0 rounded-lg object-contain"
+                            />
                             {!collapsed && (
                                 <span className="admin-shell-brand-text text-base font-semibold">TicketIntel</span>
                             )}
@@ -257,16 +262,6 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                     </nav>
 
                     <div className="admin-shell-footer px-3 py-4">
-                        {!collapsed && (
-                            <div className="admin-shell-plan-card mb-3 rounded-lg px-3 py-2.5">
-                                <p className="admin-shell-plan-label text-[11px] uppercase tracking-wide">Current Plan</p>
-                                <div className="mt-1 flex items-center justify-between">
-                                    <span className="admin-shell-plan-value text-sm font-semibold">Enterprise</span>
-                                    <span className="admin-shell-plan-dot h-2 w-2 rounded-full" />
-                                </div>
-                            </div>
-                        )}
-
                         <button
                             type="button"
                             onClick={toggleTheme}

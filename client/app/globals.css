@@ -617,23 +617,6 @@ html.space-dark .admin-shell-sidebar {
     border-top: 1px solid var(--shell-sidebar-border);
 }
 
-.admin-shell-plan-card {
-    border: 1px solid var(--shell-panel-border);
-    background: var(--shell-panel-bg);
-}
-
-.admin-shell-plan-label {
-    color: var(--shell-panel-muted);
-}
-
-.admin-shell-plan-value {
-    color: var(--shell-panel-text);
-}
-
-.admin-shell-plan-dot {
-    background: #67288e;
-}
-
 .admin-shell-theme-toggle {
     border: 1px solid var(--shell-theme-toggle-border);
     background: var(--shell-theme-toggle-bg);
@@ -2812,96 +2795,417 @@ html.space-dark .live-battery-pill.is-unknown {
     }
 }
 
-/* Live Status Flat Skin (removes glassmorphism shell) */
+/* Live Status Profile Card Skin */
 .live-status-page {
-    --live-card-bg: #ffffff;
-    --live-card-border: #ccd7e6;
-    --live-card-border-hover: #bccadb;
-    --live-card-border-online: color-mix(in srgb, #10b573, var(--live-card-border) 54%);
-    --live-card-border-offline: color-mix(in srgb, #8ba2be, var(--live-card-border) 62%);
-    --live-card-border-recording: color-mix(in srgb, #df3568, var(--live-card-border) 56%);
-    --live-card-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-    --live-card-shadow-hover: 0 8px 18px rgba(15, 23, 42, 0.12);
-    --live-text: #1f334d;
-    --live-text-strong: #16283f;
-    --live-muted: #5f7692;
-    --live-subtle: #849bb8;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
+    --live-shell-bg: linear-gradient(180deg, var(--surface-page) 0%, var(--surface-section) 100%);
+    --live-shell-border: var(--color-border-subtle);
+    --live-shell-shadow: var(--elevation-2);
+    --live-card-bg: color-mix(in srgb, var(--surface-card), #ffffff 8%);
+    --live-card-border: color-mix(in srgb, var(--color-border-subtle), transparent 8%);
+    --live-card-border-hover: color-mix(in srgb, var(--color-info-500), var(--color-border-subtle) 48%);
+    --live-card-border-online: color-mix(in srgb, var(--color-success-500), var(--color-border-subtle) 56%);
+    --live-card-border-offline: color-mix(in srgb, var(--color-text-muted), var(--color-border-subtle) 58%);
+    --live-card-border-recording: color-mix(in srgb, var(--color-critical-500), var(--color-border-subtle) 50%);
+    --live-card-shadow: var(--elevation-1);
+    --live-card-shadow-hover: var(--elevation-2);
+    --live-text: var(--color-text-secondary);
+    --live-text-strong: var(--color-text-primary);
+    --live-muted: var(--color-text-muted);
+    --live-subtle: color-mix(in srgb, var(--color-text-muted), transparent 6%);
+    --live-chip-bg: color-mix(in srgb, var(--surface-card), var(--surface-section) 18%);
+    --live-chip-border: color-mix(in srgb, var(--color-border-subtle), transparent 14%);
+    --live-chip-text: var(--color-text-secondary);
+    --live-online: var(--color-success-500);
+    --live-online-bright: var(--color-success-strong);
+    --live-offline: var(--color-text-muted);
+    --live-idle: var(--color-info-500);
+    --live-recording: var(--color-critical-500);
+    --live-recording-strong: var(--color-critical-strong);
+    --live-assigned: var(--color-primary-500);
+    --live-avatar-bg: linear-gradient(135deg, color-mix(in srgb, var(--color-info-500), #4f46e5 38%), color-mix(in srgb, var(--color-primary-500), #4f46e5 34%));
+    --live-avatar-offline-bg: linear-gradient(135deg, color-mix(in srgb, var(--surface-active), #64748b 30%), color-mix(in srgb, var(--color-text-muted), #475569 44%));
+    --live-avatar-recording-bg: linear-gradient(135deg, color-mix(in srgb, var(--color-critical-500), #ec4899 18%), color-mix(in srgb, var(--color-critical-strong), #be185d 26%));
+    --live-avatar-signal-border: var(--surface-card);
+    --live-glow: color-mix(in srgb, var(--color-primary-glow), transparent 35%);
+    --live-focus: var(--elevation-focus);
+    position: relative;
+    border: 1px solid var(--live-shell-border);
+    border-radius: 20px;
+    background: var(--live-shell-bg);
+    box-shadow: var(--live-shell-shadow);
     width: min(100%, 1600px);
-    padding: 20px 28px 24px;
+    min-height: calc(100vh - 48px);
+    margin-inline: auto;
+    padding: 24px 28px;
+    color: var(--live-text);
+    isolation: isolate;
+    overflow: hidden;
 }
 
 html.space-dark .live-status-page {
-    --live-card-bg: #132845;
-    --live-card-border: rgba(133, 161, 197, 0.35);
-    --live-card-border-hover: rgba(163, 191, 226, 0.52);
-    --live-card-border-online: color-mix(in srgb, #36db9e, var(--live-card-border) 50%);
-    --live-card-border-offline: color-mix(in srgb, #97b1d3, var(--live-card-border) 60%);
-    --live-card-border-recording: color-mix(in srgb, #ff7faa, var(--live-card-border) 52%);
-    --live-card-shadow: 0 6px 14px rgba(0, 0, 0, 0.34);
-    --live-card-shadow-hover: 0 12px 26px rgba(0, 0, 0, 0.48);
-    --live-text: #d6e5fb;
-    --live-text-strong: #f0f6ff;
-    --live-muted: #9ab1cf;
-    --live-subtle: #87a1c4;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
+    --live-shell-shadow: var(--elevation-3);
+    --live-card-bg: color-mix(in srgb, var(--surface-card), #ffffff 4%);
+    --live-chip-bg: color-mix(in srgb, var(--surface-card), var(--surface-elevated) 24%);
+    --live-chip-border: color-mix(in srgb, var(--color-border-subtle), transparent 10%);
+    --live-avatar-signal-border: color-mix(in srgb, var(--surface-card), #000000 18%);
+    --live-glow: color-mix(in srgb, var(--color-primary-glow), transparent 10%);
 }
 
-.live-status-page::before,
+.live-status-page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 16% 10%, var(--live-glow), transparent 42%),
+        radial-gradient(circle at 88% 2%, color-mix(in srgb, var(--color-info-500), transparent 90%), transparent 44%);
+    pointer-events: none;
+    z-index: 0;
+}
+
 .live-status-page::after {
     display: none;
     content: none;
 }
 
+.live-status-page>* {
+    position: relative;
+    z-index: 1;
+}
+
 .live-status-head {
-    margin-bottom: 0.8rem;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.live-status-title {
+    color: var(--live-text-strong);
+}
+
+.live-status-subtitle {
+    color: var(--live-muted);
+}
+
+.live-status-metrics {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .live-status-chip,
 .live-status-updated {
+    border-radius: 999px;
+    border: 1px solid var(--live-chip-border);
+    background: var(--live-chip-bg);
+    color: var(--live-chip-text);
     box-shadow: none;
-    background: var(--live-card-bg);
-    border-color: var(--live-card-border);
+    backdrop-filter: blur(8px);
+}
+
+.live-status-chip {
+    min-height: 30px;
+    padding: 0 12px;
+    gap: 6px;
+}
+
+.live-status-chip-label {
+    font-size: 0.67rem;
+}
+
+.live-status-chip-value {
+    color: var(--live-text-strong);
+}
+
+.live-status-chip.is-online {
+    border-color: color-mix(in srgb, var(--live-online), transparent 58%);
+    background: color-mix(in srgb, var(--live-online), transparent 86%);
+    color: var(--live-online);
+}
+
+.live-status-chip.is-recording {
+    border-color: color-mix(in srgb, var(--live-recording), transparent 56%);
+    background: color-mix(in srgb, var(--live-recording), transparent 86%);
+    color: var(--live-recording-strong);
+}
+
+.live-status-updated {
+    min-height: 30px;
+    padding: 0 12px;
+}
+
+.live-status-refresh-icon {
+    color: var(--live-subtle);
+}
+
+.live-status-live-indicator {
+    color: var(--live-online-bright);
+}
+
+.live-status-live-dot {
+    background: var(--live-online-bright);
+}
+
+.live-status-updated-time {
+    color: var(--live-text-strong);
 }
 
 .live-status-grid {
-    gap: 16px;
-    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 300px));
+    justify-content: center;
+    gap: 22px;
+    margin-top: 22px;
 }
 
 .live-status-card {
-    border-radius: 14px;
+    border-radius: 20px;
     border-color: var(--live-card-border);
     background: var(--live-card-bg);
     box-shadow: var(--live-card-shadow);
+    backdrop-filter: blur(10px);
+    min-height: 320px;
+    padding: 20px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
     animation: none;
+    transition:
+        transform 220ms ease,
+        box-shadow 220ms ease,
+        border-color 220ms ease;
 }
 
 .live-status-card:hover {
+    transform: translateY(-6px);
     border-color: var(--live-card-border-hover);
     box-shadow: var(--live-card-shadow-hover);
 }
 
+.live-status-card.is-online {
+    border-color: var(--live-card-border-online);
+}
+
 .live-status-card.is-offline {
+    border-color: var(--live-card-border-offline);
     opacity: 1;
     filter: none;
 }
 
+.live-status-card.is-recording {
+    border-color: var(--live-card-border-recording);
+}
+
 .live-status-card.is-recording::after {
-    display: none;
+    border-color: color-mix(in srgb, var(--live-recording), transparent 74%);
 }
 
 .live-status-rail {
     display: none;
 }
 
-.live-status-live-dot {
-    animation: none;
+.live-card-head {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.live-card-user {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.live-user-copy {
+    text-align: center;
+}
+
+.live-avatar {
+    width: 76px;
+    height: 76px;
+    border: 0;
+    background: var(--live-avatar-bg);
+    color: #ffffff;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--surface-card), transparent 82%), 0 0 18px var(--live-glow);
+}
+
+.live-avatar.is-offline {
+    background: var(--live-avatar-offline-bg);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--live-offline), transparent 86%);
+}
+
+.live-avatar.is-recording {
+    background: var(--live-avatar-recording-bg);
+    box-shadow:
+        0 0 0 4px color-mix(in srgb, var(--live-recording), transparent 86%),
+        0 0 18px color-mix(in srgb, var(--live-recording), transparent 72%);
+}
+
+.live-avatar-initials {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.live-avatar-signal {
+    border: 2px solid var(--live-avatar-signal-border);
+}
+
+.live-employee-name {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--live-text-strong);
+}
+
+.live-employee-email {
+    margin-top: 0.14rem;
+    font-size: 0.82rem;
+    color: var(--live-muted);
+    opacity: 1;
+    max-width: 240px;
+    margin-inline: auto;
+}
+
+.live-head-status {
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.live-head-status-main {
+    min-height: 26px;
+    height: auto;
+    padding: 4px 12px;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.live-head-status.is-online .live-head-status-main {
+    border-color: color-mix(in srgb, var(--live-online), transparent 56%);
+    background: color-mix(in srgb, var(--live-online), transparent 86%);
+    color: var(--live-online);
+}
+
+.live-head-status.is-offline .live-head-status-main {
+    border-color: color-mix(in srgb, var(--live-offline), transparent 52%);
+    background: color-mix(in srgb, var(--live-offline), transparent 88%);
+    color: var(--live-offline);
+}
+
+.live-head-status.is-recording .live-head-status-main {
+    border-color: color-mix(in srgb, var(--live-recording), transparent 54%);
+    background: color-mix(in srgb, var(--live-recording), transparent 86%);
+    color: var(--live-recording-strong);
+}
+
+.live-head-status-meta {
+    justify-content: center;
+    font-size: 0.69rem;
+    color: var(--live-subtle);
+}
+
+.live-card-body {
+    width: 100%;
+    margin-top: 6px;
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+}
+
+.live-activity-block {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.live-block-label,
+.live-meta-label {
+    font-size: 0.67rem;
+    letter-spacing: 0.08em;
+    color: var(--live-subtle);
+}
+
+.live-activity-pill {
+    min-height: 24px;
+    height: auto;
+    padding: 3px 12px;
+    gap: 6px;
+    font-size: 0.74rem;
+    font-weight: 650;
+    border-color: color-mix(in srgb, var(--live-idle), transparent 56%);
+    background: color-mix(in srgb, var(--live-idle), transparent 86%);
+    color: var(--live-idle);
+}
+
+.live-activity-pill.is-recording {
+    border-color: color-mix(in srgb, var(--live-recording), transparent 56%);
+    background: color-mix(in srgb, var(--live-recording), transparent 86%);
+    color: var(--live-recording-strong);
+}
+
+.live-activity-pill.is-idle {
+    border-color: color-mix(in srgb, var(--live-idle), transparent 56%);
+    background: color-mix(in srgb, var(--live-idle), transparent 86%);
+    color: var(--live-idle);
+}
+
+.live-activity-dot {
+    background: currentColor;
+}
+
+.live-activity-pill.is-offline {
+    border-color: color-mix(in srgb, var(--live-offline), transparent 52%);
+    background: color-mix(in srgb, var(--live-offline), transparent 88%);
+    color: var(--live-offline);
+}
+
+.live-meta-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.live-meta-row.is-assigned {
+    align-items: center;
+}
+
+.live-assigned-wrap {
+    align-items: center;
+    gap: 4px;
+}
+
+.live-assigned-client-wrap {
+    justify-content: center;
+}
+
+.live-assigned-client {
+    max-width: 220px;
+    font-size: 0.76rem;
+}
+
+.live-assigned-ticket {
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.live-battery-pill,
+.live-head-status-meta.is-battery {
+    min-height: 24px;
+    height: auto;
+    padding: 3px 10px;
+    font-size: 0.69rem;
 }
 
 .live-status-loading,
@@ -2913,13 +3217,38 @@ html.space-dark .live-status-page {
 
 @media (max-width: 900px) {
     .live-status-page {
-        padding: 16px 20px 20px;
+        min-height: auto;
+        padding: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .live-status-grid {
+        grid-template-columns: minmax(0, 340px);
     }
 }
 
 @media (max-width: 540px) {
     .live-status-page {
-        padding: 14px 14px 18px;
+        border-radius: 14px;
+        padding: 16px;
+    }
+
+    .live-status-head {
+        align-items: flex-start;
+    }
+
+    .live-status-updated {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .live-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .live-status-card {
+        min-height: 300px;
     }
 }
 
