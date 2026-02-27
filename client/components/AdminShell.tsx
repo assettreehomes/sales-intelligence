@@ -1,12 +1,14 @@
 'use client';
 
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { notifyInfo } from '@/lib/toast';
 import {
+    type LucideIcon,
     AlertCircle,
     BarChart3,
     Camera,
@@ -30,10 +32,21 @@ interface AdminShellProps {
     children: ReactNode;
 }
 
+type AdminNavItem = {
+    id: AdminSection;
+    label: string;
+    icon: LucideIcon;
+    href?: string;
+    onClick?: () => void;
+};
+
 const SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed';
 const MOBILE_MENU_BUTTON_POS_KEY = 'admin-mobile-menu-button-position';
 const MOBILE_MENU_BUTTON_SIZE = 40;
 const MOBILE_MENU_BUTTON_MARGIN = 8;
+const DEFAULT_IMOU_PROTOCOLS = ['imou://'];
+const CUSTOM_PROTOCOL_LAUNCH_STAGGER_MS = 180;
+const CUSTOM_PROTOCOL_RESULT_TIMEOUT_MS = 1400;
 
 type FloatingButtonPosition = {
     left: number;
@@ -161,7 +174,45 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
 
     const homeHref = (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : '/admin/tickets';
 
-    const navItems = useMemo(() => {
+    const openImouDesktop = useCallback(() => {
+        if (typeof window === 'undefined') return;
+
+        const configured = (process.env.NEXT_PUBLIC_IMOU_PROTOCOLS || '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+        const protocols = configured.length > 0 ? configured : DEFAULT_IMOU_PROTOCOLS;
+        let appSwitchDetected = false;
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                appSwitchDetected = true;
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        protocols.forEach((protocol, index) => {
+            window.setTimeout(() => {
+                const launcher = document.createElement('iframe');
+                launcher.style.display = 'none';
+                launcher.src = protocol;
+                document.body.appendChild(launcher);
+                window.setTimeout(() => {
+                    launcher.remove();
+                }, 1000);
+            }, index * CUSTOM_PROTOCOL_LAUNCH_STAGGER_MS);
+        });
+
+        window.setTimeout(() => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (!appSwitchDetected && document.visibilityState === 'visible') {
+                notifyInfo('IMOU desktop app did not open. Verify the app is installed and protocol is registered on this machine.');
+            }
+        }, CUSTOM_PROTOCOL_RESULT_TIMEOUT_MS + protocols.length * CUSTOM_PROTOCOL_LAUNCH_STAGGER_MS);
+    }, []);
+
+    const navItems = useMemo<AdminNavItem[]>(() => {
         if (profile?.role === 'intern' || profile?.role === 'employee') {
             return [
                 { id: 'training' as const, label: 'Training', icon: GraduationCap, href: '/intern' }
@@ -175,9 +226,9 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
             { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' },
-            { id: 'imou' as const, label: 'IMOU', icon: Camera, href: 'https://www.imoulife.com', external: true }
+            { id: 'imou' as const, label: 'IMOU', icon: Camera, onClick: openImouDesktop }
         ];
-    }, [profile?.role]);
+    }, [profile?.role, openImouDesktop]);
 
     return (
         <div className={`admin-shell min-h-screen ${activeSection === 'performance' ? 'admin-shell--performance' : ''}`}>
@@ -250,15 +301,30 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                             const iconClass = active ? 'is-active' : 'is-inactive';
 
                             return (
-                                <Link
-                                    key={item.id}
-                                    href={item.href}
-                                    className={`${baseClass} ${activeClass}`}
-                                    onClick={() => setMobileOpen(false)}
-                                >
-                                    <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
-                                    {!collapsed && <span>{item.label}</span>}
-                                </Link>
+                                item.onClick ? (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className={`${baseClass} ${activeClass}`}
+                                        onClick={() => {
+                                            item.onClick?.();
+                                            setMobileOpen(false);
+                                        }}
+                                    >
+                                        <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
+                                        {!collapsed && <span>{item.label}</span>}
+                                    </button>
+                                ) : (
+                                    <Link
+                                        key={item.id}
+                                        href={item.href ?? homeHref}
+                                        className={`${baseClass} ${activeClass}`}
+                                        onClick={() => setMobileOpen(false)}
+                                    >
+                                        <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
+                                        {!collapsed && <span>{item.label}</span>}
+                                    </Link>
+                                )
                             );
                         })}
                     </nav>

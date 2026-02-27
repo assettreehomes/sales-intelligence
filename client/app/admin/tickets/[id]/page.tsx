@@ -41,7 +41,6 @@ import {
     Share2,
     X,
     Link2,
-    Upload,
     Camera,
     FileText,
     Save,
@@ -142,21 +141,124 @@ const isEditableShortcutTarget = (target: EventTarget | null) => {
 /* ───────────────────────────────────────────────────
    TicketNotesSection — GitHub-style Write / Preview
    ─────────────────────────────────────────────────── */
+type EmployeeNoteTemplate = {
+    id: string;
+    name: string;
+    description: string;
+    markdown: string;
+};
+
+const EMPLOYEE_NOTE_TEMPLATES: EmployeeNoteTemplate[] = [
+    {
+        id: 'handoff',
+        name: 'Shift Handoff',
+        description: 'Structured handoff with ownership and pending actions.',
+        markdown: `## Shift Handoff
+- Employee: @EmployeeName
+- Date: {{DATE}}
+- Shift: @Shift
+
+### Completed
+- [ ] 
+
+### Pending
+- [ ] `,
+    },
+    {
+        id: 'coaching',
+        name: 'Coaching Note',
+        description: 'Manager feedback with action plan and due dates.',
+        markdown: `## Coaching Follow-up
+- Employee: @EmployeeName
+- Reviewer: @ReviewerName
+- Date: {{DATE}}
+
+### Strengths
+- 
+
+### Action Plan
+- [ ] (Owner: @EmployeeName, Due: @DueDate)`,
+    },
+    {
+        id: 'escalation',
+        name: 'Escalation Summary',
+        description: 'Escalation-ready summary for quick handoff.',
+        markdown: `## Escalation Summary
+- Raised By: @EmployeeName
+- Date: {{DATE}}
+- Severity: @Severity
+
+### Issue
+- 
+
+### Required Support
+- `,
+    },
+];
+
+const NOTE_QUICK_SNIPPETS = [
+    { label: 'Checklist', value: `- [ ] Action item\n- [ ] Owner: @Owner\n- [ ] Due: @DueDate\n` },
+    { label: 'Follow-up', value: `### Follow-up\n- Owner: @Owner\n- Date: @FollowUpDate\n- Notes:\n` },
+    { label: 'Customer Quote', value: `> "Customer statement"\n` },
+    { label: 'Time Stamp', value: `> Updated: {{DATE}} {{TIME}}\n` },
+];
+
+const NOTE_DRAFT_STORAGE_PREFIX = 'ticketintel-note-draft';
+
+const hydrateTemplateTokens = (value: string) => {
+    const now = new Date();
+    const dateLabel = now.toLocaleDateString();
+    const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return value
+        .replace(/\{\{DATE\}\}/g, dateLabel)
+        .replace(/\{\{TIME\}\}/g, timeLabel);
+};
+
 function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; initialNotes: string }) {
     const [notes, setNotes] = useState(initialNotes);
     const [draft, setDraft] = useState(initialNotes);
     const [isEditing, setIsEditing] = useState(false);
     const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
     const [saving, setSaving] = useState(false);
+    const [selectedTemplateId, setSelectedTemplateId] = useState(EMPLOYEE_NOTE_TEMPLATES[0]?.id ?? '');
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const draftStorageKey = useMemo(() => `${NOTE_DRAFT_STORAGE_PREFIX}:${ticketId}`, [ticketId]);
+    const selectedTemplate = useMemo(
+        () => EMPLOYEE_NOTE_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? EMPLOYEE_NOTE_TEMPLATES[0],
+        [selectedTemplateId]
+    );
+    const hasUnsavedChanges = draft !== notes;
+    const noteStats = useMemo(() => {
+        const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+        const lines = draft ? draft.split(/\r?\n/).length : 0;
+        return {
+            words,
+            lines,
+            characters: draft.length
+        };
+    }, [draft]);
 
     // Sync only when initialNotes actually changes (e.g. page re-fetch)
     useEffect(() => {
         setNotes(initialNotes);
-        setDraft(initialNotes);
-    }, [initialNotes]);
+        if (!isEditing) {
+            setDraft(initialNotes);
+        }
+    }, [initialNotes, isEditing]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !isEditing) return;
+        window.localStorage.setItem(draftStorageKey, draft);
+    }, [draft, isEditing, draftStorageKey]);
 
     const handleSave = async () => {
+        if (!hasUnsavedChanges) {
+            setIsEditing(false);
+            setActiveTab('write');
+            return;
+        }
+
         setSaving(true);
         try {
             const token = await getToken();
@@ -176,6 +278,10 @@ function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; init
                 useTicketDetailStore.setState({ ticket: { ...store.ticket, notes: draft } });
             }
 
+            if (typeof window !== 'undefined') {
+                window.localStorage.removeItem(draftStorageKey);
+            }
+            setLastSavedAt(new Date());
             notifySuccess('Notes saved');
         } catch {
             notifyError('Failed to save notes');
@@ -186,115 +292,288 @@ function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; init
 
     const handleCancel = () => {
         setDraft(notes);
+        if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(draftStorageKey);
+        }
         setIsEditing(false);
         setActiveTab('write');
     };
 
-    const insertMarkdown = (before: string, after = '') => {
+    const startEditing = () => {
+        let nextDraft = notes;
+        if (typeof window !== 'undefined') {
+            const cachedDraft = window.localStorage.getItem(draftStorageKey);
+            if (cachedDraft !== null && cachedDraft !== notes) {
+                nextDraft = cachedDraft;
+                notifyInfo('Recovered unsaved local note draft for this ticket.');
+            }
+        }
+        setDraft(nextDraft);
+        setIsEditing(true);
+        setActiveTab('write');
+    };
+
+    const insertMarkdown = (before: string, after = '', fallback = 'text') => {
         const ta = textareaRef.current;
         if (!ta) return;
         const start = ta.selectionStart;
         const end = ta.selectionEnd;
         const selected = draft.slice(start, end);
-        const replacement = `${before}${selected || 'text'}${after}`;
+        const replacement = `${before}${selected || fallback}${after}`;
         const next = draft.slice(0, start) + replacement + draft.slice(end);
         setDraft(next);
         setTimeout(() => {
             ta.focus();
             ta.selectionStart = start + before.length;
-            ta.selectionEnd = start + before.length + (selected || 'text').length;
+            ta.selectionEnd = start + before.length + (selected || fallback).length;
+        }, 0);
+    };
+
+    const insertSnippet = (snippet: string) => {
+        const ta = textareaRef.current;
+        const resolvedSnippet = hydrateTemplateTokens(snippet);
+
+        if (!ta) {
+            setDraft((prev) => `${prev}${prev.endsWith('\n') || !prev ? '' : '\n'}${resolvedSnippet}`);
+            return;
+        }
+
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const next = draft.slice(0, start) + resolvedSnippet + draft.slice(end);
+        setDraft(next);
+        setTimeout(() => {
+            ta.focus();
+            const cursor = start + resolvedSnippet.length;
+            ta.selectionStart = cursor;
+            ta.selectionEnd = cursor;
+        }, 0);
+    };
+
+    const applyTemplate = (mode: 'replace' | 'append') => {
+        if (!selectedTemplate) return;
+        const content = hydrateTemplateTokens(selectedTemplate.markdown).trim();
+        if (!content) return;
+
+        setDraft((prev) => {
+            if (mode === 'replace' || !prev.trim()) return `${content}\n`;
+            return `${prev.replace(/\s*$/, '')}\n\n${content}\n`;
+        });
+        setActiveTab('write');
+        setTimeout(() => {
+            textareaRef.current?.focus();
         }, 0);
     };
 
     return (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-white via-white to-slate-50 shadow-sm dark:border-slate-700 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-purple-600" />
-                    <h3 className="text-lg font-semibold text-gray-900">Notes</h3>
-                </div>
-                {!isEditing ? (
-                    <button
-                        onClick={() => { setIsEditing(true); setActiveTab('write'); }}
-                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 cursor-pointer"
-                    >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        Edit
-                    </button>
-                ) : (
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleCancel}
-                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 cursor-pointer"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50 cursor-pointer"
-                        >
-                            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                            {saving ? 'Saving…' : 'Save'}
-                        </button>
+            <div className="border-b border-slate-200/80 px-6 py-4 dark:border-slate-700/80">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2">
+                        <span className="rounded-lg bg-violet-100 p-2 dark:bg-violet-500/20">
+                            <FileText className="h-4 w-4 text-violet-700 dark:text-violet-300" />
+                        </span>
+                        <div>
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Employee Notes</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-300">Predefined markdown templates for team notes and handoffs.</p>
+                        </div>
                     </div>
-                )}
+                    {!isEditing ? (
+                        <button
+                            type="button"
+                            onClick={startEditing}
+                            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            Edit
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handleCancel}
+                                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={saving || !hasUnsavedChanges}
+                                className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer dark:bg-violet-500 dark:hover:bg-violet-400"
+                            >
+                                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                {saving ? 'Saving…' : 'Save'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        {noteStats.words} words
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        {noteStats.characters} chars
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        {noteStats.lines} lines
+                    </span>
+                    {isEditing && hasUnsavedChanges && (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-medium text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
+                            Unsaved changes
+                        </span>
+                    )}
+                    {lastSavedAt && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
+                            <Clock className="h-3 w-3" />
+                            Saved {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    )}
+                </div>
             </div>
 
             {isEditing ? (
                 <>
                     {/* Tabs */}
-                    <div className="flex items-center gap-0 border-b border-gray-200 bg-gray-50/60 px-4">
+                    <div className="flex items-center gap-0 border-b border-slate-200 bg-slate-50/70 px-4 dark:border-slate-700 dark:bg-slate-900/70">
                         <button
+                            type="button"
                             onClick={() => setActiveTab('write')}
                             className={`relative px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'write'
-                                ? 'text-gray-900'
-                                : 'text-gray-500 hover:text-gray-700'
+                                ? 'text-slate-900 dark:text-slate-100'
+                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-slate-100'
                                 }`}
                         >
                             <Edit3 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />
                             Write
                             {activeTab === 'write' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-purple-600" />
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-violet-600" />
                             )}
                         </button>
                         <button
+                            type="button"
                             onClick={() => setActiveTab('preview')}
                             className={`relative px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'preview'
-                                ? 'text-gray-900'
-                                : 'text-gray-500 hover:text-gray-700'
+                                ? 'text-slate-900 dark:text-slate-100'
+                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-slate-100'
                                 }`}
                         >
                             <Eye className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />
                             Preview
                             {activeTab === 'preview' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-purple-600" />
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-violet-600" />
                             )}
                         </button>
                     </div>
 
-                    {/* Toolbar (Write mode only) */}
+                    {/* Toolbar + template controls (Write mode only) */}
                     {activeTab === 'write' && (
-                        <div className="flex items-center gap-1 border-b border-gray-100 bg-gray-50/40 px-4 py-1.5">
-                            {[
-                                { label: 'Bold', icon: 'B', before: '**', after: '**', style: 'font-bold' },
-                                { label: 'Italic', icon: 'I', before: '_', after: '_', style: 'italic' },
-                                { label: 'Code', icon: '<>', before: '`', after: '`', style: 'font-mono text-xs' },
-                                { label: 'Link', icon: '🔗', before: '[', after: '](url)', style: '' },
-                                { label: 'Heading', icon: 'H', before: '### ', after: '', style: 'font-bold' },
-                                { label: 'List', icon: '•', before: '- ', after: '', style: '' },
-                            ].map((btn) => (
-                                <button
-                                    key={btn.label}
-                                    type="button"
-                                    title={btn.label}
-                                    onClick={() => insertMarkdown(btn.before, btn.after)}
-                                    className={`h-7 min-w-[28px] rounded px-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 cursor-pointer ${btn.style}`}
+                        <div className="space-y-3 border-b border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70">
+                            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                                <select
+                                    value={selectedTemplate?.id}
+                                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
                                 >
-                                    {btn.icon}
+                                    {EMPLOYEE_NOTE_TEMPLATES.map((template) => (
+                                        <option key={template.id} value={template.id}>
+                                            {template.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => applyTemplate('replace')}
+                                    className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400"
+                                >
+                                    Use Template
                                 </button>
-                            ))}
+                                <button
+                                    type="button"
+                                    onClick={() => applyTemplate('append')}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                                >
+                                    Append
+                                </button>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-300">{selectedTemplate?.description}</p>
+
+                            <div className="flex flex-wrap items-center gap-1">
+                                {[
+                                    { label: 'Bold', icon: 'B', before: '**', after: '**', style: 'font-bold', fallback: 'bold text' },
+                                    { label: 'Italic', icon: 'I', before: '_', after: '_', style: 'italic', fallback: 'italic text' },
+                                    { label: 'Code', icon: '<>', before: '`', after: '`', style: 'font-mono text-xs', fallback: 'code' },
+                                    { label: 'Link', icon: '[]', before: '[', after: '](https://)', style: 'font-mono text-xs', fallback: 'link text' },
+                                    { label: 'Heading', icon: 'H', before: '### ', after: '', style: 'font-bold', fallback: 'heading' },
+                                    { label: 'Bullet', icon: '•', before: '- ', after: '', style: '', fallback: 'item' },
+                                    { label: 'Checklist', icon: '☐', before: '- [ ] ', after: '', style: '', fallback: 'task' },
+                                ].map((btn) => (
+                                    <button
+                                        key={btn.label}
+                                        type="button"
+                                        title={btn.label}
+                                        onClick={() => insertMarkdown(btn.before, btn.after, btn.fallback)}
+                                        className={`h-7 min-w-[30px] rounded-md border border-transparent px-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100 ${btn.style}`}
+                                    >
+                                        {btn.icon}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => insertSnippet(`\n---\n`)}
+                                    className="h-7 rounded-md border border-transparent px-2 text-xs text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                                    title="Insert divider"
+                                >
+                                    Divider
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => insertSnippet(`> Updated: {{DATE}} {{TIME}}\n`)}
+                                    className="h-7 rounded-md border border-transparent px-2 text-xs text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                                    title="Insert timestamp"
+                                >
+                                    Time
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        try {
+                                            await navigator.clipboard.writeText(draft);
+                                            notifySuccess('Markdown copied');
+                                        } catch {
+                                            notifyError('Failed to copy markdown');
+                                        }
+                                    }}
+                                    className="inline-flex h-7 items-center gap-1 rounded-md border border-transparent px-2 text-xs text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                                    title="Copy markdown"
+                                >
+                                    <Copy className="h-3 w-3" />
+                                    Copy
+                                </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                {NOTE_QUICK_SNIPPETS.map((snippet) => (
+                                    <button
+                                        key={snippet.label}
+                                        type="button"
+                                        onClick={() => insertSnippet(snippet.value)}
+                                        className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                                    >
+                                        {snippet.label}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => setDraft(notes)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                                >
+                                    <RefreshCcw className="h-3 w-3" />
+                                    Reset
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -305,17 +584,17 @@ function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; init
                                 ref={textareaRef}
                                 value={draft}
                                 onChange={(e) => setDraft(e.target.value)}
-                                placeholder="Write your notes here… Markdown is supported."
-                                className="w-full min-h-[200px] resize-y rounded-lg border border-gray-200 bg-white p-4 text-sm leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 focus:outline-none font-mono"
+                                placeholder="Write your employee notes here... Markdown is supported."
+                                className="w-full min-h-[240px] resize-y rounded-lg border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-800 placeholder:text-slate-400 focus:border-violet-300 focus:ring-2 focus:ring-violet-100 focus:outline-none font-mono dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
                             />
                         ) : (
-                            <div className="min-h-[200px] rounded-lg border border-gray-200 bg-white p-4">
+                            <div className="min-h-[240px] rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
                                 {draft.trim() ? (
-                                    <div className="prose prose-sm prose-purple max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-purple-600 prose-code:rounded prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-purple-700 prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                                    <div className="prose prose-sm max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-violet-700 prose-code:rounded prose-code:bg-slate-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-violet-700 prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-slate-900 prose-pre:text-slate-100 dark:prose-invert dark:prose-headings:text-slate-100 dark:prose-p:text-slate-200 dark:prose-a:text-violet-300 dark:prose-code:bg-slate-800 dark:prose-code:text-violet-200 dark:prose-pre:bg-slate-900 dark:prose-pre:text-slate-100">
                                         <ReactMarkdown>{draft}</ReactMarkdown>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-400 italic">Nothing to preview</p>
+                                    <p className="text-sm italic text-slate-400 dark:text-slate-500">Nothing to preview</p>
                                 )}
                             </div>
                         )}
@@ -325,11 +604,11 @@ function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; init
                 /* View mode */
                 <div className="p-6">
                     {notes?.trim() ? (
-                        <div className="prose prose-sm prose-purple max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-purple-600 prose-code:rounded prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-purple-700 prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                        <div className="prose prose-sm max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-violet-700 prose-code:rounded prose-code:bg-slate-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-violet-700 prose-code:before:content-[''] prose-code:after:content-[''] prose-pre:bg-slate-900 prose-pre:text-slate-100 dark:prose-invert dark:prose-headings:text-slate-100 dark:prose-p:text-slate-200 dark:prose-a:text-violet-300 dark:prose-code:bg-slate-800 dark:prose-code:text-violet-200 dark:prose-pre:bg-slate-900 dark:prose-pre:text-slate-100">
                             <ReactMarkdown>{notes}</ReactMarkdown>
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-400 italic">No notes yet. Click Edit to add notes.</p>
+                        <p className="text-sm italic text-slate-400 dark:text-slate-500">No notes yet. Click Edit to add notes.</p>
                     )}
                 </div>
             )}
