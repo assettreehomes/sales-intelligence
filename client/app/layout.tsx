@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AppToaster } from "@/components/AppToaster";
 import { HeartbeatManager } from "@/components/HeartbeatManager";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -13,10 +14,22 @@ const poppins = Poppins({
   variable: "--font-poppins",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#67288e",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
   title: "TicketIntel - Sales Conversation Intelligence",
   description: "AI-powered analysis for real estate sales calls",
   manifest: "/site.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "TicketIntel",
+  },
   icons: {
     icon: [
       { url: "/favicon.ico" },
@@ -41,6 +54,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <HeartbeatManager />
+            <ServiceWorkerRegistration />
             {children}
             <AppToaster />
           </AuthProvider>
