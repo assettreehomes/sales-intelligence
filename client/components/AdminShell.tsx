@@ -9,6 +9,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertCircle,
     BarChart3,
+    Camera,
     ClipboardList,
     GraduationCap,
     LogOut,
@@ -22,7 +23,7 @@ import {
     Users
 } from 'lucide-react';
 
-type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training' | 'activity' | 'performance' | 'live';
+type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training' | 'activity' | 'performance' | 'live' | 'imou';
 
 interface AdminShellProps {
     activeSection: AdminSection;
@@ -173,7 +174,8 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
-            { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' }
+            { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' },
+            { id: 'imou' as const, label: 'IMOU', icon: Camera, href: 'https://www.imoulife.com', external: true }
         ];
     }, [profile?.role]);
 

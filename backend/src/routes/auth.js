@@ -63,6 +63,7 @@ router.post('/login', async (req, res) => {
             .single();
 
         if (userError || !existingUser) {
+            console.error('🔍 Login lookup failed:', { email: email.toLowerCase(), error: userError?.message, code: userError?.code, details: userError?.details });
             return res.status(404).json({
                 error: 'User not found. Please contact your administrator.'
             });
