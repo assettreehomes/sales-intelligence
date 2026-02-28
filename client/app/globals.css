@@ -1185,6 +1185,122 @@ html.space-dark .ticket-audio-action-btn {
     }
 }
 
+/* --- Waveform Visualizer -------------------------------------------------- */
+
+.ticket-audio-waveform-shell {
+    position: relative;
+    flex: 1;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+    cursor: pointer;
+    overflow: visible;
+    border-radius: 4px;
+    padding: 0;
+}
+
+.ticket-audio-waveform-bar {
+    flex-shrink: 0;
+    width: 3px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28);
+    transform-origin: center;
+    transition: background 80ms ease-out;
+    will-change: background;
+}
+
+.ticket-audio-waveform-shell:hover .ticket-audio-waveform-bar {
+    background: rgba(255, 255, 255, 0.36);
+}
+
+.ticket-audio-waveform-bar.wf-played {
+    background: #9b5de5 !important;
+}
+
+.ticket-audio-waveform-bar.wf-buffered {
+    background: rgba(255, 255, 255, 0.38) !important;
+}
+
+.ticket-audio-waveform-bar.wf-played.wf-live {
+    animation: wf-shimmer 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes wf-shimmer {
+    0% { background: #9b5de5; }
+    100% { background: #c77dff; }
+}
+
+.ticket-audio-waveform-bar.wf-played.wf-live:nth-child(3n) {
+    animation-delay: 0.0s;
+}
+
+.ticket-audio-waveform-bar.wf-played.wf-live:nth-child(3n+1) {
+    animation-delay: 0.3s;
+}
+
+.ticket-audio-waveform-bar.wf-played.wf-live:nth-child(3n+2) {
+    animation-delay: 0.6s;
+}
+
+.ticket-audio-waveform-cursor {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    width: 2px;
+    border-radius: 2px;
+    background: #ffffff;
+    box-shadow: 0 0 8px 3px rgba(180, 120, 255, 0.7);
+    pointer-events: none;
+    transform: translateX(-50%);
+    z-index: 3;
+}
+
+.ticket-audio-waveform-cursor.wf-playing {
+    animation: wf-needle-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes wf-needle-pulse {
+    0%, 100% { box-shadow: 0 0 6px 2px rgba(180, 120, 255, 0.55); }
+    50%      { box-shadow: 0 0 16px 5px rgba(180, 120, 255, 0.90); }
+}
+
+.ticket-audio-waveform-input {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    appearance: none;
+    margin: 0;
+}
+
+html.space-dark .ticket-audio-waveform-bar {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+html.space-dark .ticket-audio-waveform-bar.wf-played {
+    background: #a855f7 !important;
+}
+
+html.space-dark .ticket-audio-waveform-bar.wf-buffered {
+    background: rgba(216, 192, 255, 0.32) !important;
+}
+
+@media (max-width: 768px) {
+    .ticket-audio-waveform-shell {
+        height: 38px;
+        gap: 1.5px;
+    }
+
+    .ticket-audio-waveform-bar {
+        width: 2.5px;
+    }
+}
+
 .activity-page {
     --activity-surface-page: #f8fafd;
     --activity-surface-panel: #ffffff;

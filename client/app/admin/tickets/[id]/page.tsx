@@ -657,12 +657,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const seekPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reportMenuRef = useRef<HTMLDivElement | null>(null);
     const reportContainerRef = useRef<HTMLElement | null>(null);
+    const waveformShellRef = useRef<HTMLDivElement>(null);
     const previousReanalyzeStatusRef = useRef(reanalyzeStatus);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [hoveredChartPoint, setHoveredChartPoint] = useState<HoveredChartPoint | null>(null);
     const [comparisonChartMode, setComparisonChartMode] = useState<ComparisonChartMode>('line');
     const [bufferedPercent, setBufferedPercent] = useState(0);
-    const [isScrubbing, setIsScrubbing] = useState(false);
+    const [, setIsScrubbing] = useState(false);
     const [scrubTime, setScrubTime] = useState<number | null>(null);
     const [volume, setVolume] = useState(initialAudioPreferences.volume);
     const [isMuted, setIsMuted] = useState(initialAudioPreferences.isMuted);
@@ -670,6 +671,32 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
     const [reportActionLoading, setReportActionLoading] = useState<'download' | 'copy' | 'share' | null>(null);
     const [isDeletingTicket, setIsDeletingTicket] = useState(false);
+
+    const WAVEFORM_BAR_COUNT = 110;
+    const waveformHeights = useMemo(() => {
+        // Seeded from ticket id for consistent shape per ticket
+        const seed = (id ?? 'x').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+
+        return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
+            const t = i / (WAVEFORM_BAR_COUNT - 1); // 0 -> 1
+
+            // Speech-like amplitude envelope: quiet at edges, loud in middle third
+            const envelope =
+                Math.pow(Math.sin(t * Math.PI), 0.55) * 0.6 +
+                Math.pow(Math.sin(t * Math.PI * 2.1 + 0.4), 2) * 0.22 +
+                0.18;
+
+            // Two layered noise frequencies for natural texture
+            const noise1 = (Math.sin(i * 1.7 + seed * 0.031) * 0.5 + 0.5);
+            const noise2 = (Math.sin(i * 3.9 + seed * 0.017 + 1.2) * 0.5 + 0.5);
+            const noise3 = (Math.sin(i * 0.8 + seed * 0.051 + 2.5) * 0.5 + 0.5);
+
+            const combined = noise1 * 0.5 + noise2 * 0.3 + noise3 * 0.2;
+            const height = clamp(combined * envelope, 0.04, 1);
+
+            return height;
+        });
+    }, [id]);
 
     // Flag state
     const [flagModalStep, setFlagModalStep] = useState<'closed' | 'confirm' | 'share'>('closed');
@@ -1449,8 +1476,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         }
     }, [reanalyzeStatus]);
 
-    const displayedCurrentTime = scrubTime ?? currentTime;
-    const progressPercent = duration > 0 ? clamp((displayedCurrentTime / duration) * 100, 0, 100) : 0;
+    const displayedCurrentTime = scrubTime !== null ? scrubTime : currentTime;
+    const progressPercent = duration > 0 ? (displayedCurrentTime / duration) * 100 : 0;
     const effectiveVolume = isMuted ? 0 : volume;
     const volumePercent = clamp(effectiveVolume * 100, 0, 100);
     const VolumeIcon = effectiveVolume <= 0 ? VolumeX : effectiveVolume < 0.5 ? Volume1 : Volume2;
@@ -2031,16 +2058,50 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 {formatTime(displayedCurrentTime)}
                                             </span>
 
-                                            <div className="relative flex h-4 flex-1 items-center group">
-                                                <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/20 transition-shadow duration-200 ease-out group-hover:shadow-[0_0_0_3px_rgba(168,85,247,0.16)]" />
-                                                <div
-                                                    className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/35 transition-[width] duration-200 ease-out"
-                                                    style={{ width: `${bufferedPercent}%` }}
-                                                />
-                                                <div
-                                                    className={`absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-gradient-to-r from-purple-600 via-purple-400 to-indigo-300 ${isScrubbing ? '' : 'transition-[width] duration-200 ease-out'}`}
-                                                    style={{ width: `${progressPercent}%` }}
-                                                />
+                                            {/* Waveform Visualizer */}
+                                            <div
+                                                ref={waveformShellRef}
+                                                className="ticket-audio-waveform-shell flex-1"
+                                            >
+                                                {waveformHeights.map((h, i) => {
+                                                    // Both use 0-100 scale consistently
+                                                    const barPct = (i / WAVEFORM_BAR_COUNT) * 100;
+                                                    const isPlayed = progressPercent > 0 && barPct < progressPercent;
+                                                    const isBuffered = !isPlayed && bufferedPercent > 0 && barPct < bufferedPercent;
+
+                                                    const classes = ['ticket-audio-waveform-bar'];
+                                                    if (isPlayed) classes.push('wf-played');
+                                                    if (isPlayed && isPlaying) classes.push('wf-live');
+                                                    if (isBuffered) classes.push('wf-buffered');
+
+                                                    return (
+                                                        <div
+                                                            key={i}
+                                                            className={classes.join(' ')}
+                                                            style={{ height: `${Math.max(8, Math.round(h * 100))}%` }}
+                                                        />
+                                                    );
+                                                })}
+
+                                                {/* Playhead needle — pixel-accurate using measured shell width */}
+                                                {(() => {
+                                                    const shellWidth = waveformShellRef.current?.offsetWidth ?? 0;
+                                                    const BAR_SLOT = 3 + 2;
+                                                    const playedBarIndex = Math.floor((progressPercent / 100) * WAVEFORM_BAR_COUNT);
+                                                    const barGridPx = playedBarIndex * BAR_SLOT + 3;
+                                                    const cursorLeft = shellWidth > 0
+                                                        ? (barGridPx / shellWidth) * 100
+                                                        : progressPercent;
+
+                                                    return (
+                                                        <div
+                                                            className={`ticket-audio-waveform-cursor${isPlaying ? ' wf-playing' : ''}`}
+                                                            style={{ left: `${cursorLeft}%` }}
+                                                        />
+                                                    );
+                                                })()}
+
+                                                {/* Invisible range input for all seek interactions */}
                                                 <input
                                                     type="range"
                                                     min={0}
@@ -2054,7 +2115,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                     onTouchEnd={commitScrub}
                                                     onKeyUp={commitScrub}
                                                     onBlur={commitScrub}
-                                                    className={`ticket-audio-seek-input relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent accent-purple-500 ${isScrubbing ? 'ticket-audio-seek-input--dragging' : ''}`}
+                                                    className="ticket-audio-waveform-input"
                                                     aria-label="Seek timeline"
                                                 />
                                             </div>
