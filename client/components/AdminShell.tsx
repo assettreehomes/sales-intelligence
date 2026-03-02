@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { notifyInfo } from '@/lib/toast';
+
 import {
     type LucideIcon,
     AlertCircle,
@@ -44,9 +44,12 @@ const SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed';
 const MOBILE_MENU_BUTTON_POS_KEY = 'admin-mobile-menu-button-position';
 const MOBILE_MENU_BUTTON_SIZE = 40;
 const MOBILE_MENU_BUTTON_MARGIN = 8;
-const DEFAULT_IMOU_PROTOCOLS = ['imou://'];
-const CUSTOM_PROTOCOL_LAUNCH_STAGGER_MS = 180;
-const CUSTOM_PROTOCOL_RESULT_TIMEOUT_MS = 1400;
+const IMOU_READY_KEY = 'admin-imou-ready';
+const IMOU_PROTOCOL = 'imoulauncher://';
+const PS_REG_COMMAND =
+    `reg add "HKCU\\Software\\Classes\\imoulauncher" /ve /d "URL:IMOU Launcher" /f` +
+    ` ; reg add "HKCU\\Software\\Classes\\imoulauncher" /v "URL Protocol" /d "" /f` +
+    ` ; reg add "HKCU\\Software\\Classes\\imoulauncher\\shell\\open\\command" /ve /d '"C:\\Program Files\\Imou_en\\bin\\Imou_en.exe"' /f`;
 
 type FloatingButtonPosition = {
     left: number;
@@ -75,6 +78,8 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
     });
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [imouSetupOpen, setImouSetupOpen] = useState(false);
+    const [imouCmdCopied, setImouCmdCopied] = useState(false);
     const [mobileMenuButtonPos, setMobileMenuButtonPos] = useState<FloatingButtonPosition>(() => {
         if (typeof window === 'undefined') return { left: 16, top: 16 };
 
@@ -174,42 +179,31 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
 
     const homeHref = (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : '/admin/tickets';
 
-    const openImouDesktop = useCallback(() => {
+    const openImou = useCallback(() => {
         if (typeof window === 'undefined') return;
 
-        const configured = (process.env.NEXT_PUBLIC_IMOU_PROTOCOLS || '')
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean);
-        const protocols = configured.length > 0 ? configured : DEFAULT_IMOU_PROTOCOLS;
-        let appSwitchDetected = false;
+        const isReady = window.localStorage.getItem(IMOU_READY_KEY) === '1';
+        if (!isReady) {
+            setImouSetupOpen(true);
+            return;
+        }
 
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden') {
-                appSwitchDetected = true;
-            }
-        };
+        window.location.href = IMOU_PROTOCOL;
+    }, []);
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
+    const copyImouSetupCmd = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(PS_REG_COMMAND);
+            setImouCmdCopied(true);
+            window.setTimeout(() => setImouCmdCopied(false), 2500);
+        } catch {
+            // fallback: select the text in a textarea
+        }
+    }, []);
 
-        protocols.forEach((protocol, index) => {
-            window.setTimeout(() => {
-                const launcher = document.createElement('iframe');
-                launcher.style.display = 'none';
-                launcher.src = protocol;
-                document.body.appendChild(launcher);
-                window.setTimeout(() => {
-                    launcher.remove();
-                }, 1000);
-            }, index * CUSTOM_PROTOCOL_LAUNCH_STAGGER_MS);
-        });
-
-        window.setTimeout(() => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (!appSwitchDetected && document.visibilityState === 'visible') {
-                notifyInfo('IMOU desktop app did not open. Verify the app is installed and protocol is registered on this machine.');
-            }
-        }, CUSTOM_PROTOCOL_RESULT_TIMEOUT_MS + protocols.length * CUSTOM_PROTOCOL_LAUNCH_STAGGER_MS);
+    const confirmImouReady = useCallback(() => {
+        window.localStorage.setItem(IMOU_READY_KEY, '1');
+        setImouSetupOpen(false);
     }, []);
 
     const navItems = useMemo<AdminNavItem[]>(() => {
@@ -226,12 +220,72 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
             { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' },
-            { id: 'imou' as const, label: 'IMOU', icon: Camera, onClick: openImouDesktop }
+            { id: 'imou' as const, label: 'IMOU', icon: Camera, onClick: openImou }
         ];
-    }, [profile?.role, openImouDesktop]);
+    }, [profile?.role, openImou]);
 
     return (
         <div className={`admin-shell min-h-screen ${activeSection === 'performance' ? 'admin-shell--performance' : ''}`}>
+
+            {/* IMOU Setup Modal */}
+            {imouSetupOpen && (
+                <div
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                    onClick={(e) => { if (e.target === e.currentTarget) setImouSetupOpen(false); }}
+                >
+                    <div className="admin-shell-imou-modal mx-4 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
+                        <div className="mb-3 flex items-center gap-3">
+                            <Camera className="h-5 w-5 shrink-0 text-blue-500" />
+                            <h2 className="text-base font-semibold">One-time IMOU Setup</h2>
+                        </div>
+                        <p className="admin-shell-imou-modal-desc mb-4 text-sm">
+                            Run this command once in any terminal to register the IMOU launcher:
+                        </p>
+
+                        {/* Command box */}
+                        <div className="admin-shell-imou-cmd-box mb-4 flex items-start gap-2 rounded-xl p-3">
+                            <code className="admin-shell-imou-cmd-text flex-1 break-all text-xs leading-relaxed">
+                                {PS_REG_COMMAND}
+                            </code>
+                            <button
+                                type="button"
+                                onClick={copyImouSetupCmd}
+                                className="admin-shell-imou-copy-btn shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+                            >
+                                {imouCmdCopied ? '✓ Copied!' : 'Copy'}
+                            </button>
+                        </div>
+
+                        <ol className="admin-shell-imou-modal-steps mb-5 space-y-2 text-sm">
+                            <li className="flex items-start gap-3">
+                                <span className="admin-shell-imou-modal-step-num">1</span>
+                                <span>Press <strong>Win + X</strong> → <strong>Terminal</strong> (or PowerShell) → paste the command above → press <strong>Enter</strong>.</span>
+                            </li>
+                            <li className="flex items-start gap-3">
+                                <span className="admin-shell-imou-modal-step-num">2</span>
+                                <span>Click <strong>&ldquo;Done — close&rdquo;</strong> below, then click <strong>IMOU</strong> in the sidebar.</span>
+                            </li>
+                        </ol>
+
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={confirmImouReady}
+                                className="admin-shell-imou-modal-confirm flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                            >
+                                Done — close
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setImouSetupOpen(false)}
+                                className="admin-shell-imou-modal-cancel rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {!mobileOpen && (
                 <button
                     type="button"
@@ -310,6 +364,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                                             item.onClick?.();
                                             setMobileOpen(false);
                                         }}
+                                        onContextMenu={undefined}
                                     >
                                         <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
                                         {!collapsed && <span>{item.label}</span>}

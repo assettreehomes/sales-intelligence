@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\imoulauncher]
+@="URL:IMOU Launcher"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\imoulauncher\DefaultIcon]
+@="\"C:\\Program Files\\Imou_en\\bin\\Imou_en.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\imoulauncher\shell]
+
+[HKEY_CURRENT_USER\Software\Classes\imoulauncher\shell\open]
+
+[HKEY_CURRENT_USER\Software\Classes\imoulauncher\shell\open\command]
+@="\"C:\\Program Files\\Imou_en\\bin\\Imou_en.exe\""
