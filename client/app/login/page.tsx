@@ -46,7 +46,7 @@ export default function LoginPage() {
         if (!authLoading && !profileLoading && user && profile) {
             // Allow all users to access the web portal for now (dev requirement)
             if (profile.role === 'superadmin' || profile.role === 'admin') {
-                router.replace('/admin');
+                router.replace('/admin/performance');
                 return;
             }
 

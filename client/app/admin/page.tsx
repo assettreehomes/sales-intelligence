@@ -7,7 +7,7 @@ export default function AdminPage() {
     const router = useRouter();
 
     useEffect(() => {
-        router.replace('/admin/tickets');
+        router.replace('/admin/performance');
     }, [router]);
 
     return (

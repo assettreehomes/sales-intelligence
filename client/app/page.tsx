@@ -15,7 +15,7 @@ export default function Home() {
 
         // User is logged in - redirect based on role
         if (profile?.role === 'superadmin' || profile?.role === 'admin') {
-          router.replace('/admin');
+          router.replace('/admin/performance');
         } else if (profile?.role === 'intern') {
           router.replace('/intern');
         } else {

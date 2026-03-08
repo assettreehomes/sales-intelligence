@@ -2,7 +2,7 @@
   "name": "TicketIntel - Sales Intelligence",
   "short_name": "TicketIntel",
   "description": "AI-powered analysis for real estate sales conversations",
-  "start_url": "/admin/tickets",
+  "start_url": "/admin/performance",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

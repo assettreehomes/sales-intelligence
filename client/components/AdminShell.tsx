@@ -11,6 +11,7 @@ import {
     type LucideIcon,
     AlertCircle,
     BarChart3,
+    Building2,
     Camera,
     ClipboardList,
     GraduationCap,
@@ -20,12 +21,23 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Radio,
+    Shield,
     Sun,
     User,
     Users
 } from 'lucide-react';
 
-type AdminSection = 'tickets' | 'excuses' | 'assign' | 'training' | 'activity' | 'performance' | 'live' | 'imou';
+type AdminSection =
+    | 'tickets'
+    | 'excuses'
+    | 'assign'
+    | 'training'
+    | 'activity'
+    | 'performance'
+    | 'live'
+    | 'imou'
+    | 'sellDo'
+    | 'antivirus';
 
 interface AdminShellProps {
     activeSection: AdminSection;
@@ -46,6 +58,8 @@ const MOBILE_MENU_BUTTON_SIZE = 40;
 const MOBILE_MENU_BUTTON_MARGIN = 8;
 const IMOU_READY_KEY = 'admin-imou-ready';
 const IMOU_PROTOCOL = 'imoulauncher://';
+const SELL_DO_URL = 'about:blank';
+const ANTIVIRUS_APP_URL = 'about:blank';
 const PS_REG_COMMAND =
     `reg add "HKCU\\Software\\Classes\\imoulauncher" /ve /d "URL:IMOU Launcher" /f` +
     ` ; reg add "HKCU\\Software\\Classes\\imoulauncher" /v "URL Protocol" /d "" /f` +
@@ -177,7 +191,20 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         setMobileOpen(true);
     };
 
-    const homeHref = (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : '/admin/tickets';
+    const homeHref = (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : '/admin/performance';
+
+    const openExternalInNewTab = useCallback((url: string) => {
+        if (typeof window === 'undefined') return;
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }, []);
+
+    const openSellDo = useCallback(() => {
+        openExternalInNewTab(SELL_DO_URL);
+    }, [openExternalInNewTab]);
+
+    const openAntivirusApp = useCallback(() => {
+        openExternalInNewTab(ANTIVIRUS_APP_URL);
+    }, [openExternalInNewTab]);
 
     const openImou = useCallback(() => {
         if (typeof window === 'undefined') return;
@@ -214,20 +241,22 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         }
 
         return [
-            { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
             { id: 'performance' as const, label: 'Performance', icon: BarChart3, href: '/admin/performance' },
+            { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
+            { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, onClick: openSellDo },
+            { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, onClick: openAntivirusApp },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
             { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' },
-            { id: 'imou' as const, label: 'IMOU', icon: Camera, onClick: openImou }
+            { id: 'imou' as const, label: 'CCTV Video', icon: Camera, onClick: openImou }
         ];
-    }, [profile?.role, openImou]);
+    }, [profile?.role, openAntivirusApp, openImou, openSellDo]);
 
     return (
         <div className={`admin-shell min-h-screen ${activeSection === 'performance' ? 'admin-shell--performance' : ''}`}>
 
-            {/* IMOU Setup Modal */}
+            {/* CCTV Video Setup Modal */}
             {imouSetupOpen && (
                 <div
                     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -236,10 +265,10 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                     <div className="admin-shell-imou-modal mx-4 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
                         <div className="mb-3 flex items-center gap-3">
                             <Camera className="h-5 w-5 shrink-0 text-blue-500" />
-                            <h2 className="text-base font-semibold">One-time IMOU Setup</h2>
+                            <h2 className="text-base font-semibold">One-time CCTV Video Setup</h2>
                         </div>
                         <p className="admin-shell-imou-modal-desc mb-4 text-sm">
-                            Run this command once in any terminal to register the IMOU launcher:
+                            Run this command once in any terminal to register the CCTV Video launcher:
                         </p>
 
                         {/* Command box */}
@@ -263,7 +292,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                             </li>
                             <li className="flex items-start gap-3">
                                 <span className="admin-shell-imou-modal-step-num">2</span>
-                                <span>Click <strong>&ldquo;Done — close&rdquo;</strong> below, then click <strong>IMOU</strong> in the sidebar.</span>
+                                <span>Click <strong>&ldquo;Done — close&rdquo;</strong> below, then click <strong>CCTV Video</strong> in the sidebar.</span>
                             </li>
                         </ol>
 
@@ -432,3 +461,4 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         </div>
     );
 }
+

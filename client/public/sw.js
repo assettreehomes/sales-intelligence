@@ -2,7 +2,7 @@ const CACHE_NAME = 'ticketintel-v1';
 
 // Assets to pre-cache on install
 const PRECACHE_URLS = [
-    '/admin/tickets',
+    '/admin/performance',
     '/android-chrome-192x192.png',
     '/android-chrome-512x512.png',
     '/apple-touch-icon.png',
