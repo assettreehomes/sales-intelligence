@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
-import { buildDailyReport, sendWhatsAppMessage } from '../services/whatsapp.js';
+import { buildDailyReport, sendWhatsAppMessage, sendWhatsAppTemplate } from '../services/whatsapp.js';
 import { logActivity } from '../services/activityLog.js';
 
 const router = Router();
@@ -10,19 +10,18 @@ const router = Router();
  * POST /reports/whatsapp/send
  *
  * Triggers a WhatsApp daily report.
- * Two valid auth paths:
- *  1. Admin JWT (manual "Send Report" button in dashboard)
- *  2. x-scheduler-secret header (Google Cloud Scheduler cron at 6pm IST)
+ * Auth: admin JWT (manual button) OR x-scheduler-secret header (Cloud Scheduler).
+ *
+ * Sending strategy:
+ *  - If WHATSAPP_TEMPLATE_NAME is set → use template (works anytime, no 24h window needed)
+ *  - Otherwise → free-form text (requires conversation window to be open)
  */
 router.post('/whatsapp/send', async (req, res) => {
-    // ── Auth: scheduler secret OR admin JWT ────────────────────────────────
     const schedulerSecret = req.headers['x-scheduler-secret'];
     const expectedSecret  = process.env.SCHEDULER_SECRET;
-
     const isScheduler = expectedSecret && schedulerSecret === expectedSecret;
 
     if (!isScheduler) {
-        // Fall back to JWT admin auth
         try {
             await new Promise((resolve, reject) => {
                 authMiddleware(req, res, (err) => err ? reject(err) : resolve());
@@ -38,22 +37,26 @@ router.post('/whatsapp/send', async (req, res) => {
     try {
         console.log(`📲 WhatsApp report triggered by: ${isScheduler ? 'Cloud Scheduler' : req.user?.fullname || 'admin'}`);
 
-        // 1. Build the report text
-        const reportText = await buildDailyReport();
+        // 1. Build report (returns structured data + text)
+        const report = await buildDailyReport();
 
-        // 2. Send to WhatsApp
-        await sendWhatsAppMessage(reportText);
+        // 2. Send — prefer template (no 24h restriction), fall back to free-form text
+        if (process.env.WHATSAPP_TEMPLATE_NAME) {
+            await sendWhatsAppTemplate(report);
+        } else {
+            await sendWhatsAppMessage(report.text);
+        }
 
         // 3. Log (non-blocking)
         logActivity(req, 'report.whatsapp.sent', {
             triggered_by: isScheduler ? 'scheduler' : (req.user?.fullname || 'admin'),
-            preview: reportText.slice(0, 120) + '...'
+            preview: report.text.slice(0, 120) + '...'
         }).catch(() => {});
 
         return res.status(200).json({
             success: true,
             triggered_by: isScheduler ? 'scheduler' : 'manual',
-            preview: reportText
+            preview: report.text
         });
 
     } catch (error) {
