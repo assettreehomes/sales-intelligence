@@ -6,6 +6,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
 import { useTicketsStore } from '@/stores/ticketsStore';
+import { getToken, API_URL } from '@/stores/authStore';
 import {
     AlertCircle,
     Search,
@@ -59,10 +60,8 @@ function AdminDashboardContent() {
         if (sendingReport) return;
         setSendingReport(true);
         try {
-            const token = localStorage.getItem('auth_token') ||
-                document.cookie.split('; ').find(r => r.startsWith('token='))?.split('=')[1];
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const res = await fetch(`${apiUrl}/reports/whatsapp/send`, {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/reports/whatsapp/send`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -75,7 +74,7 @@ function AdminDashboardContent() {
             } else {
                 alert(`❌ Failed to send report: ${data.error || 'Unknown error'}`);
             }
-        } catch (err) {
+        } catch {
             alert('❌ Network error — could not send report.');
         } finally {
             setSendingReport(false);
