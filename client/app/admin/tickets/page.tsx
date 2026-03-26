@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -21,7 +21,8 @@ import {
     ArrowUpAZ,
     ChevronDown,
     Users,
-    Check
+    Check,
+    MessageCircle
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { useRef } from 'react';
@@ -52,6 +53,34 @@ function AdminDashboardContent() {
     const [deletingTicketIds, setDeletingTicketIds] = useState<Set<string>>(new Set());
     const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
     const agentDropdownRef = useRef<HTMLDivElement>(null);
+    const [sendingReport, setSendingReport] = useState(false);
+
+    const handleSendReport = async () => {
+        if (sendingReport) return;
+        setSendingReport(true);
+        try {
+            const token = localStorage.getItem('auth_token') ||
+                document.cookie.split('; ').find(r => r.startsWith('token='))?.split('=')[1];
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            const res = await fetch(`${apiUrl}/reports/whatsapp/send`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                alert('✅ WhatsApp report sent successfully!');
+            } else {
+                alert(`❌ Failed to send report: ${data.error || 'Unknown error'}`);
+            }
+        } catch (err) {
+            alert('❌ Network error — could not send report.');
+        } finally {
+            setSendingReport(false);
+        }
+    };
 
     // Close dropdown on click outside
     useEffect(() => {
@@ -255,6 +284,18 @@ function AdminDashboardContent() {
                                     className="w-full min-w-[14rem] rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 lg:w-72"
                                 />
                             </div>
+                            <button
+                                id="send-whatsapp-report-btn"
+                                onClick={handleSendReport}
+                                disabled={sendingReport}
+                                title="Send daily performance report to WhatsApp"
+                                className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {sendingReport
+                                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                                    : <MessageCircle className="w-4 h-4" />}
+                                <span className="hidden sm:inline">{sendingReport ? 'Sending…' : 'Send Report'}</span>
+                            </button>
                             <button
                                 onClick={() => setMobileFiltersOpen((prev) => !prev)}
                                 className="rounded-lg p-2 transition-colors hover:bg-gray-100 md:hidden"

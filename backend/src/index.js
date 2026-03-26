@@ -15,6 +15,7 @@ import activityLogRoutes from './routes/activityLog.js';
 import analyticsRoutes from './routes/analytics.js';
 import employeeRoutes from './routes/employee.js';
 import webhookRoutes from './routes/webhooks.js';
+import reportRoutes from './routes/reports.js';
 
 // Load environment variables
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -82,6 +83,7 @@ app.use('/activity-log', activityLogRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/employee', employeeRoutes);
 app.use('/webhooks', webhookRoutes);
+app.use('/reports', reportRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
