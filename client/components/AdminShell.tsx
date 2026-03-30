@@ -24,6 +24,7 @@ import {
     Shield,
     Sun,
     User,
+    UserPlus,
     Users
 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ type AdminSection =
     | 'tickets'
     | 'excuses'
     | 'assign'
+    | 'employees'
     | 'training'
     | 'activity'
     | 'performance'
@@ -247,6 +249,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, onClick: openAntivirusApp },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
+            { id: 'employees' as const, label: 'Employees', icon: UserPlus, href: '/admin/employees' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
             { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' },
             { id: 'imou' as const, label: 'CCTV Video', icon: Camera, onClick: openImou }
