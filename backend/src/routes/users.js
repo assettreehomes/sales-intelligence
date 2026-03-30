@@ -21,7 +21,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         const { role } = req.query;
         let query = supabaseAdmin
             .from('users')
-            .select('id, email, fullname, role, status, avatar_url, sales_email, last_login, createdat')
+            .select('id, email, fullname, role, status, avatar_url, sales_email, last_login')
             .order('fullname', { ascending: true });
         if (role) query = query.eq('role', role);
         const { data: users, error } = await query;
