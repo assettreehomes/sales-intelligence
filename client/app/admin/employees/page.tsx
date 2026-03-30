@@ -25,7 +25,6 @@ interface Employee {
     id: string;
     fullname: string;
     email: string;
-    sales_email?: string;
     status: 'active' | 'inactive';
     last_login?: string;
 }
@@ -44,7 +43,6 @@ function EmployeesPageContent() {
     const [showModal, setShowModal] = useState(false);
     const [fullname, setFullname] = useState('');
     const [email, setEmail] = useState('');
-    const [salesEmail, setSalesEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -94,15 +92,14 @@ function EmployeesPageContent() {
                 body: JSON.stringify({
                     fullname: fullname.trim(),
                     email: email.trim(),
-                    password: password.trim(),
-                    sales_email: salesEmail.trim() || undefined
+                    password: password.trim()
                 })
             });
             const data = await res.json();
             if (res.ok && data.success) {
                 setCreatedEmployee({ name: fullname.trim(), email: email.trim(), password: password.trim() });
                 setEmployees(prev => [...prev, data.user].sort((a, b) => a.fullname.localeCompare(b.fullname)));
-                setFullname(''); setEmail(''); setSalesEmail(''); setPassword('');
+                setFullname(''); setEmail(''); setPassword('');
             } else {
                 showToast('error', data.error || 'Failed to create employee');
             }
@@ -170,7 +167,7 @@ function EmployeesPageContent() {
     const resetModal = () => {
         setShowModal(false);
         setCreatedEmployee(null);
-        setFullname(''); setEmail(''); setSalesEmail(''); setPassword('');
+        setFullname(''); setEmail(''); setPassword('');
         setShowPassword(false);
     };
 
@@ -255,20 +252,6 @@ function EmployeesPageContent() {
                                         onChange={e => setEmail(e.target.value)}
                                         placeholder="arun@assettreehomes.com"
                                         required
-                                        disabled={submitting}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        Sell.do Email <span className="text-gray-400 font-normal">(optional — for CRM matching)</span>
-                                    </label>
-                                    <input
-                                        type="email"
-                                        value={salesEmail}
-                                        onChange={e => setSalesEmail(e.target.value)}
-                                        placeholder="Same as login email if identical"
                                         disabled={submitting}
                                         className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
                                     />
@@ -388,7 +371,6 @@ function EmployeesPageContent() {
                                     <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                                         <th className="px-5 py-3 text-left">Name</th>
                                         <th className="px-5 py-3 text-left hidden sm:table-cell">Email</th>
-                                        <th className="px-5 py-3 text-left hidden md:table-cell">Sell.do Email</th>
                                         <th className="px-5 py-3 text-left">Status</th>
                                         <th className="px-5 py-3 text-right">Actions</th>
                                     </tr>
@@ -401,9 +383,6 @@ function EmployeesPageContent() {
                                                 <p className="text-xs text-gray-500 font-normal sm:hidden">{emp.email}</p>
                                             </td>
                                             <td className="px-5 py-3.5 text-gray-600 hidden sm:table-cell">{emp.email}</td>
-                                            <td className="px-5 py-3.5 text-gray-500 hidden md:table-cell">
-                                                {emp.sales_email || <span className="text-gray-300">—</span>}
-                                            </td>
                                             <td className="px-5 py-3.5">
                                                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                                                     emp.status === 'active'

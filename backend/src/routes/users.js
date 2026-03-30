@@ -21,7 +21,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         const { role } = req.query;
         let query = supabaseAdmin
             .from('users')
-            .select('id, email, fullname, role, status, avatar_url, sales_email, last_login')
+            .select('id, email, fullname, role, status, avatar_url')
             .order('fullname', { ascending: true });
         if (role) query = query.eq('role', role);
         const { data: users, error } = await query;
@@ -76,14 +76,13 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             email: normalizedEmail,
             fullname: fullname.trim(),
             role: 'employee',
-            status: 'active',
-            ...(sales_email?.trim() ? { sales_email: sales_email.trim().toLowerCase() } : {})
+            status: 'active'
         };
 
         const { data: user, error: insertError } = await supabaseAdmin
             .from('users')
             .insert(newUser)
-            .select('id, email, fullname, role, status, sales_email')
+            .select('id, email, fullname, role, status')
             .single();
 
         if (insertError) {
