@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { LoginResult } from '@/contexts/AuthContext';
 import { notifyError } from '@/lib/toast';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Smartphone, Copy, Check } from 'lucide-react';
-import HCaptcha from '@hcaptcha/react-hcaptcha';
 
 type LoginStep = 'credentials' | 'totp' | 'totp-setup';
 
@@ -32,14 +31,8 @@ export default function LoginPage() {
     const [userName, setUserName] = useState('');
     const [copied, setCopied] = useState(false);
 
-    // CAPTCHA state
-    const [captchaToken, setCaptchaToken] = useState('');
-    const captchaRef = useRef<HCaptcha>(null);
-
     // TOTP input refs for auto-focus
     const totpInputRef = useRef<HTMLInputElement>(null);
-
-    const siteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || '';
 
     // Redirect if already logged in
     useEffect(() => {
@@ -72,15 +65,12 @@ export default function LoginPage() {
 
         setLoading(true);
 
-        const result: LoginResult = await signIn(email, password, captchaToken);
+        const result: LoginResult = await signIn(email, password);
 
         if (result.error) {
             setError(result.error);
             notifyError(result.error);
             setLoading(false);
-            // Reset CAPTCHA
-            captchaRef.current?.resetCaptcha();
-            setCaptchaToken('');
             return;
         }
 
@@ -156,8 +146,6 @@ export default function LoginPage() {
         setQrCodeDataUri('');
         setBase32Secret('');
         setError('');
-        setCaptchaToken('');
-        captchaRef.current?.resetCaptcha();
     };
 
     return (
@@ -239,17 +227,6 @@ export default function LoginPage() {
                                             {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                         </button>
                                     </div>
-                                </div>
-
-                                {/* hCaptcha */}
-                                <div className="flex justify-center">
-                                    <HCaptcha
-                                        ref={captchaRef}
-                                        sitekey={siteKey}
-                                        onVerify={(token) => setCaptchaToken(token)}
-                                        onExpire={() => setCaptchaToken('')}
-                                        onError={() => setCaptchaToken('')}
-                                    />
                                 </div>
 
                                 {/* Remember Me */}

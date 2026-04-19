@@ -3,7 +3,6 @@ import crypto from 'crypto';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { logActivity } from '../services/activityLog.js';
-import { verifyCaptcha } from '../services/captcha.js';
 import {
     generateTOTPSecret,
     verifyTOTPCode,
@@ -47,13 +46,13 @@ function createTempToken(userId, sessionData) {
  */
 router.post('/login', async (req, res) => {
     try {
-        const { email, password, captchaToken } = req.body;
+        const { email, password } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        // 1. CAPTCHA verified later — only required for superadmin
+        // 1. Check user exists and is active
 
         // 2. Check if user exists and is active
         const { data: existingUser, error: userError } = await supabaseAdmin
@@ -77,13 +76,7 @@ router.post('/login', async (req, res) => {
 
         const isSuperadmin = existingUser.role === 'superadmin';
 
-        // 2b. Verify CAPTCHA — required for ALL users
-        const captchaValid = await verifyCaptcha(captchaToken);
-        if (!captchaValid) {
-            return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
-        }
-
-        // 3. Authenticate with Supabase (password)
+        // 2. Authenticate with Supabase (password)
         const { data: authData, error: authError } = await supabasePublic.auth.signInWithPassword({
             email: email.toLowerCase(),
             password,

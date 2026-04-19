@@ -40,7 +40,7 @@ interface AuthContextType {
     profile: UserProfile | null;
     loading: boolean;
     profileLoading: boolean;
-    signIn: (email: string, password: string, captchaToken: string) => Promise<LoginResult>;
+    signIn: (email: string, password: string) => Promise<LoginResult>;
     completeTOTP: (tempToken: string, totpCode: string) => Promise<LoginResult>;
     confirmTOTPSetup: (tempToken: string, totpCode: string) => Promise<LoginResult>;
     signOut: () => Promise<void>;
@@ -203,12 +203,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * Sign in with email, password, and CAPTCHA token.
      * Goes through the backend which validates CAPTCHA + checks TOTP.
      */
-    const signIn = useCallback(async (email: string, password: string, captchaToken: string): Promise<LoginResult> => {
+    const signIn = useCallback(async (email: string, password: string): Promise<LoginResult> => {
         try {
             const response = await fetch(`${API_URL}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password, captchaToken }),
+                body: JSON.stringify({ email, password }),
             });
 
             const data = await response.json();
