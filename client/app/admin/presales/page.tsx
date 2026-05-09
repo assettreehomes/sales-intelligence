@@ -440,7 +440,7 @@ function PresalesContent() {
 
 export default function PresalesPage() {
     return (
-        <ProtectedRoute requiredRole="admin">
+        <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
             <PresalesContent />
         </ProtectedRoute>
     );
