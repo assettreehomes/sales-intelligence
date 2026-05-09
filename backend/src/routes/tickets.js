@@ -1466,6 +1466,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             liveOnly,
             flaggedOnly,
             search,
+            source,
             page = 1,
             limit = 12
         } = req.query;
@@ -1493,6 +1494,11 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         // Live only filter (pending or processing)
         if (liveOnly === 'true') {
             query = query.in('status', ['pending', 'processing', 'uploading']);
+        }
+
+        // Source filter (phone | telecmi)
+        if (source && source !== 'all') {
+            query = query.eq('source', source);
         }
 
         // Created by filter

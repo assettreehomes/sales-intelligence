@@ -20,6 +20,7 @@ import {
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
+    PhoneCall,
     Radio,
     Shield,
     Sun,
@@ -30,6 +31,7 @@ import {
 
 type AdminSection =
     | 'tickets'
+    | 'presales'
     | 'excuses'
     | 'assign'
     | 'employees'
@@ -245,6 +247,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         return [
             { id: 'performance' as const, label: 'Performance', icon: BarChart3, href: '/admin/performance' },
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
+            { id: 'presales' as const, label: 'Pre-Sales Calls', icon: PhoneCall, href: '/admin/presales' },
             { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, onClick: openSellDo },
             { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, onClick: openAntivirusApp },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
