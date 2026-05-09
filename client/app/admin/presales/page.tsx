@@ -362,7 +362,7 @@ function PresalesContent() {
                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                                         {ticket.creator_details ? (
                                             <span className="flex items-center gap-1">
-                                                <Avatar name={ticket.creator_details.fullname} avatarUrl={ticket.creator_details.avatar_url} size="sm" />
+                                                <Avatar name={ticket.creator_details.fullname} src={ticket.creator_details.avatar_url} size="sm" />
                                                 {ticket.creator_details.fullname}
                                             </span>
                                         ) : (
