@@ -149,9 +149,19 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
                 status:              'analyzed',
                 rating:              analysis.overall_score ?? null,
                 analysiscompletedat: new Date().toISOString(),
-                istrainingcall:      (analysis.overall_score || 0) >= 8.0  // Higher bar for phone calls
+                istrainingcall:      (analysis.overall_score || 0) >= 8.0
             })
             .eq('id', ticketId);
+
+        // Delete the GCS file — it was only needed for Vertex AI analysis.
+        // Audio playback is served via TeleCMI proxy using telecmi_filename.
+        try {
+            await buckets.uploads.file(`${ticketId}.mp3`).delete();
+            console.log(`🗑️  GCS temp file deleted for ticket ${ticketId}`);
+        } catch (deleteErr) {
+            // Non-fatal: file may already be gone or never uploaded (edge case)
+            console.warn(`⚠️  GCS delete warning for ${ticketId}:`, deleteErr.message);
+        }
 
         console.log(`✅ Presales analysis complete for ticket ${ticketId}`);
 

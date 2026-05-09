@@ -2035,8 +2035,11 @@ router.post('/:id/report/share-link', authMiddleware, requireAdmin, async (req, 
 });
 
 /**
+/**
  * GET /tickets/:id/audio-url
- * Generate a fresh signed URL for audio playback
+ * Generate a fresh signed URL for audio playback.
+ * - Regular tickets: signed GCS URL (15-min)
+ * - TeleCMI tickets: signed proxy URL pointing to /tickets/:id/audio (15-min)
  * Role: admin
  */
 router.get('/:id/audio-url', authMiddleware, requireAdmin, async (req, res) => {
@@ -2045,7 +2048,7 @@ router.get('/:id/audio-url', authMiddleware, requireAdmin, async (req, res) => {
 
         const { data: ticket, error: ticketError } = await supabaseAdmin
             .from('tickets')
-            .select('id, gcs_path, gcspath')
+            .select('id, gcs_path, gcspath, source, telecmi_filename')
             .eq('id', id)
             .single();
 
@@ -2053,6 +2056,24 @@ router.get('/:id/audio-url', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(404).json({ error: 'Ticket not found' });
         }
 
+        // TeleCMI tickets: GCS file is deleted after analysis.
+        // Serve audio via backend proxy to TeleCMI recordfile API.
+        if (ticket.source === 'telecmi' && ticket.telecmi_filename) {
+            const expires   = Date.now() + 15 * 60 * 1000; // 15 minutes
+            const payload   = `${id}:${expires}`;
+            const secret    = process.env.SUPABASE_SERVICE_KEY || process.env.SCHEDULER_SECRET || 'audio-proxy-key';
+            const hmac      = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+            const token     = `${expires}.${hmac}`;
+
+            // Build absolute proxy URL using request host (works locally + Cloud Run)
+            const protocol  = req.get('x-forwarded-proto') || req.protocol;
+            const host      = req.get('x-forwarded-host')  || req.get('host');
+            const proxyUrl  = `${protocol}://${host}/tickets/${id}/audio?token=${token}`;
+
+            return res.json({ audio_url: proxyUrl, expires_in_seconds: 900 });
+        }
+
+        // Regular tickets: GCS signed URL
         const audioUrl = await generateTicketAudioUrl(id, ticket);
         if (!audioUrl) {
             return res.status(404).json({ error: 'Audio file not found for this ticket' });
@@ -2067,6 +2088,74 @@ router.get('/:id/audio-url', authMiddleware, requireAdmin, async (req, res) => {
         res.status(500).json({ error: 'Failed to generate audio playback URL' });
     }
 });
+
+/**
+ * GET /tickets/:id/audio?token=EXPIRES.HMAC
+ * Proxy TeleCMI recording to the browser.
+ * Token is validated server-side — TeleCMI credentials never reach the client.
+ * No auth middleware needed: the short-lived token IS the auth.
+ */
+router.get('/:id/audio', async (req, res) => {
+    try {
+        const { id }    = req.params;
+        const { token } = req.query;
+
+        if (!token) return res.status(401).json({ error: 'Missing audio token' });
+
+        const [expiresStr, hmac] = token.split('.');
+        const expires = Number(expiresStr);
+        if (!expires || !hmac || Date.now() > expires) {
+            return res.status(401).json({ error: 'Audio token expired or invalid' });
+        }
+
+        const secret    = process.env.SUPABASE_SERVICE_KEY || process.env.SCHEDULER_SECRET || 'audio-proxy-key';
+        const payload   = `${id}:${expires}`;
+        const expected  = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+        if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expected))) {
+            return res.status(401).json({ error: 'Audio token invalid' });
+        }
+
+        // Fetch ticket to get telecmi_filename
+        const { data: ticket, error: ticketError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, source, telecmi_filename')
+            .eq('id', id)
+            .single();
+
+        if (ticketError || !ticket || ticket.source !== 'telecmi' || !ticket.telecmi_filename) {
+            return res.status(404).json({ error: 'TeleCMI recording not found' });
+        }
+
+        const appid    = process.env.TELECMI_APP_ID;
+        const secret_k = process.env.TELECMI_SECRET;
+        if (!appid || !secret_k || appid === 'xxxx') {
+            return res.status(503).json({ error: 'TeleCMI credentials not configured' });
+        }
+
+        const telecmiUrl = `https://rest.telecmi.com/v2/recordfile?appid=${appid}&secret=${secret_k}&filename=${encodeURIComponent(ticket.telecmi_filename)}`;
+
+        const upstream = await fetch(telecmiUrl);
+        if (!upstream.ok) {
+            console.error(`TeleCMI proxy: upstream returned ${upstream.status} for ${ticket.telecmi_filename}`);
+            return res.status(502).json({ error: 'Could not fetch recording from TeleCMI' });
+        }
+
+        // Forward audio headers and stream body
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'audio/mpeg');
+        const cl = upstream.headers.get('content-length');
+        if (cl) res.setHeader('Content-Length', cl);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'private, max-age=900');
+
+        const { Readable } = await import('stream');
+        Readable.fromWeb(upstream.body).pipe(res);
+
+    } catch (error) {
+        console.error('TeleCMI audio proxy error:', error);
+        res.status(500).json({ error: 'Audio proxy failed' });
+    }
+});
+
 
 /**
  * DELETE /tickets/:id
