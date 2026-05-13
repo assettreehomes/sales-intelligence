@@ -332,7 +332,7 @@ function PresalesContent() {
                             {tickets.map(ticket => (
                                 <button
                                     key={ticket.id}
-                                    onClick={() => router.push(`/admin/tickets/${ticket.id}`)}
+                                    onClick={() => router.push(`/admin/tickets/${ticket.id}?from=presales`)}
                                     className="group text-left rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-violet-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-500"
                                 >
                                     {/* Top row: phone + status */}

@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -619,6 +619,9 @@ function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; init
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const backHref = searchParams.get('from') === 'presales' ? '/admin/presales' : '/admin/tickets';
+    const backLabel = searchParams.get('from') === 'presales' ? 'Pre-Sales Calls' : 'Tickets';
     const { profile } = useAuth();
     const isSuperAdmin = profile?.role === 'superadmin';
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1820,13 +1823,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
                                 <Link
-                                    href="/admin/tickets"
+                                    href={backHref}
                                     className="rounded-full p-2 transition-colors hover:bg-gray-100"
                                 >
                                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                                 </Link>
                                 <nav className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 sm:text-sm">
-                                    <Link href="/admin/tickets" className="hover:text-purple-600">Tickets</Link>
+                                    <Link href={backHref} className="hover:text-purple-600">{backLabel}</Link>
                                     <ChevronRight className="w-4 h-4" />
                                     <span className="max-w-[9rem] truncate sm:max-w-none">{ticket.clientname || ticket.client_id}</span>
                                     <ChevronRight className="hidden w-4 h-4 sm:block" />
