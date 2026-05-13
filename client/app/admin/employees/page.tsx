@@ -445,8 +445,8 @@ function EmployeesPageContent() {
                                     <p className="mt-1 text-xs text-gray-500">Share this with the employee — they can&apos;t change it themselves yet.</p>
                                 </div>
 
-                                {/* Role selector — only visible to superadmins */}
-                                {currentUserRole === 'superadmin' && (
+                                {/* Role selector */}
+                                {(currentUserRole === 'admin' || currentUserRole === 'superadmin') && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
                                         <select
@@ -458,7 +458,9 @@ function EmployeesPageContent() {
                                             <option value="employee">Employee</option>
                                             <option value="intern">Intern</option>
                                             <option value="admin">Admin</option>
-                                            <option value="superadmin">Superadmin</option>
+                                            {currentUserRole === 'superadmin' && (
+                                                <option value="superadmin">Superadmin</option>
+                                            )}
                                         </select>
                                     </div>
                                 )}
