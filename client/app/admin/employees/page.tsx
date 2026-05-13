@@ -19,6 +19,7 @@ import {
     ShieldAlert,
     CheckCircle2,
     AlertCircle,
+    Pencil,
 } from 'lucide-react';
 
 interface Employee {
@@ -52,6 +53,69 @@ function EmployeesPageContent() {
     const [togglingId, setTogglingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+    // Edit modal state
+    const [editEmp, setEditEmp] = useState<Employee | null>(null);
+    const [editName, setEditName] = useState('');
+    const [editEmail, setEditEmail] = useState('');
+    const [editSaving, setEditSaving] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [passwordSaving, setPasswordSaving] = useState(false);
+
+    const openEdit = (emp: Employee) => {
+        setEditEmp(emp);
+        setEditName(emp.fullname);
+        setEditEmail(emp.email);
+        setNewPassword('');
+    };
+    const closeEdit = () => { setEditEmp(null); setNewPassword(''); };
+
+    const handleEdit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editEmp) return;
+        setEditSaving(true);
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/users/${editEmp.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ fullname: editName.trim(), email: editEmail.trim() })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setEmployees(prev => prev.map(e => e.id === editEmp.id
+                    ? { ...e, fullname: data.user.fullname, email: data.user.email }
+                    : e));
+                showToast('success', 'Employee updated');
+                closeEdit();
+            } else {
+                showToast('error', data.error || 'Failed to update');
+            }
+        } catch { showToast('error', 'Network error'); }
+        finally { setEditSaving(false); }
+    };
+
+    const handleResetPassword = async () => {
+        if (!editEmp || newPassword.trim().length < 8) return;
+        setPasswordSaving(true);
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/users/${editEmp.id}/password`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ password: newPassword.trim() })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast('success', 'Password reset successfully');
+                setNewPassword('');
+            } else {
+                showToast('error', data.error || 'Failed to reset password');
+            }
+        } catch { showToast('error', 'Network error'); }
+        finally { setPasswordSaving(false); }
+    };
 
     // Toast
     const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -184,6 +248,90 @@ function EmployeesPageContent() {
                         ? <CheckCircle2 className="w-4 h-4 shrink-0" />
                         : <AlertCircle className="w-4 h-4 shrink-0" />}
                     {toast.message}
+                </div>
+            )}
+
+            {/* ── Edit Employee Modal ── */}
+            {editEmp && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                    onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}
+                >
+                    <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+                        <div className="p-6 space-y-5">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-semibold text-gray-900">Edit Employee</h2>
+                                <button onClick={closeEdit} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                            </div>
+
+                            {/* Profile form */}
+                            <form onSubmit={handleEdit} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
+                                    <input
+                                        type="text" value={editName}
+                                        onChange={e => setEditName(e.target.value)}
+                                        required disabled={editSaving}
+                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Login Email</label>
+                                    <input
+                                        type="email" value={editEmail}
+                                        onChange={e => setEditEmail(e.target.value)}
+                                        required disabled={editSaving}
+                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                    />
+                                    {editEmail !== editEmp.email && (
+                                        <p className="mt-1 text-xs text-amber-600">⚠️ Changing email updates their login. Share the new email with them.</p>
+                                    )}
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={editSaving || !editName.trim() || !editEmail.trim()}
+                                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {editSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Save Changes
+                                </button>
+                            </form>
+
+                            {/* Divider */}
+                            <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div><div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400">Reset Password</span></div></div>
+
+                            {/* Password reset */}
+                            <div className="space-y-3">
+                                <div className="relative">
+                                    <input
+                                        type={showNewPassword ? 'text' : 'password'}
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                        placeholder="New password (min. 8 characters)"
+                                        disabled={passwordSaving}
+                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 pr-20 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                    />
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                        <button type="button" onClick={() => setNewPassword(generatePassword())} className="p-1 text-gray-400 hover:text-purple-600" title="Generate">
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button type="button" onClick={() => setShowNewPassword(p => !p)} className="p-1 text-gray-400 hover:text-gray-600">
+                                            {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleResetPassword}
+                                    disabled={passwordSaving || newPassword.trim().length < 8}
+                                    className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {passwordSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Reset Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -411,6 +559,15 @@ function EmployeesPageContent() {
                                                                 ? <ToggleRight className="w-3.5 h-3.5" />
                                                                 : <ToggleLeft className="w-3.5 h-3.5" />}
                                                         {emp.status === 'active' ? 'Deactivate' : 'Activate'}
+                                                    </button>
+
+                                                    {/* Edit */}
+                                                    <button
+                                                        onClick={() => openEdit(emp)}
+                                                        title="Edit employee"
+                                                        className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                                                    >
+                                                        <Pencil className="w-4 h-4" />
                                                     </button>
 
                                                     {/* Delete */}

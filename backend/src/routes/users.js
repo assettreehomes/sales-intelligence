@@ -147,6 +147,119 @@ router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
 });
 
 /**
+ * PATCH /users/:id
+ * Edit employee profile — admin only
+ * Body: { fullname?, email?, role? }
+ */
+router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { fullname, email, role } = req.body;
+
+        if (!fullname?.trim() && !email?.trim() && !role?.trim()) {
+            return res.status(400).json({ error: 'Provide at least one field to update' });
+        }
+
+        const updates = {};
+        const authUpdates = {};
+
+        if (fullname?.trim()) updates.fullname = fullname.trim();
+
+        if (email?.trim()) {
+            const normalizedEmail = email.trim().toLowerCase();
+            // Check no other user has this email
+            const { data: existing } = await supabaseAdmin
+                .from('users')
+                .select('id')
+                .eq('email', normalizedEmail)
+                .neq('id', id)
+                .maybeSingle();
+
+            if (existing) {
+                return res.status(409).json({ error: 'This email is already in use by another account' });
+            }
+
+            updates.email = normalizedEmail;
+            authUpdates.email = normalizedEmail;
+            authUpdates.email_confirm = true;
+        }
+
+        if (role?.trim()) {
+            const validRoles = ['employee', 'admin', 'superadmin', 'intern'];
+            if (!validRoles.includes(role)) {
+                return res.status(400).json({ error: `Role must be one of: ${validRoles.join(', ')}` });
+            }
+            updates.role = role;
+        }
+
+        // Update users table
+        const { data: updatedUser, error: updateError } = await supabaseAdmin
+            .from('users')
+            .update(updates)
+            .eq('id', id)
+            .select('id, fullname, email, role, status')
+            .single();
+
+        if (updateError) {
+            console.error('User profile update error:', updateError);
+            return res.status(500).json({ error: 'Failed to update profile' });
+        }
+
+        // Sync email to Supabase Auth if changed
+        if (Object.keys(authUpdates).length > 0) {
+            const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, authUpdates);
+            if (authError) {
+                console.error('Auth email update error (non-fatal):', authError.message);
+            }
+        }
+
+        await logActivity(req, 'user.updated', {
+            userId: id,
+            changed_fields: Object.keys(updates)
+        });
+
+        return res.json({ success: true, user: updatedUser });
+
+    } catch (error) {
+        console.error('User update error:', error);
+        res.status(500).json({ error: 'Failed to update employee' });
+    }
+});
+
+/**
+ * PATCH /users/:id/password
+ * Reset employee password — admin only
+ * Body: { password }
+ */
+router.patch('/:id/password', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+
+        if (!password?.trim() || password.trim().length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        }
+
+        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, {
+            password: password.trim()
+        });
+
+        if (authError) {
+            console.error('Password reset error:', authError);
+            return res.status(500).json({ error: authError.message || 'Failed to reset password' });
+        }
+
+        await logActivity(req, 'user.password_reset', { userId: id });
+
+        return res.json({ success: true });
+
+    } catch (error) {
+        console.error('Password reset error:', error);
+        res.status(500).json({ error: 'Failed to reset password' });
+    }
+});
+
+/**
  * DELETE /users/:id
  * Remove employee — admin only
  * Blocks deletion if employee has active tickets (deactivate instead)
