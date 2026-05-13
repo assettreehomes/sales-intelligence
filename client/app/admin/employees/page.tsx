@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
-import { getToken, API_URL } from '@/stores/authStore';
+import { getToken, API_URL, useAuthStore } from '@/stores/authStore';
 import {
     UserPlus,
     Loader2,
@@ -26,6 +26,7 @@ interface Employee {
     id: string;
     fullname: string;
     email: string;
+    role: 'employee' | 'admin' | 'superadmin' | 'intern';
     status: 'active' | 'inactive';
     last_login?: string;
 }
@@ -36,6 +37,7 @@ function generatePassword(): string {
 }
 
 function EmployeesPageContent() {
+    const currentUserRole = useAuthStore(s => s.profile?.role);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -45,6 +47,7 @@ function EmployeesPageContent() {
     const [fullname, setFullname] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [newRole, setNewRole] = useState<'employee' | 'admin' | 'superadmin' | 'intern'>('employee');
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [createdEmployee, setCreatedEmployee] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -129,7 +132,7 @@ function EmployeesPageContent() {
         setLoading(true);
         try {
             const token = await getToken();
-            const res = await fetch(`${API_URL}/users?role=employee`, {
+            const res = await fetch(`${API_URL}/users`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
@@ -156,7 +159,8 @@ function EmployeesPageContent() {
                 body: JSON.stringify({
                     fullname: fullname.trim(),
                     email: email.trim(),
-                    password: password.trim()
+                    password: password.trim(),
+                    role: newRole
                 })
             });
             const data = await res.json();
@@ -232,6 +236,7 @@ function EmployeesPageContent() {
         setShowModal(false);
         setCreatedEmployee(null);
         setFullname(''); setEmail(''); setPassword('');
+        setNewRole('employee');
         setShowPassword(false);
     };
 
@@ -440,6 +445,23 @@ function EmployeesPageContent() {
                                     <p className="mt-1 text-xs text-gray-500">Share this with the employee — they can&apos;t change it themselves yet.</p>
                                 </div>
 
+                                {/* Role selector — only visible to superadmins */}
+                                {currentUserRole === 'superadmin' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                                        <select
+                                            value={newRole}
+                                            onChange={e => setNewRole(e.target.value as typeof newRole)}
+                                            disabled={submitting}
+                                            className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                        >
+                                            <option value="employee">Employee</option>
+                                            <option value="intern">Intern</option>
+                                            <option value="admin">Admin</option>
+                                            <option value="superadmin">Superadmin</option>
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="flex gap-3 pt-1">
                                     <button
                                         type="button"
@@ -527,7 +549,16 @@ function EmployeesPageContent() {
                                     {filtered.map((emp) => (
                                         <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-5 py-3.5 font-medium text-gray-900">
-                                                {emp.fullname}
+                                                <div className="flex items-center gap-2">
+                                                    {emp.fullname}
+                                                    {emp.role !== 'employee' && (
+                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                                            emp.role === 'superadmin' ? 'bg-purple-100 text-purple-700' :
+                                                            emp.role === 'admin' ? 'bg-blue-100 text-blue-700' :
+                                                            'bg-gray-100 text-gray-600'
+                                                        }`}>{emp.role}</span>
+                                                    )}
+                                                </div>
                                                 <p className="text-xs text-gray-500 font-normal sm:hidden">{emp.email}</p>
                                             </td>
                                             <td className="px-5 py-3.5 text-gray-600 hidden sm:table-cell">{emp.email}</td>

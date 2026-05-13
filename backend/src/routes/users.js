@@ -39,10 +39,21 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
  */
 router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     try {
-        const { fullname, email, password, sales_email } = req.body;
+        const { fullname, email, password, role: requestedRole } = req.body;
+        const role = requestedRole || 'employee';
 
         if (!fullname?.trim() || !email?.trim() || !password?.trim()) {
             return res.status(400).json({ error: 'fullname, email and password are required' });
+        }
+
+        const validRoles = ['employee', 'admin', 'superadmin', 'intern'];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({ error: `Role must be one of: ${validRoles.join(', ')}` });
+        }
+
+        // Only superadmins can create superadmin accounts
+        if (role === 'superadmin' && req.user?.role !== 'superadmin') {
+            return res.status(403).json({ error: 'Only superadmins can create superadmin accounts' });
         }
 
         const normalizedEmail = email.trim().toLowerCase();
@@ -75,7 +86,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             id: authData.user.id,
             email: normalizedEmail,
             fullname: fullname.trim(),
-            role: 'employee',
+            role,
             status: 'active'
         };
 
@@ -261,36 +272,30 @@ router.patch('/:id/password', authMiddleware, requireAdmin, async (req, res) => 
 
 /**
  * DELETE /users/:id
- * Remove employee — admin only
- * Blocks deletion if employee has active tickets (deactivate instead)
+ * Force-remove employee — admin only.
+ * If the employee has tickets, their createdby is nullified (tickets preserved).
  */
 router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
 
-        // 1. Check for existing tickets
-        const { count, error: ticketErr } = await supabaseAdmin
-            .from('tickets')
-            .select('id', { count: 'exact', head: true })
-            .eq('createdby', id)
-            .is('deletedat', null);
-
-        if (ticketErr) {
-            return res.status(500).json({ error: 'Failed to check tickets' });
-        }
-
-        if (count > 0) {
-            return res.status(409).json({
-                error: `This employee has ${count} ticket${count !== 1 ? 's' : ''} — deactivate their account instead of deleting.`
-            });
-        }
-
-        // 2. Get email for logging
+        // 1. Get employee info for logging
         const { data: user } = await supabaseAdmin
             .from('users')
             .select('email, fullname')
             .eq('id', id)
             .maybeSingle();
+
+        // 2. Nullify createdby on all their tickets so ticket data is preserved
+        const { error: ticketNullifyError } = await supabaseAdmin
+            .from('tickets')
+            .update({ createdby: null, created_by: null })
+            .eq('createdby', id);
+
+        if (ticketNullifyError) {
+            console.error('Ticket nullify error (non-fatal):', ticketNullifyError.message);
+            // Non-fatal — continue with deletion
+        }
 
         // 3. Delete Supabase Auth record
         const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(id);
