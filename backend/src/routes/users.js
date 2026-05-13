@@ -51,10 +51,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(400).json({ error: `Role must be one of: ${validRoles.join(', ')}` });
         }
 
-        // Only superadmins can create superadmin accounts
-        if (role === 'superadmin' && req.user?.role !== 'superadmin') {
-            return res.status(403).json({ error: 'Only superadmins can create superadmin accounts' });
-        }
+
 
         const normalizedEmail = email.trim().toLowerCase();
 

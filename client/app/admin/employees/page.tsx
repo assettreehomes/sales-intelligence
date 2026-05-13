@@ -446,24 +446,20 @@ function EmployeesPageContent() {
                                 </div>
 
                                 {/* Role selector */}
-                                {(currentUserRole === 'admin' || currentUserRole === 'superadmin') && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
-                                        <select
-                                            value={newRole}
-                                            onChange={e => setNewRole(e.target.value as typeof newRole)}
-                                            disabled={submitting}
-                                            className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                        >
-                                            <option value="employee">Employee</option>
-                                            <option value="intern">Intern</option>
-                                            <option value="admin">Admin</option>
-                                            {currentUserRole === 'superadmin' && (
-                                                <option value="superadmin">Superadmin</option>
-                                            )}
-                                        </select>
-                                    </div>
-                                )}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                                    <select
+                                        value={newRole}
+                                        onChange={e => setNewRole(e.target.value as typeof newRole)}
+                                        disabled={submitting}
+                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                    >
+                                        <option value="employee">Employee</option>
+                                        <option value="intern">Intern</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="superadmin">Superadmin</option>
+                                    </select>
+                                </div>
                                 <div className="flex gap-3 pt-1">
                                     <button
                                         type="button"
