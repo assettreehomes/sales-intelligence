@@ -54,7 +54,7 @@ function formatPhone(num: string | null): string {
 }
 
 /** Returns a safe display label for a ticket — never exposes raw phone numbers */
-function clientLabel(ticket: Ticket & Record<string, any>): { primary: string; sub?: string } {
+function clientLabel(ticket: { clientname?: string | null; client_id?: string | null; telecmi_lead_id?: string | null }): { primary: string; sub?: string } {
     const name = ticket.clientname;
     const leadId = ticket.telecmi_lead_id;
     // If clientname is a real name (not purely digits), use it
