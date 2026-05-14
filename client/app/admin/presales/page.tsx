@@ -53,20 +53,22 @@ function formatPhone(num: string | null): string {
     return str.slice(0, -5) + 'XXXXX';
 }
 
-/** Returns a safe display label for a ticket — never exposes raw phone numbers */
-function clientLabel(ticket: { clientname?: string | null; client_id?: string | null; telecmi_lead_id?: string | null }): { primary: string; sub?: string } {
-    const name = ticket.clientname;
+/** Returns a safe display label for a ticket — always shows masked number + lead/agent info */
+function clientLabel(ticket: {
+    clientname?: string | null;
+    client_id?: string | null;
+    telecmi_lead_id?: string | null;
+    telecmi_user?: string | null;
+}): { primary: string; sub?: string } {
+    // Primary: always the masked phone number
+    const primary = formatPhone(ticket.client_id);
+
+    // Sub: Lead ID if from CRM, else agent extension
     const leadId = ticket.telecmi_lead_id;
-    // If clientname is a real name (not purely digits), use it
-    if (name && !/^\d+$/.test(name) && name !== ticket.client_id) {
-        return { primary: name };
-    }
-    // If we have a CRM lead ID, show that
-    if (leadId) {
-        return { primary: `Lead #${leadId}` };
-    }
-    // Otherwise — private contact
-    return { primary: 'Private Contact' };
+    const ext = ticket.telecmi_user ? ticket.telecmi_user.split('_')[0] : null;
+    const sub = leadId ? `Lead #${leadId}` : ext ? `Ext. ${ext}` : undefined;
+
+    return { primary, sub };
 }
 
 function formatDate(iso: string): string {

@@ -214,6 +214,14 @@ const hydrateTemplateTokens = (value: string) => {
         .replace(/\{\{TIME\}\}/g, timeLabel);
 };
 
+function maskPhone(num: string | null | undefined): string {
+    if (!num) return 'Unknown';
+    const str = String(num).replace(/\D/g, '');
+    if (str.length === 12 && str.startsWith('91')) return `+91 ${str.slice(2, 7)} XXXXX`;
+    if (str.length === 10) return `${str.slice(0, 5)} XXXXX`;
+    return str.slice(0, -5) + 'XXXXX';
+}
+
 function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; initialNotes: string }) {
     const [notes, setNotes] = useState(initialNotes);
     const [draft, setDraft] = useState(initialNotes);
@@ -1833,11 +1841,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <ChevronRight className="w-4 h-4" />
                                     <span className="max-w-[9rem] truncate sm:max-w-none">
                                         {(() => {
-                                            const name = ticket.clientname;
-                                            const leadId = (ticket as any).telecmi_lead_id;
-                                            if (name && !/^\d+$/.test(name) && name !== ticket.client_id) return name;
-                                            if (leadId) return `Lead #${leadId}`;
-                                            return 'Private Contact';
+                                            const t = ticket as any;
+                                            if (t.clientname && !/^\d+$/.test(t.clientname) && t.clientname !== t.client_id) return t.clientname;
+                                            if (t.telecmi_lead_id) return `Lead #${t.telecmi_lead_id}`;
+                                            return maskPhone(t.client_id);
                                         })()}
                                     </span>
                                     <ChevronRight className="hidden w-4 h-4 sm:block" />
@@ -2019,14 +2026,17 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[150px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client</p>
                                         <p className="text-[1.65rem] leading-none font-semibold text-gray-900">
-                                            {(() => {
-                                                const name = ticket.clientname;
-                                                const leadId = (ticket as any).telecmi_lead_id;
-                                                if (name && !/^\d+$/.test(name) && name !== ticket.client_id) return name;
-                                                if (leadId) return `Lead #${leadId}`;
-                                                return 'Private Contact';
-                                            })()}
+                                            {maskPhone((ticket as any).client_id)}
                                         </p>
+                                        {(() => {
+                                            const t = ticket as any;
+                                            const sub = t.telecmi_lead_id
+                                                ? `Lead #${t.telecmi_lead_id}`
+                                                : t.telecmi_user ? `Ext. ${t.telecmi_user.split('_')[0]}` : null;
+                                            return sub ? (
+                                                <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                                            ) : null;
+                                        })()}
                                     </div>
                                     <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[170px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>

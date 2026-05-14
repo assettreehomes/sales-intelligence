@@ -29,6 +29,14 @@ import { Avatar } from '@/components/Avatar';
 import { useRef } from 'react';
 import { TicketHeatmap } from '@/components/TicketHeatmap';
 
+function maskPhone(num: string | null | undefined): string {
+    if (!num) return 'Unknown';
+    const str = String(num).replace(/\D/g, '');
+    if (str.length === 12 && str.startsWith('91')) return `+91 ${str.slice(2, 7)} XXXXX`;
+    if (str.length === 10) return `${str.slice(0, 5)} XXXXX`;
+    return str.slice(0, -5) + 'XXXXX';
+}
+
 function AdminDashboardContent() {
     const router = useRouter();
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -672,7 +680,7 @@ function AdminDashboardContent() {
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="text-gray-500 font-medium">
-                                                    {ticket.client_id || 'N/A'}
+                                                    {maskPhone((ticket as any).client_id)}
                                                 </span>
                                                 {getStatusBadge(ticket.status, ticket.istrainingcall)}
                                                 {ticket.is_flagged && (
@@ -717,7 +725,12 @@ function AdminDashboardContent() {
 
                                         {/* Client Info */}
                                         <h3 className="font-semibold text-gray-900 mb-1 text-base">
-                                            {ticket.clientname || `Client ${ticket.client_id}`}
+                                            {(() => {
+                                                const t = ticket as any;
+                                                if (t.clientname && !/^\d+$/.test(t.clientname) && t.clientname !== t.client_id) return t.clientname;
+                                                if (t.telecmi_lead_id) return `Lead #${t.telecmi_lead_id}`;
+                                                return maskPhone(t.client_id);
+                                            })()}
                                         </h3>
                                         <p className="text-sm text-gray-500 mb-3">
                                             {getVisitTypeLabel(ticket.visittype)}
