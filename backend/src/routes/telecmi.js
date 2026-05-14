@@ -19,20 +19,21 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * Retries up to 3 times with delays — TeleCMI recording files take
  * 30-90s to become available after a call ends.
  */
-async function downloadAndStoreRecording(filename, ticketId) {
-    const url = `https://rest.telecmi.com/v2/recordfile?appid=${TELECMI_APP_ID}&secret=${TELECMI_SECRET}&filename=${encodeURIComponent(filename)}`;
+async function downloadAndStoreRecording(filename, ticketId, skipInitialDelay = false) {
+    const url = `https://rest.telecmi.com/v2/play?appid=${TELECMI_APP_ID}&secret=${TELECMI_SECRET}&file=${encodeURIComponent(filename)}`;
 
-    const MAX_ATTEMPTS = 4;
-    const DELAYS_MS    = [45_000, 30_000, 30_000]; // wait before each retry
+    // Sync: recordings already on TeleCMI servers → 2 fast attempts
+    // Webhook: recording may still be processing → 4 attempts with longer waits
+    const MAX_ATTEMPTS = skipInitialDelay ? 2 : 4;
+    const DELAYS_MS    = skipInitialDelay ? [5_000] : [30_000, 30_000];
 
     let lastError;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         if (attempt > 1) {
-            const delay = DELAYS_MS[attempt - 2] || 30_000;
+            const delay = DELAYS_MS[attempt - 2] || 5_000;
             console.log(`🔁 TeleCMI: Retry ${attempt - 1}/${MAX_ATTEMPTS - 1} for ${filename} — waiting ${delay / 1000}s`);
             await sleep(delay);
-        } else {
-            // First attempt: wait 45s for TeleCMI to process the recording
+        } else if (!skipInitialDelay) {
             console.log(`⏳ TeleCMI: Waiting 45s for recording to be ready: ${filename}`);
             await sleep(45_000);
         }
@@ -71,8 +72,10 @@ async function downloadAndStoreRecording(filename, ticketId) {
 /**
  * Core CDR processing pipeline. Shared by both webhook and sync.
  * Returns { processed, skipped, reason?, ticketId? }
+ * @param {object} cdr - The call detail record
+ * @param {boolean} skipInitialDelay - Skip the 45s wait (use true for sync, false for webhook)
  */
-async function processCdr(cdr) {
+async function processCdr(cdr, skipInitialDelay = false) {
     const cmiuid   = cdr.cmiuid   || cdr.uid    || null;
     const agent    = cdr.agent    || cdr.agentid || cdr.user || null;
     // outbound: customer is in 'to'; inbound: customer is in 'from'
@@ -85,7 +88,9 @@ async function processCdr(cdr) {
     const callTime = cdr.time ? new Date(cdr.time).toISOString() : new Date().toISOString();
 
     // ── Guards ──────────────────────────────────────────────────────────────
-    if (recorded !== 'true') {
+    // Trust filename presence as proof of recording — /answered API may omit 'record' field
+    const isRecorded = recorded === 'true' || !!filename;
+    if (!isRecorded) {
         return { skipped: true, reason: 'not_recorded' };
     }
     if (duration < MIN_DURATION_SECONDS) {
@@ -157,7 +162,7 @@ async function processCdr(cdr) {
 
     // ── Download recording → GCS ─────────────────────────────────────────────
     try {
-        await downloadAndStoreRecording(filename, ticketId);
+        await downloadAndStoreRecording(filename, ticketId, skipInitialDelay);
 
         await supabaseAdmin
             .from('tickets')
@@ -267,6 +272,9 @@ router.post('/sync', authMiddleware, requireAdmin, async (req, res) => {
 
         cdrs = telecmiData.cdr || [];
         console.log(`📋 TeleCMI sync: fetched ${cdrs.length} CDRs (total available: ${telecmiData.count})`);
+        if (cdrs.length > 0) {
+            console.log('📋 TeleCMI sync CDR sample:', JSON.stringify(cdrs[0]));
+        }
     } catch (fetchErr) {
         return res.status(502).json({ error: `Failed to reach TeleCMI API: ${fetchErr.message}` });
     }
@@ -276,7 +284,8 @@ router.post('/sync', authMiddleware, requireAdmin, async (req, res) => {
 
     for (const cdr of cdrs) {
         try {
-            const result = await processCdr(cdr);
+            const result = await processCdr(cdr, true); // skipInitialDelay=true: recordings already available
+
             if (result.processed) {
                 results.processed++;
             } else {

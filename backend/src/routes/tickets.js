@@ -2132,7 +2132,8 @@ router.get('/:id/audio', async (req, res) => {
             return res.status(503).json({ error: 'TeleCMI credentials not configured' });
         }
 
-        const telecmiUrl = `https://rest.telecmi.com/v2/recordfile?appid=${appid}&secret=${secret_k}&filename=${encodeURIComponent(ticket.telecmi_filename)}`;
+        const telecmiUrl = `https://rest.telecmi.com/v2/play?appid=${appid}&secret=${secret_k}&file=${encodeURIComponent(ticket.telecmi_filename)}`;
+
 
         const upstream = await fetch(telecmiUrl);
         if (!upstream.ok) {
