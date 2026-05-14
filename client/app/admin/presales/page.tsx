@@ -53,6 +53,22 @@ function formatPhone(num: string | null): string {
     return str.slice(0, -5) + 'XXXXX';
 }
 
+/** Returns a safe display label for a ticket — never exposes raw phone numbers */
+function clientLabel(ticket: Ticket & Record<string, any>): { primary: string; sub?: string } {
+    const name = ticket.clientname;
+    const leadId = ticket.telecmi_lead_id;
+    // If clientname is a real name (not purely digits), use it
+    if (name && !/^\d+$/.test(name) && name !== ticket.client_id) {
+        return { primary: name };
+    }
+    // If we have a CRM lead ID, show that
+    if (leadId) {
+        return { primary: `Lead #${leadId}` };
+    }
+    // Otherwise — private contact
+    return { primary: 'Private Contact' };
+}
+
 function formatDate(iso: string): string {
     const d = new Date(iso);
     return d.toLocaleString('en-IN', {
@@ -335,19 +351,26 @@ function PresalesContent() {
                                     onClick={() => router.push(`/admin/tickets/${ticket.id}?from=presales`)}
                                     className="group text-left rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-violet-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-500"
                                 >
-                                    {/* Top row: phone + status */}
+                                    {/* Top row: client label + status */}
                                     <div className="flex items-start justify-between gap-2 mb-3">
                                         <div className="flex items-center gap-2">
                                             <span className="rounded-lg bg-violet-100 p-1.5 dark:bg-violet-500/20">
                                                 <PhoneIncoming className="h-4 w-4 text-violet-600 dark:text-violet-400" />
                                             </span>
                                             <div>
-                                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                                    {formatPhone(ticket.client_id)}
-                                                </p>
-                                                {ticket.clientname && ticket.clientname !== ticket.client_id && (
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400">{ticket.clientname}</p>
-                                                )}
+                                                {(() => {
+                                                    const lbl = clientLabel(ticket as any);
+                                                    return (
+                                                        <>
+                                                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                                                {lbl.primary}
+                                                            </p>
+                                                            {lbl.sub && (
+                                                                <p className="text-xs text-slate-500 dark:text-slate-400">{lbl.sub}</p>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                         <StatusBadge status={ticket.status} />

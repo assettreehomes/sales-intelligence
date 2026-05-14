@@ -1831,7 +1831,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <nav className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 sm:text-sm">
                                     <Link href={backHref} className="hover:text-purple-600">{backLabel}</Link>
                                     <ChevronRight className="w-4 h-4" />
-                                    <span className="max-w-[9rem] truncate sm:max-w-none">{ticket.clientname || ticket.client_id}</span>
+                                    <span className="max-w-[9rem] truncate sm:max-w-none">
+                                        {(() => {
+                                            const name = ticket.clientname;
+                                            const leadId = (ticket as any).telecmi_lead_id;
+                                            if (name && !/^\d+$/.test(name) && name !== ticket.client_id) return name;
+                                            if (leadId) return `Lead #${leadId}`;
+                                            return 'Private Contact';
+                                        })()}
+                                    </span>
                                     <ChevronRight className="hidden w-4 h-4 sm:block" />
                                     <span className="font-medium text-gray-900">#{ticket.id.slice(0, 4).toUpperCase()}</span>
                                 </nav>
@@ -2009,8 +2017,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
                                 <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
                                     <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[150px]">
-                                        <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client ID</p>
-                                        <p className="text-[1.65rem] leading-none font-semibold text-gray-900">{ticket.client_id}</p>
+                                        <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client</p>
+                                        <p className="text-[1.65rem] leading-none font-semibold text-gray-900">
+                                            {(() => {
+                                                const name = ticket.clientname;
+                                                const leadId = (ticket as any).telecmi_lead_id;
+                                                if (name && !/^\d+$/.test(name) && name !== ticket.client_id) return name;
+                                                if (leadId) return `Lead #${leadId}`;
+                                                return 'Private Contact';
+                                            })()}
+                                        </p>
                                     </div>
                                     <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[170px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>
