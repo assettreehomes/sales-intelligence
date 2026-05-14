@@ -76,16 +76,34 @@ async function downloadAndStoreRecording(filename, ticketId, skipInitialDelay = 
  * @param {boolean} skipInitialDelay - Skip the 45s wait (use true for sync, false for webhook)
  */
 async function processCdr(cdr, skipInitialDelay = false) {
-    const cmiuid   = cdr.cmiuid   || cdr.uid    || null;
-    const agent    = cdr.agent    || cdr.agentid || cdr.user || null;
-    // outbound: customer is in 'to'; inbound: customer is in 'from'
-    const from     = cdr.from?.toString() || cdr.to?.toString() || 'unknown';
+    const cmiuid    = cdr.cmiuid   || cdr.uid    || null;
+    const agent     = cdr.agent    || cdr.agentid || cdr.user || null;
+    const direction = cdr.direction || 'outbound';
+    // Explicit direction-aware customer number mapping:
+    // outbound = agent calls customer → customer number is in 'to'
+    // inbound  = customer calls in   → customer number is in 'from'
+    const from      = direction === 'inbound'
+        ? (cdr.from?.toString() || 'unknown')
+        : (cdr.to?.toString()   || cdr.from?.toString() || 'unknown');
     // webhook uses 'answeredsec'; sync API uses 'duration' or 'dur'
-    const duration = Number(cdr.duration || cdr.dur || cdr.answeredsec || 0);
-    const filename = cdr.filename || cdr.file    || null;
-    const recorded = String(cdr.record || cdr.recording || '').toLowerCase();
-    const name     = (cdr.name && cdr.name !== 'unknown') ? cdr.name : from;
-    const callTime = cdr.time ? new Date(cdr.time).toISOString() : new Date().toISOString();
+    const duration  = Number(cdr.duration || cdr.dur || cdr.answeredsec || 0);
+    const filename  = cdr.filename || cdr.file    || null;
+    const recorded  = String(cdr.record || cdr.recording || '').toLowerCase();
+    const name      = (cdr.name && cdr.name !== 'unknown') ? cdr.name : from;
+    const callTime  = cdr.time ? new Date(cdr.time).toISOString() : new Date().toISOString();
+
+    // Parse lead/CRM ID from custom field (JSON string from Click-to-Call API)
+    const rawCustom = (cdr.custom && cdr.custom !== 'false') ? String(cdr.custom) : null;
+    let telecmiLeadId = null;
+    if (rawCustom) {
+        try {
+            const parsed = JSON.parse(rawCustom);
+            telecmiLeadId = parsed.lead_id || parsed.leadId || parsed.id || null;
+            if (telecmiLeadId) telecmiLeadId = String(telecmiLeadId);
+        } catch (_) {
+            // custom is not valid JSON — store as-is, no lead ID extracted
+        }
+    }
 
     // ── Guards ──────────────────────────────────────────────────────────────
     // Trust filename presence as proof of recording — /answered API may omit 'record' field
@@ -139,19 +157,23 @@ async function processCdr(cdr, skipInitialDelay = false) {
     const { error: insertError } = await supabaseAdmin
         .from('tickets')
         .insert({
-            id:               ticketId,
-            source:           'telecmi',
-            telecmi_cmiuid:   cmiuid,
-            telecmi_filename: filename,
-            client_id:        from,
-            clientname:       name,
-            visittype:        'telecmi_call',
-            visitnumber:      1,
-            createdby:        agentUserId,
-            status:           'uploading',
-            durationseconds:  duration || null,
-            createdat:        callTime,
-            gcspath:          `gs://${bucketName}/${ticketId}.mp3`
+            id:                ticketId,
+            source:            'telecmi',
+            telecmi_cmiuid:    cmiuid,
+            telecmi_filename:  filename,
+            telecmi_user:      agent,           // raw e.g. "5088_33336999"
+            telecmi_direction: direction,        // "inbound" | "outbound"
+            telecmi_custom:    rawCustom,        // raw JSON string (null if custom=false)
+            telecmi_lead_id:   telecmiLeadId,    // extracted lead ID or null
+            client_id:         from,
+            clientname:        name,
+            visittype:         'telecmi_call',
+            visitnumber:       1,
+            createdby:         agentUserId,
+            status:            'uploading',
+            durationseconds:   duration || null,
+            createdat:         callTime,
+            gcspath:           `gs://${bucketName}/${ticketId}.mp3`
         });
 
     if (insertError) {

@@ -157,14 +157,14 @@ router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
 /**
  * PATCH /users/:id
  * Edit employee profile — admin only
- * Body: { fullname?, email?, role? }
+ * Body: { fullname?, email?, role?, telecmi_agent_id? }
  */
 router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const { fullname, email, role } = req.body;
+        const { fullname, email, role, telecmi_agent_id } = req.body;
 
-        if (!fullname?.trim() && !email?.trim() && !role?.trim()) {
+        if (!fullname?.trim() && !email?.trim() && !role?.trim() && telecmi_agent_id === undefined) {
             return res.status(400).json({ error: 'Provide at least one field to update' });
         }
 
@@ -198,6 +198,11 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
                 return res.status(400).json({ error: `Role must be one of: ${validRoles.join(', ')}` });
             }
             updates.role = role;
+        }
+
+        // Allow setting or clearing the TeleCMI agent ID
+        if (telecmi_agent_id !== undefined) {
+            updates.telecmi_agent_id = telecmi_agent_id?.trim() || null;
         }
 
         // Update users table

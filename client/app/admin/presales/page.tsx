@@ -45,12 +45,12 @@ function formatPhone(num: string | null): string {
     if (!num) return 'Unknown';
     const str = String(num).replace(/\D/g, '');
     if (str.length === 12 && str.startsWith('91')) {
-        return `+91 ${str.slice(2, 7)} ${str.slice(7)}`;
+        return `+91 ${str.slice(2, 7)} XXXXX`;
     }
     if (str.length === 10) {
-        return `${str.slice(0, 5)} ${str.slice(5)}`;
+        return `${str.slice(0, 5)} XXXXX`;
     }
-    return num;
+    return str.slice(0, -5) + 'XXXXX';
 }
 
 function formatDate(iso: string): string {
@@ -365,8 +365,21 @@ function PresalesContent() {
                                                 <Avatar name={ticket.creator_details.fullname} src={ticket.creator_details.avatar_url} size="sm" />
                                                 {ticket.creator_details.fullname}
                                             </span>
+                                        ) : (ticket as any).telecmi_user ? (
+                                            <span className="flex items-center gap-1 italic text-slate-400 dark:text-slate-500">
+                                                Ext. {(ticket as any).telecmi_user.split('_')[0]}
+                                            </span>
                                         ) : (
-                                            <span className="text-slate-300 dark:text-slate-600 italic">No agent mapped</span>
+                                            <span className="text-slate-300 dark:text-slate-600 italic">No agent</span>
+                                        )}
+                                        {(ticket as any).telecmi_direction && (
+                                            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                                (ticket as any).telecmi_direction === 'inbound'
+                                                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
+                                                    : 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
+                                            }`}>
+                                                {(ticket as any).telecmi_direction === 'inbound' ? '↙ Inbound' : '↗ Outbound'}
+                                            </span>
                                         )}
                                         {ticket.durationseconds && (
                                             <span className="flex items-center gap-1">
@@ -379,6 +392,21 @@ function PresalesContent() {
                                             {formatDate(ticket.createdat)}
                                         </span>
                                     </div>
+
+                                    {/* Lead ID / Call ID row */}
+                                    {((ticket as any).telecmi_lead_id || (ticket as any).telecmi_cmiuid) && (
+                                        <div className="mt-1">
+                                            {(ticket as any).telecmi_lead_id ? (
+                                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                                                    🔗 Lead #{(ticket as any).telecmi_lead_id}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                                    Call ID: {((ticket as any).telecmi_cmiuid || '').slice(0, 8)}&hellip;
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* TeleCMI badge */}
                                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">

@@ -61,6 +61,7 @@ function EmployeesPageContent() {
     const [editEmp, setEditEmp] = useState<Employee | null>(null);
     const [editName, setEditName] = useState('');
     const [editEmail, setEditEmail] = useState('');
+    const [editAgentId, setEditAgentId] = useState('');
     const [editSaving, setEditSaving] = useState(false);
     const [newPassword, setNewPassword] = useState('');
     const [showNewPassword, setShowNewPassword] = useState(false);
@@ -70,6 +71,7 @@ function EmployeesPageContent() {
         setEditEmp(emp);
         setEditName(emp.fullname);
         setEditEmail(emp.email);
+        setEditAgentId((emp as any).telecmi_agent_id || '');
         setNewPassword('');
     };
     const closeEdit = () => { setEditEmp(null); setNewPassword(''); };
@@ -83,7 +85,11 @@ function EmployeesPageContent() {
             const res = await fetch(`${API_URL}/users/${editEmp.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ fullname: editName.trim(), email: editEmail.trim() })
+                body: JSON.stringify({
+                    fullname: editName.trim(),
+                    email: editEmail.trim(),
+                    telecmi_agent_id: editAgentId.trim() || null
+                })
             });
             const data = await res.json();
             if (res.ok && data.success) {
@@ -291,6 +297,21 @@ function EmployeesPageContent() {
                                     {editEmail !== editEmp.email && (
                                         <p className="mt-1 text-xs text-amber-600">⚠️ Changing email updates their login. Share the new email with them.</p>
                                     )}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                        TeleCMI Agent ID
+                                        <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editAgentId}
+                                        onChange={e => setEditAgentId(e.target.value)}
+                                        disabled={editSaving}
+                                        placeholder="e.g. 5088_33336999"
+                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm font-mono focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                    />
+                                    <p className="mt-1 text-xs text-gray-400">TeleCMI dashboard → Users → Extension. Format: <code>5088_33336999</code></p>
                                 </div>
                                 <button
                                     type="submit"
