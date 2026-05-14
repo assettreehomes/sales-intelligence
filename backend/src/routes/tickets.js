@@ -1484,6 +1484,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             .from('tickets')
             .select('*', { count: 'exact' })
             .is('deletedat', null)
+            .neq('visittype', 'telecmi_call') // Exclude Pre-Sales calls from main tickets list
             .order('createdat', { ascending: sortAscending });
 
         // Status filter
