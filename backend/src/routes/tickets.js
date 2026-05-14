@@ -1484,7 +1484,6 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             .from('tickets')
             .select('*', { count: 'exact' })
             .is('deletedat', null)
-            .neq('visittype', 'telecmi_call') // Exclude Pre-Sales calls from main tickets list
             .order('createdat', { ascending: sortAscending });
 
         // Status filter
@@ -1497,9 +1496,15 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             query = query.in('status', ['pending', 'processing', 'uploading']);
         }
 
-        // Source filter (phone | telecmi)
-        if (source && source !== 'all') {
-            query = query.eq('source', source);
+        // Source filter & TeleCMI isolation
+        if (source === 'telecmi') {
+            query = query.eq('source', 'telecmi');
+        } else {
+            // Main tickets view — explicitly exclude TeleCMI calls
+            query = query.neq('visittype', 'telecmi_call');
+            if (source && source !== 'all') {
+                query = query.eq('source', source);
+            }
         }
 
         // Created by filter
