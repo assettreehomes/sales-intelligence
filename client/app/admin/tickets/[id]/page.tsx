@@ -214,6 +214,14 @@ const hydrateTemplateTokens = (value: string) => {
         .replace(/\{\{TIME\}\}/g, timeLabel);
 };
 
+function maskPhone(num: string | null | undefined): string {
+    if (!num) return 'Unknown';
+    const str = String(num).replace(/\D/g, '');
+    if (str.length === 12 && str.startsWith('91')) return `+91 ${str.slice(2, 7)} XXXXX`;
+    if (str.length === 10) return `${str.slice(0, 5)} XXXXX`;
+    return str.slice(0, -5) + 'XXXXX';
+}
+
 function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; initialNotes: string }) {
     const [notes, setNotes] = useState(initialNotes);
     const [draft, setDraft] = useState(initialNotes);
@@ -620,8 +628,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const { id } = use(params);
     const router = useRouter();
     const searchParams = useSearchParams();
-    const backHref = searchParams.get('from') === 'presales' ? '/admin/presales' : '/admin/tickets';
-    const backLabel = searchParams.get('from') === 'presales' ? 'Pre-Sales Calls' : 'Tickets';
+    const isPresales = searchParams.get('from') === 'presales';
+    const backHref = isPresales ? '/admin/presales' : '/admin/tickets';
+    const backLabel = isPresales ? 'Pre-Sales Calls' : 'Tickets';
     const { profile } = useAuth();
     const isSuperAdmin = profile?.role === 'superadmin';
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1831,7 +1840,18 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <nav className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 sm:text-sm">
                                     <Link href={backHref} className="hover:text-purple-600">{backLabel}</Link>
                                     <ChevronRight className="w-4 h-4" />
-                                    <span className="max-w-[9rem] truncate sm:max-w-none">{ticket.clientname || ticket.client_id}</span>
+                                    <span className="max-w-[9rem] truncate sm:max-w-none">
+                                        {isPresales ? (
+                                            (() => {
+                                                const t = ticket as any;
+                                                if (t.clientname && !/^\d+$/.test(t.clientname) && t.clientname !== t.client_id) return t.clientname;
+                                                if (t.telecmi_lead_id) return `Lead #${t.telecmi_lead_id}`;
+                                                return maskPhone(t.client_id);
+                                            })()
+                                        ) : (
+                                            ticket.clientname || ticket.client_id
+                                        )}
+                                    </span>
                                     <ChevronRight className="hidden w-4 h-4 sm:block" />
                                     <span className="font-medium text-gray-900">#{ticket.id.slice(0, 4).toUpperCase()}</span>
                                 </nav>
@@ -2010,15 +2030,38 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
                                     <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[150px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client ID</p>
-                                        <p className="text-[1.65rem] leading-none font-semibold text-gray-900">{ticket.client_id}</p>
+                                        {isPresales ? (
+                                            <>
+                                                <p className="text-[1.65rem] leading-none font-semibold text-gray-900">
+                                                    {maskPhone((ticket as any).client_id)}
+                                                </p>
+                                                {(() => {
+                                                    const t = ticket as any;
+                                                    const sub = t.telecmi_lead_id
+                                                        ? `Lead #${t.telecmi_lead_id}`
+                                                        : t.telecmi_user ? `Ext. ${t.telecmi_user.split('_')[0]}` : null;
+                                                    return sub ? (
+                                                        <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                                                    ) : null;
+                                                })()}
+                                            </>
+                                        ) : (
+                                            <p className="text-[1.65rem] leading-none font-semibold text-gray-900">{ticket.client_id}</p>
+                                        )}
                                     </div>
                                     <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[170px]">
                                         <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>
                                         <div className="flex items-center gap-2.5">
                                             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
-                                                <span className="text-xs font-semibold text-gray-700">{agentInitials}</span>
+                                                <span className="text-xs font-semibold text-gray-700">
+                                                    {isPresales && agentName === 'Unknown Agent' && (ticket as any).telecmi_user ? 'UA' : agentInitials}
+                                                </span>
                                             </div>
-                                            <p className="text-lg font-semibold leading-none text-gray-900">{agentName}</p>
+                                            <p className="text-lg font-semibold leading-none text-gray-900">
+                                                {isPresales && agentName === 'Unknown Agent' && (ticket as any).telecmi_user 
+                                                    ? `Ext. ${(ticket as any).telecmi_user.split('_')[0]}` 
+                                                    : agentName}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
