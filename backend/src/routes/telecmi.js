@@ -12,30 +12,60 @@ const TELECMI_APP_ID = process.env.TELECMI_APP_ID;
 const TELECMI_SECRET  = process.env.TELECMI_SECRET;
 const MIN_DURATION_SECONDS = 10;
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
  * Download a recording from TeleCMI and upload it to GCS.
- * Returns the GCS path string.
+ * Retries up to 3 times with delays — TeleCMI recording files take
+ * 30-90s to become available after a call ends.
  */
 async function downloadAndStoreRecording(filename, ticketId) {
     const url = `https://rest.telecmi.com/v2/recordfile?appid=${TELECMI_APP_ID}&secret=${TELECMI_SECRET}&filename=${encodeURIComponent(filename)}`;
 
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`TeleCMI download failed (${response.status}) for filename: ${filename}`);
+    const MAX_ATTEMPTS = 4;
+    const DELAYS_MS    = [45_000, 30_000, 30_000]; // wait before each retry
+
+    let lastError;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        if (attempt > 1) {
+            const delay = DELAYS_MS[attempt - 2] || 30_000;
+            console.log(`🔁 TeleCMI: Retry ${attempt - 1}/${MAX_ATTEMPTS - 1} for ${filename} — waiting ${delay / 1000}s`);
+            await sleep(delay);
+        } else {
+            // First attempt: wait 45s for TeleCMI to process the recording
+            console.log(`⏳ TeleCMI: Waiting 45s for recording to be ready: ${filename}`);
+            await sleep(45_000);
+        }
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`TeleCMI download failed (${response.status}) for filename: ${filename}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer      = Buffer.from(arrayBuffer);
+
+            if (buffer.length < 1000) {
+                throw new Error(`TeleCMI returned suspiciously small file (${buffer.length} bytes) — recording may not be ready yet`);
+            }
+
+            const gcsPath = `${ticketId}.mp3`;
+            const gcsFile = buckets.uploads.file(gcsPath);
+
+            await gcsFile.save(buffer, {
+                contentType: 'audio/mpeg',
+                metadata: { ticketId, source: 'telecmi', telecmiFilename: filename }
+            });
+
+            return `gs://${buckets.uploads.name}/${gcsPath}`;
+        } catch (err) {
+            lastError = err;
+            console.warn(`⚠️  TeleCMI: Download attempt ${attempt} failed for ${filename}: ${err.message}`);
+        }
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer      = Buffer.from(arrayBuffer);
-
-    const gcsPath = `${ticketId}.mp3`;
-    const gcsFile = buckets.uploads.file(gcsPath);
-
-    await gcsFile.save(buffer, {
-        contentType: 'audio/mpeg',
-        metadata: { ticketId, source: 'telecmi', telecmiFilename: filename }
-    });
-
-    return `gs://${buckets.uploads.name}/${gcsPath}`;
+    throw lastError;
 }
 
 /**
