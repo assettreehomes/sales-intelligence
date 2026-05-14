@@ -61,7 +61,7 @@ function clientLabel(ticket: {
     telecmi_user?: string | null;
 }): { primary: string; sub?: string } {
     // Primary: always the masked phone number
-    const primary = formatPhone(ticket.client_id);
+    const primary = formatPhone(ticket.client_id ?? null);
 
     // Sub: Lead ID if from CRM, else agent extension
     const leadId = ticket.telecmi_lead_id;
