@@ -44,9 +44,11 @@ async function downloadAndStoreRecording(filename, ticketId) {
  */
 async function processCdr(cdr) {
     const cmiuid   = cdr.cmiuid   || cdr.uid    || null;
-    const agent    = cdr.agent    || cdr.agentid || null;
-    const from     = cdr.from?.toString()        || 'unknown';
-    const duration = Number(cdr.duration || cdr.dur || 0);
+    const agent    = cdr.agent    || cdr.agentid || cdr.user || null;
+    // outbound: customer is in 'to'; inbound: customer is in 'from'
+    const from     = cdr.from?.toString() || cdr.to?.toString() || 'unknown';
+    // webhook uses 'answeredsec'; sync API uses 'duration' or 'dur'
+    const duration = Number(cdr.duration || cdr.dur || cdr.answeredsec || 0);
     const filename = cdr.filename || cdr.file    || null;
     const recorded = String(cdr.record || cdr.recording || '').toLowerCase();
     const name     = (cdr.name && cdr.name !== 'unknown') ? cdr.name : from;
