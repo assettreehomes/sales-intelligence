@@ -15,7 +15,17 @@ export interface PresalesTicket {
     createdby: string | null;
     source: string;          // always 'telecmi'
     telecmi_cmiuid: string | null;
+    telecmi_call_id?: string | null;
     telecmi_filename: string | null;
+    telecmi_lead_id?: string | null;
+    telecmi_user?: string | null;
+    telecmi_direction?: string | null;
+    selldo_call_id?: string | null;
+    selldo_agent_name?: string | null;
+    selldo_team_name?: string | null;
+    selldo_call_status?: string | null;
+    selldo_direction?: string | null;
+    selldo_enriched_at?: string | null;
     is_flagged?: boolean;
     creator_details?: {
         fullname: string;

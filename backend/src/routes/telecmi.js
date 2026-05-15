@@ -76,7 +76,8 @@ async function downloadAndStoreRecording(filename, ticketId, skipInitialDelay = 
  * @param {boolean} skipInitialDelay - Skip the 45s wait (use true for sync, false for webhook)
  */
 async function processCdr(cdr, skipInitialDelay = false) {
-    const cmiuid    = cdr.cmiuid   || cdr.uid    || null;
+    const cmiuid    = cdr.cmiuid   || cdr.cmiuuid || cdr.uid || null;
+    const callId    = cdr.call_id  || null;
     const agent     = cdr.agent    || cdr.agentid || cdr.user || null;
     const direction = cdr.direction || 'outbound';
     // Explicit direction-aware customer number mapping:
@@ -160,6 +161,7 @@ async function processCdr(cdr, skipInitialDelay = false) {
             id:                ticketId,
             source:            'telecmi',
             telecmi_cmiuid:    cmiuid,
+            telecmi_call_id:   callId,
             telecmi_filename:  filename,
             telecmi_user:      agent,           // raw e.g. "5088_33336999"
             telecmi_direction: direction,        // "inbound" | "outbound"
@@ -181,6 +183,60 @@ async function processCdr(cdr, skipInitialDelay = false) {
     }
 
     console.log(`📞 TeleCMI: Created ticket ${ticketId} | agent=${agentFullname || agent || 'unmapped'} | from=${from} | duration=${duration}s`);
+
+    // ── Reconcile pending Sell.Do data (graceful — never blocks ticket creation) ──
+    if (callId) {
+        try {
+            const { data: pending } = await supabaseAdmin
+                .from('selldo_pending_calls')
+                .select('*')
+                .eq('call_id', callId)
+                .eq('matched', false)
+                .limit(1)
+                .maybeSingle();
+
+            if (pending) {
+                const updates = {
+                    selldo_call_id:     pending.call_id,
+                    selldo_agent_name:  pending.agent_name,
+                    selldo_team_name:   pending.team_name,
+                    selldo_call_status: pending.call_status,
+                    selldo_direction:   pending.direction,
+                    selldo_enriched_at: new Date().toISOString()
+                };
+
+                if (pending.lead_id) {
+                    updates.telecmi_lead_id = String(pending.lead_id);
+                }
+
+                const { error: enrichError } = await supabaseAdmin
+                    .from('tickets')
+                    .update(updates)
+                    .eq('id', ticketId);
+
+                if (enrichError) {
+                    throw enrichError;
+                }
+
+                const { error: pendingUpdateError } = await supabaseAdmin
+                    .from('selldo_pending_calls')
+                    .update({
+                        matched: true,
+                        matched_ticket: ticketId,
+                        matched_at: new Date().toISOString()
+                    })
+                    .eq('id', pending.id);
+
+                if (pendingUpdateError) {
+                    throw pendingUpdateError;
+                }
+
+                console.log(`🔗 TeleCMI→Sell.Do reconciled for ticket ${ticketId}`);
+            }
+        } catch (e) {
+            console.warn(`⚠️ Sell.Do reconciliation skipped for ${ticketId}:`, e.message);
+        }
+    }
 
     // ── Download recording → GCS ─────────────────────────────────────────────
     try {

@@ -200,4 +200,153 @@ router.post('/selldo/lead', async (req, res) => {
     }
 });
 
+// ============================================
+// SELL.DO WEBHOOK - Call Enrichment
+// ============================================
+
+/**
+ * POST /webhooks/selldo/call
+ * Called by Sell.Do CRM when a call is completed.
+ * Enriches a TeleCMI pre-sales ticket by matching Sell.Do $remote_id to
+ * TeleCMI's call_id, stored on tickets.telecmi_call_id.
+ *
+ * Security: x-webhook-secret header (no JWT — Sell.Do can't send one)
+ * Idempotency: unmatched duplicate call IDs reuse the existing pending row.
+ */
+router.post('/selldo/call', async (req, res) => {
+    try {
+        const secret = req.headers['x-webhook-secret'];
+        const expectedSecret = process.env.SELLDO_WEBHOOK_SECRET;
+
+        if (!expectedSecret || secret !== expectedSecret) {
+            console.warn('⚠️ Sell.do call webhook: invalid or missing secret');
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            call_id,
+            lead_id,
+            agent_name,
+            team_name,
+            call_status,
+            direction,
+            duration
+        } = req.body || {};
+
+        const callId = call_id?.toString()?.trim();
+        const leadId = lead_id !== undefined && lead_id !== null && String(lead_id).trim()
+            ? String(lead_id).trim()
+            : null;
+
+        if (!callId) {
+            console.warn('⚠️ Sell.do call webhook: missing call_id');
+            return res.status(200).json({ success: false, reason: 'missing_call_id' });
+        }
+
+        const normalizedDuration = Number(duration);
+        const durationSeconds = Number.isFinite(normalizedDuration) ? normalizedDuration : null;
+
+        console.log(`📥 Sell.do call webhook: call_id=${callId}, lead_id=${leadId || 'none'}`);
+
+        const { data: matchedTicket, error: matchError } = await supabaseAdmin
+            .from('tickets')
+            .select('id')
+            .eq('telecmi_call_id', callId)
+            .eq('source', 'telecmi')
+            .limit(1)
+            .maybeSingle();
+
+        if (matchError) {
+            console.error('❌ Sell.do call webhook: ticket match error:', matchError);
+            return res.status(200).json({ success: false, reason: 'match_failed' });
+        }
+
+        if (matchedTicket) {
+            const updates = {
+                selldo_call_id:     callId,
+                selldo_agent_name:  agent_name || null,
+                selldo_team_name:   team_name || null,
+                selldo_call_status: call_status || null,
+                selldo_direction:   direction || null,
+                selldo_enriched_at: new Date().toISOString()
+            };
+
+            if (leadId) {
+                updates.telecmi_lead_id = leadId;
+            }
+
+            const { error: updateError } = await supabaseAdmin
+                .from('tickets')
+                .update(updates)
+                .eq('id', matchedTicket.id);
+
+            if (updateError) {
+                console.error('❌ Sell.do call webhook: ticket enrichment error:', updateError);
+                return res.status(200).json({ success: false, reason: 'enrichment_failed' });
+            }
+
+            console.log(`✅ Sell.do call webhook: enriched ticket ${matchedTicket.id}`);
+            return res.status(200).json({
+                success: true,
+                action: 'enriched',
+                ticket_id: matchedTicket.id
+            });
+        }
+
+        const { data: existingPending, error: pendingLookupError } = await supabaseAdmin
+            .from('selldo_pending_calls')
+            .select('id')
+            .eq('call_id', callId)
+            .eq('matched', false)
+            .limit(1)
+            .maybeSingle();
+
+        if (pendingLookupError) {
+            console.error('❌ Sell.do call webhook: pending lookup error:', pendingLookupError);
+            return res.status(200).json({ success: false, reason: 'pending_lookup_failed' });
+        }
+
+        if (existingPending) {
+            console.log(`⏭️ Sell.do call webhook: pending row already exists for call_id=${callId}`);
+            return res.status(200).json({
+                success: true,
+                action: 'pending_exists',
+                pending_id: existingPending.id
+            });
+        }
+
+        const { data: pending, error: insertError } = await supabaseAdmin
+            .from('selldo_pending_calls')
+            .insert({
+                call_id: callId,
+                lead_id: leadId,
+                agent_name: agent_name || null,
+                team_name: team_name || null,
+                call_status: call_status || null,
+                direction: direction || null,
+                duration: durationSeconds,
+                raw_payload: req.body || {},
+                matched: false
+            })
+            .select('id')
+            .single();
+
+        if (insertError) {
+            console.error('❌ Sell.do call webhook: pending insert error:', insertError);
+            return res.status(200).json({ success: false, reason: 'pending_insert_failed' });
+        }
+
+        console.log(`🕒 Sell.do call webhook: stored pending call ${callId}`);
+        return res.status(200).json({
+            success: true,
+            action: 'pending_created',
+            pending_id: pending.id
+        });
+
+    } catch (error) {
+        console.error('❌ Sell.do call webhook error:', error);
+        return res.status(200).json({ success: false, reason: 'internal_error' });
+    }
+});
+
 export default router;

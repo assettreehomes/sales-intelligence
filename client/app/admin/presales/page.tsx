@@ -60,13 +60,17 @@ function clientLabel(ticket: {
     telecmi_lead_id?: string | null;
     telecmi_user?: string | null;
 }): { primary: string; sub?: string } {
-    // Primary: always the masked phone number
-    const primary = formatPhone(ticket.client_id ?? null);
+    const maskedPhone = formatPhone(ticket.client_id ?? null);
 
-    // Sub: Lead ID if from CRM, else agent extension
     const leadId = ticket.telecmi_lead_id;
     const ext = ticket.telecmi_user ? ticket.telecmi_user.split('_')[0] : null;
-    const sub = leadId ? `Lead #${leadId}` : ext ? `Ext. ${ext}` : undefined;
+
+    if (leadId) {
+        return { primary: `Lead #${leadId}`, sub: maskedPhone };
+    }
+
+    const sub = ext ? `Ext. ${ext}` : undefined;
+    const primary = maskedPhone;
 
     return { primary, sub };
 }
@@ -361,7 +365,7 @@ function PresalesContent() {
                                             </span>
                                             <div>
                                                 {(() => {
-                                                    const lbl = clientLabel(ticket as any);
+                                                    const lbl = clientLabel(ticket);
                                                     return (
                                                         <>
                                                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -390,20 +394,26 @@ function PresalesContent() {
                                                 <Avatar name={ticket.creator_details.fullname} src={ticket.creator_details.avatar_url} size="sm" />
                                                 {ticket.creator_details.fullname}
                                             </span>
-                                        ) : (ticket as any).telecmi_user ? (
+                                        ) : ticket.telecmi_user ? (
                                             <span className="flex items-center gap-1 italic text-slate-400 dark:text-slate-500">
-                                                Ext. {(ticket as any).telecmi_user.split('_')[0]}
+                                                Ext. {ticket.telecmi_user.split('_')[0]}
                                             </span>
                                         ) : (
                                             <span className="text-slate-300 dark:text-slate-600 italic">No agent</span>
                                         )}
-                                        {(ticket as any).telecmi_direction && (
+                                        {ticket.selldo_team_name && (
+                                            <span className="flex items-center gap-1">
+                                                <Users className="w-3 h-3" />
+                                                {ticket.selldo_team_name}
+                                            </span>
+                                        )}
+                                        {ticket.telecmi_direction && (
                                             <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                                                (ticket as any).telecmi_direction === 'inbound'
+                                                ticket.telecmi_direction === 'inbound'
                                                     ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
                                                     : 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
                                             }`}>
-                                                {(ticket as any).telecmi_direction === 'inbound' ? '↙ Inbound' : '↗ Outbound'}
+                                                {ticket.telecmi_direction === 'inbound' ? 'Inbound' : 'Outbound'}
                                             </span>
                                         )}
                                         {ticket.durationseconds && (
@@ -419,15 +429,15 @@ function PresalesContent() {
                                     </div>
 
                                     {/* Lead ID / Call ID row */}
-                                    {((ticket as any).telecmi_lead_id || (ticket as any).telecmi_cmiuid) && (
+                                    {(ticket.telecmi_lead_id || ticket.telecmi_cmiuid) && (
                                         <div className="mt-1">
-                                            {(ticket as any).telecmi_lead_id ? (
+                                            {ticket.telecmi_lead_id ? (
                                                 <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-                                                    🔗 Lead #{(ticket as any).telecmi_lead_id}
+                                                    🔗 {formatPhone(ticket.client_id)}
                                                 </span>
                                             ) : (
                                                 <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                                                    Call ID: {((ticket as any).telecmi_cmiuid || '').slice(0, 8)}&hellip;
+                                                    Call ID: {(ticket.telecmi_cmiuid || '').slice(0, 8)}&hellip;
                                                 </span>
                                             )}
                                         </div>
@@ -435,9 +445,16 @@ function PresalesContent() {
 
                                     {/* TeleCMI badge */}
                                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
-                                            <PhoneCall className="w-2.5 h-2.5" /> TeleCMI
-                                        </span>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
+                                                <PhoneCall className="w-2.5 h-2.5" /> TeleCMI
+                                            </span>
+                                            {ticket.selldo_enriched_at && (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                                    <BadgeCheck className="w-2.5 h-2.5" /> Sell.Do
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </button>
                             ))}

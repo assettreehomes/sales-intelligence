@@ -793,11 +793,18 @@ function normalizeSearchTerm(value) {
 function getTicketSearchRank(ticket, searchTerm) {
     if (!searchTerm) return 99;
 
+    const leadSearchTerm = searchTerm.replace(/^lead\s+/, '').trim();
+    const leadTerms = [...new Set([searchTerm, leadSearchTerm].filter(Boolean))];
+    const telecmiLeadId = normalizeSearchTerm(ticket?.telecmi_lead_id);
     const clientId = normalizeSearchTerm(ticket?.client_id);
     const clientName = normalizeSearchTerm(ticket?.clientname);
     const visitType = normalizeSearchTerm(String(ticket?.visittype || '').replaceAll('_', ' '));
     const ticketId = normalizeSearchTerm(ticket?.id);
     const visitNumber = normalizeSearchTerm(ticket?.visitnumber);
+
+    if (telecmiLeadId && leadTerms.some((term) => telecmiLeadId === term)) return 0;
+    if (telecmiLeadId && leadTerms.some((term) => telecmiLeadId.startsWith(term))) return 1;
+    if (telecmiLeadId && leadTerms.some((term) => telecmiLeadId.includes(term))) return 2;
 
     if (clientId && clientId === searchTerm) return 0;
     if (clientId && clientId.startsWith(searchTerm)) return 1;
@@ -1545,6 +1552,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 .replace(/\s+/g, ' ')
                 .trim();
             const hashlessSearch = sanitizedSearch.replaceAll('#', '').trim();
+            const leadSearch = hashlessSearch.replace(/^lead\s+/i, '').trim();
 
             const clauses = new Set();
 
@@ -1557,6 +1565,11 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 clauses.add(`client_id.ilike.%${hashlessSearch}%`);
                 clauses.add(`clientname.ilike.%${hashlessSearch}%`);
                 clauses.add(`visittype.ilike.%${hashlessSearch}%`);
+                clauses.add(`telecmi_lead_id.ilike.%${hashlessSearch}%`);
+
+                if (leadSearch && leadSearch !== hashlessSearch) {
+                    clauses.add(`telecmi_lead_id.ilike.%${leadSearch}%`);
+                }
 
                 if (/^\d+$/.test(hashlessSearch)) {
                     clauses.add(`visitnumber.eq.${Number(hashlessSearch)}`);

@@ -1843,10 +1843,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <span className="max-w-[9rem] truncate sm:max-w-none">
                                         {isPresales ? (
                                             (() => {
-                                                const t = ticket as any;
-                                                if (t.clientname && !/^\d+$/.test(t.clientname) && t.clientname !== t.client_id) return t.clientname;
-                                                if (t.telecmi_lead_id) return `Lead #${t.telecmi_lead_id}`;
-                                                return maskPhone(t.client_id);
+                                                if (ticket.clientname && !/^\d+$/.test(ticket.clientname) && ticket.clientname !== ticket.client_id) return ticket.clientname;
+                                                if (ticket.telecmi_lead_id) return `Lead #${ticket.telecmi_lead_id}`;
+                                                return maskPhone(ticket.client_id);
                                             })()
                                         ) : (
                                             ticket.clientname || ticket.client_id
@@ -2033,13 +2032,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         {isPresales ? (
                                             <>
                                                 <p className="text-[1.65rem] leading-none font-semibold text-gray-900">
-                                                    {maskPhone((ticket as any).client_id)}
+                                                    {ticket.telecmi_lead_id ? `Lead #${ticket.telecmi_lead_id}` : maskPhone(ticket.client_id)}
                                                 </p>
                                                 {(() => {
-                                                    const t = ticket as any;
-                                                    const sub = t.telecmi_lead_id
-                                                        ? `Lead #${t.telecmi_lead_id}`
-                                                        : t.telecmi_user ? `Ext. ${t.telecmi_user.split('_')[0]}` : null;
+                                                    const sub = ticket.telecmi_lead_id
+                                                        ? maskPhone(ticket.client_id)
+                                                        : ticket.telecmi_user ? `Ext. ${ticket.telecmi_user.split('_')[0]}` : null;
                                                     return sub ? (
                                                         <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
                                                     ) : null;
@@ -2054,12 +2052,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         <div className="flex items-center gap-2.5">
                                             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
                                                 <span className="text-xs font-semibold text-gray-700">
-                                                    {isPresales && agentName === 'Unknown Agent' && (ticket as any).telecmi_user ? 'UA' : agentInitials}
+                                                    {isPresales && agentName === 'Unknown Agent' && ticket.telecmi_user ? 'UA' : agentInitials}
                                                 </span>
                                             </div>
                                             <p className="text-lg font-semibold leading-none text-gray-900">
-                                                {isPresales && agentName === 'Unknown Agent' && (ticket as any).telecmi_user 
-                                                    ? `Ext. ${(ticket as any).telecmi_user.split('_')[0]}` 
+                                                {isPresales && agentName === 'Unknown Agent' && ticket.telecmi_user
+                                                    ? `Ext. ${ticket.telecmi_user.split('_')[0]}`
                                                     : agentName}
                                             </p>
                                         </div>
@@ -2067,6 +2065,46 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 </div>
                             </div>
                         </div>
+
+                        {isPresales && ticket.selldo_enriched_at && (
+                            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 shadow-sm">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                            CRM Context
+                                        </p>
+                                        <h2 className="mt-1 text-lg font-semibold text-gray-900">
+                                            Sell.Do call enrichment
+                                        </h2>
+                                    </div>
+                                    <span className="inline-flex w-fit items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                                        Sell.Do
+                                    </span>
+                                </div>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Lead ID</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.telecmi_lead_id || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Agent</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_agent_name || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Team</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_team_name || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Call Status</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_call_status || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Direction</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_direction || ticket.telecmi_direction || '—'}</p>
+                                    </div>
+                                </div>
+                            </section>
+                        )}
 
                         {/* Audio Player */}
                         <div className="ticket-audio-player rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden border border-white/8 bg-[radial-gradient(130%_190%_at_0%_0%,rgba(141,59,197,0.35),rgba(13,16,31,0.97)_54%,rgba(4,7,20,0.98)_100%)] text-white">
@@ -3193,5 +3231,3 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         </ProtectedRoute >
     );
 }
-
-

@@ -74,11 +74,30 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             .update({ status: 'processing', analysis_started_at: new Date().toISOString() })
             .eq('id', ticketId);
 
+        let enrichedTicket = ticket;
+        try {
+            const { data: freshTicket, error: freshTicketError } = await supabaseAdmin
+                .from('tickets')
+                .select('*')
+                .eq('id', ticketId)
+                .maybeSingle();
+
+            if (freshTicketError) {
+                console.warn(`⚠️ Presales analysis: fresh ticket fetch skipped for ${ticketId}:`, freshTicketError.message);
+            } else if (freshTicket) {
+                enrichedTicket = { ...ticket, ...freshTicket };
+            }
+        } catch (freshTicketError) {
+            console.warn(`⚠️ Presales analysis: fresh ticket fetch skipped for ${ticketId}:`, freshTicketError.message);
+        }
+
         const ticketInfo = {
-            caller_number:    ticket.client_id,
-            caller_name:      ticket.clientname,
-            agent_name:       ticket.agent_name || null,
-            duration_seconds: ticket.durationseconds || null
+            caller_number:    enrichedTicket.client_id,
+            caller_name:      enrichedTicket.clientname,
+            agent_name:       enrichedTicket.selldo_agent_name || enrichedTicket.agent_name || null,
+            duration_seconds: enrichedTicket.durationseconds || null,
+            lead_id:          enrichedTicket.telecmi_lead_id || null,
+            team_name:        enrichedTicket.selldo_team_name || null
         };
 
         const analysis = await analyzePresalesAudio(ticketId, ticketInfo);
