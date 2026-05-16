@@ -1205,21 +1205,15 @@ router.post('/emergency-upload', authMiddleware, requireEmployee, async (req, re
             .insert({
                 id: ticketId,
                 client_id: clientId,
-                client_name: clientName,
                 clientname: clientName,
-                visit_type: visitType,
                 visittype: visitType,
-                visit_number: visitNumber,
                 visitnumber: visitNumber,
-                previous_visit_ticket_id: previousTicketId,
                 previousvisitticketid: previousTicketId,
                 createdby: req.user.id,
-                created_by: req.user.id,
                 status: 'draft',
                 source: 'manual_emergency',
                 notes,
                 createdat: now,
-                created_at: now
             })
             .select()
             .single();
