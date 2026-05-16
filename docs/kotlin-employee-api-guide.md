@@ -19,6 +19,7 @@ The following were added/changed specifically for the employee mobile flow:
 | 5 | **Upload Recording** | `POST /tickets/upload` | Multipart audio — can attach to draft OR create new ticket |
 | 6 | **Submit Excuse** | `POST /excuses` | Employee submits delay reason for a draft |
 | 7 | **View Own Excuses** | `GET /excuses` | Employee sees only their own excuse history |
+| 8 | **Emergency Recording** | `POST /tickets/emergency-upload` | Create a ticket on the spot without a pre-assigned draft; upload audio after with regular `/tickets/upload` |
 
 ---
 
@@ -29,8 +30,12 @@ Login
   └─► GET /drafts          ← list assigned drafts on home screen
         ├─► POST /drafts/:id/start    ← tap "Start Recording"
         │     └─► POST /tickets/upload   ← submit audio file for the draft
-        ├─► POST /excuses             ← can't record now? submit excuse
-        └─► POST /tickets/upload      ← (no draft_id) record new ticket directly
+        ├─► POST /excuses                   ← can't record now? submit excuse
+        └─► POST /tickets/upload           ← (no draft_id) record new ticket directly
+
+No draft assigned at all? Use the emergency flow:
+  └─► POST /tickets/emergency-upload  ← create ticket on the spot → get ticket_id
+        └─► POST /tickets/upload           ← upload audio with that ticket_id → analysis starts
 
 Background (while app is alive):
   └─► POST /employee/heartbeat  every 30s
@@ -863,3 +868,330 @@ All errors follow this shape:
 | `404` | Not found | Show empty/not found state |
 | `429` | Rate limited | Wait and retry |
 | `500` | Server error | Show retry option |
+
+---
+
+## 9. Emergency Recording (Offline-First Fallback)
+
+Use this flow when a normal draft isn't available — e.g. the employee is about to record but has no internet, or an admin hasn't created a draft for this client yet. The app creates the ticket first, then uploads audio afterwards using the regular upload endpoint.
+
+### Why it exists
+
+The normal flow requires an admin to pre-create a draft. The emergency flow lets any employee create their own ticket on the spot, so a recording is never missed. The ticket is tagged `source: "manual_emergency"` so admins can distinguish these from admin-assigned drafts.
+
+### Two-step flow
+
+```
+Step 1  POST /tickets/emergency-upload     ← create ticket shell, get ticket_id
+           │
+           │  (start MediaRecorder immediately after receiving ticket_id)
+           ▼
+Step 2  POST /tickets/upload               ← upload audio with that ticket_id
+           │
+           ▼
+        Analysis triggered automatically   ← same pipeline as any other upload
+```
+
+---
+
+### Step 1 — Create the emergency ticket
+
+```
+POST /tickets/emergency-upload
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `client_id` | string | ✅ | Client identifier (e.g. `"CLIENT001"`) — used to auto-detect visit number |
+| `client_name` | string | No | Human-readable client name (shown in dashboard) |
+| `visit_type` | string | No | Default: `"emergency_recording"`. Other valid values: `"site_visit"`, `"follow_up"` |
+| `notes` | string | No | Free-text notes about this recording |
+
+```json
+{
+  "client_id": "CLIENT001",
+  "client_name": "Sunrise Heights",
+  "visit_type": "emergency_recording",
+  "notes": "Client was available unexpectedly, recording on the spot"
+}
+```
+
+**Success response `200`:**
+
+```json
+{
+  "success": true,
+  "ticket_id": "f3a2c1d0-9b4e-4f1a-8c7d-2e5b6a3f9012",
+  "ticket": { ... },
+  "status": "draft",
+  "visit_number": 3,
+  "previous_ticket_id": "aab1c2d3-...",
+  "upload_endpoint": "/tickets/upload",
+  "message": "Emergency ticket created. Upload audio later using this ticket_id."
+}
+```
+
+> The backend automatically calculates `visit_number` from the `client_id`'s existing ticket history and links `previous_ticket_id` — the same sequencing logic used for normal drafts.
+
+**Error responses:**
+
+| HTTP | `error` | Cause |
+|------|---------|-------|
+| `400` | `client_id is required` | Missing `client_id` in body |
+| `401` | *(token error)* | Token expired — refresh and retry |
+| `500` | `Failed to create emergency ticket` | DB error |
+
+---
+
+### Step 2 — Upload the audio
+
+After recording, upload using the standard draft upload path — pass the `ticket_id` from Step 1:
+
+```
+POST /tickets/upload
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+| Field | Required | Value |
+|-------|----------|-------|
+| `audio` | ✅ | Audio file (M4A recommended) |
+| `ticket_id` | ✅ | UUID from Step 1 response |
+
+This is identical to the normal draft upload (Section 5). The backend moves the ticket through `uploading → pending → processing → analyzed` and triggers the Vertex AI analysis automatically.
+
+---
+
+### Full Kotlin Implementation
+
+```kotlin
+// ── Data models ──────────────────────────────────────────────────────
+
+data class EmergencyTicketRequest(
+    val client_id: String,
+    val client_name: String? = null,
+    val visit_type: String = "emergency_recording",
+    val notes: String? = null
+)
+
+data class EmergencyTicketResponse(
+    val success: Boolean,
+    val ticket_id: String,
+    val status: String,           // "draft"
+    val visit_number: Int,
+    val previous_ticket_id: String?,
+    val upload_endpoint: String,
+    val message: String
+)
+
+// ── Retrofit interface ───────────────────────────────────────────────
+
+interface ApiService {
+    @POST("tickets/emergency-upload")
+    suspend fun createEmergencyTicket(
+        @Header("Authorization") token: String,
+        @Body body: EmergencyTicketRequest
+    ): EmergencyTicketResponse
+
+    // Existing upload endpoint — reused for Step 2
+    // (already defined in Section 5)
+}
+
+// ── ViewModel ────────────────────────────────────────────────────────
+
+class EmergencyRecordingViewModel(
+    private val api: ApiService,
+    private val prefs: SecurePrefs
+) : ViewModel() {
+
+    val state = MutableStateFlow<EmergencyState>(EmergencyState.Idle)
+
+    /** Step 1: create the ticket shell before (or right as) recording starts. */
+    fun createTicket(clientId: String, clientName: String?, notes: String? = null) {
+        viewModelScope.launch {
+            state.value = EmergencyState.CreatingTicket
+            val token = TokenManager.getValidToken(prefs, api)
+                ?: return@launch run { state.value = EmergencyState.Error("Session expired. Please log in again.") }
+
+            runCatching {
+                api.createEmergencyTicket(
+                    token = "Bearer $token",
+                    body  = EmergencyTicketRequest(
+                        client_id   = clientId.trim(),
+                        client_name = clientName?.trim(),
+                        visit_type  = "emergency_recording",
+                        notes       = notes?.trim()
+                    )
+                )
+            }.onSuccess { res ->
+                state.value = EmergencyState.TicketReady(
+                    ticketId    = res.ticket_id,
+                    visitNumber = res.visit_number
+                )
+            }.onFailure { e ->
+                val msg = if (e is retrofit2.HttpException) {
+                    runCatching {
+                        org.json.JSONObject(
+                            e.response()?.errorBody()?.string() ?: "{}"
+                        ).getString("error")
+                    }.getOrDefault("Failed to create ticket (${e.code()})")
+                } else {
+                    "Network error. Check your connection."
+                }
+                state.value = EmergencyState.Error(msg)
+            }
+        }
+    }
+
+    /** Step 2: upload the recorded audio file using the ticket_id from Step 1. */
+    fun uploadRecording(ticketId: String, audioFile: File) {
+        viewModelScope.launch {
+            state.value = EmergencyState.Uploading
+            val token = TokenManager.getValidToken(prefs, api)
+                ?: return@launch run { state.value = EmergencyState.Error("Session expired.") }
+
+            runCatching {
+                val body = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart(
+                        "audio", audioFile.name,
+                        audioFile.asRequestBody("audio/mp4".toMediaType())
+                    )
+                    .addFormDataPart("ticket_id", ticketId)
+                    .build()
+
+                val request = Request.Builder()
+                    .url("$BASE_URL/tickets/upload")
+                    .addHeader("Authorization", "Bearer $token")
+                    .post(body)
+                    .build()
+
+                okHttpClient.newCall(request).execute()
+            }.onSuccess { response ->
+                if (response.isSuccessful) {
+                    state.value = EmergencyState.Done
+                } else {
+                    val errMsg = runCatching {
+                        org.json.JSONObject(response.body?.string() ?: "{}").getString("error")
+                    }.getOrDefault("Upload failed (${response.code})")
+                    state.value = EmergencyState.Error(errMsg)
+                }
+            }.onFailure {
+                state.value = EmergencyState.Error("Network error during upload.")
+            }
+        }
+    }
+}
+
+sealed class EmergencyState {
+    object Idle           : EmergencyState()
+    object CreatingTicket : EmergencyState()
+    data class TicketReady(val ticketId: String, val visitNumber: Int) : EmergencyState()
+    object Uploading      : EmergencyState()
+    object Done           : EmergencyState()
+    data class Error(val message: String) : EmergencyState()
+}
+```
+
+---
+
+### Fragment wiring
+
+```kotlin
+// EmergencyRecordingFragment.kt
+
+viewLifecycleOwner.lifecycleScope.launch {
+    viewModel.state.collect { state ->
+        when (state) {
+            EmergencyState.Idle -> {
+                binding.btnStart.isEnabled = true
+                binding.tvStatus.text = ""
+            }
+            EmergencyState.CreatingTicket -> {
+                binding.btnStart.isEnabled = false
+                binding.tvStatus.text = "Creating ticket…"
+            }
+            is EmergencyState.TicketReady -> {
+                binding.tvStatus.text = "Visit #${state.visitNumber} — recording now"
+                // Start MediaRecorder here
+                startRecorder(state.ticketId)
+            }
+            EmergencyState.Uploading -> {
+                binding.tvStatus.text = "Uploading recording…"
+            }
+            EmergencyState.Done -> {
+                binding.tvStatus.text = "Done! Analysis in progress."
+                // Navigate away or show success
+            }
+            is EmergencyState.Error -> {
+                binding.btnStart.isEnabled = true
+                Snackbar.make(binding.root, state.message, Snackbar.LENGTH_LONG).show()
+            }
+        }
+    }
+}
+
+binding.btnStart.setOnClickListener {
+    val clientId   = binding.etClientId.text.toString().trim()
+    val clientName = binding.etClientName.text.toString().trim().ifBlank { null }
+    val notes      = binding.etNotes.text.toString().trim().ifBlank { null }
+
+    if (clientId.isEmpty()) {
+        binding.etClientId.error = "Required"
+        return@setOnClickListener
+    }
+    viewModel.createTicket(clientId, clientName, notes)
+}
+
+// Called once MediaRecorder has stopped and saved the file
+fun onRecordingFinished(ticketId: String, audioFile: File) {
+    viewModel.uploadRecording(ticketId, audioFile)
+}
+```
+
+---
+
+### Full state machine
+
+```
+User enters client_id + taps "Start"
+  │
+  ▼
+POST /tickets/emergency-upload  →  ticket_id returned
+  │
+  ▼
+MediaRecorder starts             ←  status: "draft" in DB
+  │
+  │  (user records, taps "Stop")
+  ▼
+MediaRecorder stops → .m4a file saved
+  │
+  ▼
+POST /tickets/upload  { audio, ticket_id }
+  │
+  ├── backend: moves ticket → uploading → GCS upload → pending
+  │
+  └── triggerAnalysis() fires in background
+        │
+        ├── Vertex AI (Gemini 2.5 Pro) analyzes audio
+        ├── Scores written to analysisresults table
+        └── ticket.status → "analyzed"  (or "analysis_failed")
+```
+
+> **No draft required.** The emergency ticket goes through exactly the same analysis pipeline as a normal draft. Visit sequencing, previous-visit comparison (if visit > 1), and training library promotion (rating ≥ 8.0) all work identically.
+
+---
+
+### What the dashboard shows
+
+| Field | Value |
+|-------|-------|
+| `source` | `manual_emergency` |
+| `visit_type` | `emergency_recording` (or whatever was passed) |
+| `visit_number` | Auto-calculated from `client_id` history |
+| Analysis | Full scores, key moments, objections, coaching notes |
+
