@@ -95,6 +95,7 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             caller_number:    enrichedTicket.client_id,
             caller_name:      enrichedTicket.clientname,
             agent_name:       enrichedTicket.selldo_agent_name || enrichedTicket.agent_name || null,
+            agent_email:      enrichedTicket.selldo_agent_email || null,
             duration_seconds: enrichedTicket.durationseconds || null,
             lead_id:          enrichedTicket.telecmi_lead_id || null,
             team_name:        enrichedTicket.selldo_team_name || null
@@ -133,6 +134,7 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
                 // Store presales-specific data in a dedicated column
                 lead_qualification:    analysis.lead_qualification || null,
                 call_outcome:          analysis.call_outcome || null,
+                call_authenticity:     analysis.call_authenticity || null,
                 language_detected:     analysis.language_detected || null
             }, { onConflict: 'ticketid' });
 

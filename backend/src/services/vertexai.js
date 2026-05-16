@@ -78,10 +78,12 @@ Return a valid JSON object with this exact structure:
   "recommendations": [
     "Specific improvement suggestion for future calls"
   ],
+  "call_outcome": "<interested|not_interested|follow_up_required>",
   "comparison_with_previous": null
 }
 
 IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.
+Set call_outcome to interested only when the customer shows buying intent or agrees to a meaningful next step; not_interested when they clearly decline or disengage; follow_up_required when interest is uncertain but a callback, brochure, site visit, or next action is needed.
 The comparison_with_previous field must always be null — comparison is handled separately.`;
 }
 

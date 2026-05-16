@@ -98,6 +98,11 @@ interface AnalyticsData {
         avg_rating_10: number;
         avg_rating_5: number;
         total_employees: number;
+        outcome_counts?: {
+            interested: number;
+            not_interested: number;
+            follow_up_required: number;
+        };
     };
     team_skills: EmployeeSkills;
     rating_distribution: RatingBucket[];
@@ -792,6 +797,21 @@ export default function PerformancePage() {
                             <p className="performance-kpi-label">
                                 {s?.total_tickets ? ((s.training_calls / s.total_tickets) * 100).toFixed(0) : 0}% of total ticket flow
                             </p>
+                        </article>
+                    </section>
+
+                    <section className="grid gap-3 md:grid-cols-3">
+                        <article className="performance-card p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Interested</p>
+                            <p className="mt-1 text-2xl font-semibold text-gray-900">{s?.outcome_counts?.interested ?? 0}</p>
+                        </article>
+                        <article className="performance-card p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Not Interested</p>
+                            <p className="mt-1 text-2xl font-semibold text-gray-900">{s?.outcome_counts?.not_interested ?? 0}</p>
+                        </article>
+                        <article className="performance-card p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Follow Up Required</p>
+                            <p className="mt-1 text-2xl font-semibold text-gray-900">{s?.outcome_counts?.follow_up_required ?? 0}</p>
                         </article>
                     </section>
 

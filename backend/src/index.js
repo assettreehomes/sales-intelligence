@@ -17,6 +17,7 @@ import employeeRoutes from './routes/employee.js';
 import webhookRoutes from './routes/webhooks.js';
 import reportRoutes from './routes/reports.js';
 import telecmiRoutes from './routes/telecmi.js';
+import presalesRoutes from './routes/presales.js';
 
 // Load environment variables
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -86,6 +87,7 @@ app.use('/employee', employeeRoutes);
 app.use('/webhooks', webhookRoutes);
 app.use('/reports', reportRoutes);
 app.use('/telecmi', telecmiRoutes);
+app.use('/presales', presalesRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

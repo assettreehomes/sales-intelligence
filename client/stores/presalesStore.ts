@@ -22,10 +22,15 @@ export interface PresalesTicket {
     telecmi_direction?: string | null;
     selldo_call_id?: string | null;
     selldo_agent_name?: string | null;
+    selldo_agent_email?: string | null;
     selldo_team_name?: string | null;
     selldo_call_status?: string | null;
     selldo_direction?: string | null;
     selldo_enriched_at?: string | null;
+    presales_agent_id?: string | null;
+    presales_team_id?: string | null;
+    call_outcome?: 'interested' | 'not_interested' | 'follow_up_required' | string | null;
+    call_authenticity?: 'real' | 'fake' | string | null;
     is_flagged?: boolean;
     creator_details?: {
         fullname: string;
@@ -35,9 +40,19 @@ export interface PresalesTicket {
 
 interface Employee {
     id: string;
-    fullname: string;
+    fullname?: string;
+    full_name?: string;
     email: string;
     avatar_url?: string | null;
+    role?: string;
+    team_id?: string | null;
+}
+
+interface PresalesTeam {
+    id: string;
+    name: string;
+    team_leader_id?: string | null;
+    team_leader?: Employee | null;
 }
 
 interface Filters {
@@ -48,12 +63,19 @@ interface Filters {
     customDateTo: string;
     sortOrder: 'asc' | 'desc';
     agentFilter: string;
+    teamFilter: string;
+    teamLeaderFilter: string;
+    outcomeFilter: string;
+    authenticityFilter: string;
+    callStatusFilter: string;
+    directionFilter: string;
     searchQuery: string;
 }
 
 interface PresalesState {
     tickets: PresalesTicket[];
     employees: Employee[];
+    teams: PresalesTeam[];
     totalTickets: number;
     loading: boolean;
     syncing: boolean;
@@ -66,6 +88,7 @@ interface PresalesState {
 
     fetchTickets: () => Promise<void>;
     fetchEmployees: () => Promise<void>;
+    fetchDirectory: () => Promise<void>;
     syncTeleCMI: (opts?: { start_date?: number; end_date?: number }) => Promise<{ processed: number; skipped: number; failed: number }>;
     setFilter: <K extends keyof Filters>(key: K, value: Filters[K]) => void;
     clearFilters: () => void;
@@ -80,12 +103,19 @@ const DEFAULT_FILTERS: Filters = {
     customDateTo:   '',
     sortOrder:      'desc',
     agentFilter:    'all',
+    teamFilter:     'all',
+    teamLeaderFilter: 'all',
+    outcomeFilter: 'all',
+    authenticityFilter: 'all',
+    callStatusFilter: 'all',
+    directionFilter: 'all',
     searchQuery:    '',
 };
 
 export const usePresalesStore = create<PresalesState>((set, get) => ({
     tickets: [],
     employees: [],
+    teams: [],
     totalTickets: 0,
     loading: false,
     syncing: false,
@@ -110,7 +140,13 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
             if (filters.customDateFrom)         params.append('dateFrom', filters.customDateFrom);
             if (filters.customDateTo)           params.append('dateTo', filters.customDateTo);
             if (filters.sortOrder)              params.append('sortOrder', filters.sortOrder);
-            if (filters.agentFilter !== 'all')  params.append('createdBy', filters.agentFilter);
+            if (filters.agentFilter !== 'all')  params.append('presalesAgentId', filters.agentFilter);
+            if (filters.teamFilter !== 'all')   params.append('presalesTeamId', filters.teamFilter);
+            if (filters.teamLeaderFilter !== 'all') params.append('presalesTeamLeaderId', filters.teamLeaderFilter);
+            if (filters.outcomeFilter !== 'all') params.append('callOutcome', filters.outcomeFilter);
+            if (filters.authenticityFilter !== 'all') params.append('callAuthenticity', filters.authenticityFilter);
+            if (filters.callStatusFilter !== 'all') params.append('callStatus', filters.callStatusFilter);
+            if (filters.directionFilter !== 'all') params.append('direction', filters.directionFilter);
             if (filters.searchQuery)            params.append('search', filters.searchQuery);
             params.append('page',  currentPage.toString());
             params.append('limit', ticketsPerPage.toString());
@@ -140,17 +176,21 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
     },
 
     fetchEmployees: async () => {
+        await get().fetchDirectory();
+    },
+
+    fetchDirectory: async () => {
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/users?role=employee`, {
+            const response = await fetch(`${API_URL}/presales/directory`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                set({ employees: data.users || [], employeesLoaded: true });
+                set({ employees: data.employees || [], teams: data.teams || [], employeesLoaded: true });
             }
         } catch (error) {
-            console.error('Failed to fetch employees:', error);
+            console.error('Failed to fetch presales directory:', error);
         }
     },
 

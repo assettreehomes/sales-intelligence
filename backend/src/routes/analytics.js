@@ -26,6 +26,12 @@ function toNumber(v) {
 }
 function roundTo(v, d = 2) { return Math.round(v * 10 ** d) / 10 ** d; }
 function safePercent(part, whole) { return whole > 0 ? roundTo((part / whole) * 100) : 0; }
+function emptyOutcomeCounts() {
+    return { interested: 0, not_interested: 0, follow_up_required: 0 };
+}
+function addOutcome(counts, value) {
+    if (value && Object.prototype.hasOwnProperty.call(counts, value)) counts[value] += 1;
+}
 
 /**
  * GET /analytics/employees
@@ -73,7 +79,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
                 const batch = ticketIds.slice(i, i + 200);
                 const { data, error } = await supabaseAdmin
                     .from('analysisresults')
-                    .select('ticketid, rating, scores')
+                    .select('ticketid, rating, scores, call_outcome, call_authenticity')
                     .in('ticketid', batch);
                 if (!error && data) analysisRows.push(...data);
             }
@@ -98,6 +104,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
             const analyzedCount = analyzedTickets.length;
             const failedCount = empTickets.filter(t => t.status === 'analysis_failed').length;
             const trainingCalls = empTickets.filter(t => t.istrainingcall).length;
+            const outcome_counts = emptyOutcomeCounts();
 
             // Ratings
             const ratings = analyzedTickets
@@ -113,6 +120,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
 
             for (const ticket of analyzedTickets) {
                 const analysis = analysisByTicket.get(ticket.id);
+                addOutcome(outcome_counts, analysis?.call_outcome);
                 if (!analysis?.scores) continue;
                 const scores = typeof analysis.scores === 'object' ? analysis.scores : {};
                 for (const key of SKILL_KEYS) {
@@ -166,6 +174,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
                 analyzed_tickets: analyzedCount,
                 failed_tickets: failedCount,
                 training_calls: trainingCalls,
+                outcome_counts,
                 completion_rate: safePercent(analyzedCount, totalCount),
                 avg_rating_10: avgRating10,
                 avg_rating_5: avgRating5,
@@ -186,6 +195,8 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
         const totalTickets = (tickets || []).length;
         const totalAnalyzed = (tickets || []).filter(t => t.status === 'analyzed').length;
         const totalTraining = (tickets || []).filter(t => t.istrainingcall).length;
+        const outcomeCounts = emptyOutcomeCounts();
+        analysisRows.forEach((row) => addOutcome(outcomeCounts, row.call_outcome));
         const teamAvgRating10 = allRatings.length > 0
             ? roundTo(allRatings.reduce((a, b) => a + b, 0) / allRatings.length) : 0;
 
@@ -239,6 +250,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
                 total_tickets: totalTickets,
                 analyzed_tickets: totalAnalyzed,
                 training_calls: totalTraining,
+                outcome_counts: outcomeCounts,
                 completion_rate: safePercent(totalAnalyzed, totalTickets),
                 avg_rating_10: teamAvgRating10,
                 avg_rating_5: roundTo(teamAvgRating10 / 2),
@@ -253,6 +265,182 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('Analytics employees error:', error);
         res.status(500).json({ error: 'Failed to generate employee analytics' });
+    }
+});
+
+router.get('/presales-performance', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const periodKey = PERIOD_DAYS[req.query.period] ? req.query.period : '30d';
+        const days = PERIOD_DAYS[periodKey];
+        const now = new Date();
+        const fromDate = new Date(now.getTime() - days * 86400000);
+
+        const [
+            { data: employees, error: employeesError },
+            { data: teams, error: teamsError },
+            { data: tickets, error: ticketsError }
+        ] = await Promise.all([
+            supabaseAdmin
+                .from('presales_employees')
+                .select('id, full_name, email, role, team_id, status'),
+            supabaseAdmin
+                .from('presales_teams')
+                .select('id, name, team_leader_id, status'),
+            supabaseAdmin
+                .from('tickets')
+                .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name')
+                .eq('source', 'telecmi')
+                .is('deletedat', null)
+                .gte('createdat', fromDate.toISOString())
+        ]);
+
+        if (employeesError) throw employeesError;
+        if (teamsError) throw teamsError;
+        if (ticketsError) throw ticketsError;
+
+        const ticketIds = (tickets || []).map((ticket) => ticket.id);
+        let analysisRows = [];
+        for (let i = 0; i < ticketIds.length; i += 200) {
+            const batch = ticketIds.slice(i, i + 200);
+            const { data, error } = await supabaseAdmin
+                .from('analysisresults')
+                .select('ticketid, rating, call_outcome, call_authenticity')
+                .in('ticketid', batch);
+            if (error) throw error;
+            if (data) analysisRows.push(...data);
+        }
+
+        const analysisByTicket = new Map(analysisRows.map((row) => [row.ticketid, row]));
+        const employeeMap = new Map((employees || []).map((employee) => [employee.id, employee]));
+        const teamMap = new Map((teams || []).map((team) => [team.id, team]));
+
+        const buildBucket = (id, label, extra = {}) => ({
+            id,
+            label,
+            total_calls: 0,
+            analyzed_calls: 0,
+            duration_seconds: 0,
+            avg_duration_seconds: 0,
+            avg_rating_10: 0,
+            outcome_counts: emptyOutcomeCounts(),
+            authenticity_counts: { real: 0, fake: 0 },
+            daily: {},
+            weekly: {},
+            ...extra
+        });
+
+        const agentBuckets = new Map();
+        const teamBuckets = new Map();
+        const daily = new Map();
+        const weekly = new Map();
+        const summary = {
+            total_calls: 0,
+            analyzed_calls: 0,
+            duration_seconds: 0,
+            avg_duration_seconds: 0,
+            avg_rating_10: 0,
+            outcome_counts: emptyOutcomeCounts(),
+            authenticity_counts: { real: 0, fake: 0 }
+        };
+
+        function addToBucket(bucket, ticket, analysis) {
+            bucket.total_calls += 1;
+            bucket.duration_seconds += toNumber(ticket.durationseconds) || 0;
+            if (ticket.status === 'analyzed') bucket.analyzed_calls += 1;
+            addOutcome(bucket.outcome_counts, analysis?.call_outcome);
+            if (analysis?.call_authenticity === 'real' || analysis?.call_authenticity === 'fake') {
+                bucket.authenticity_counts[analysis.call_authenticity] += 1;
+            }
+
+            const date = ticket.createdat?.slice(0, 10) || 'unknown';
+            bucket.daily[date] = (bucket.daily[date] || 0) + 1;
+
+            const d = new Date(ticket.createdat);
+            if (Number.isFinite(d.getTime())) {
+                const year = d.getUTCFullYear();
+                const week = Math.ceil((((d - new Date(Date.UTC(year, 0, 1))) / 86400000) + 1) / 7);
+                const weekKey = `${year}-W${String(week).padStart(2, '0')}`;
+                bucket.weekly[weekKey] = (bucket.weekly[weekKey] || 0) + 1;
+            }
+        }
+
+        for (const ticket of (tickets || [])) {
+            const analysis = analysisByTicket.get(ticket.id);
+            summary.total_calls += 1;
+            summary.duration_seconds += toNumber(ticket.durationseconds) || 0;
+            if (ticket.status === 'analyzed') summary.analyzed_calls += 1;
+            addOutcome(summary.outcome_counts, analysis?.call_outcome);
+            if (analysis?.call_authenticity === 'real' || analysis?.call_authenticity === 'fake') {
+                summary.authenticity_counts[analysis.call_authenticity] += 1;
+            }
+
+            const agentId = ticket.presales_agent_id || `raw:${ticket.selldo_agent_email || ticket.selldo_agent_name || 'unknown'}`;
+            const employee = employeeMap.get(ticket.presales_agent_id);
+            if (!agentBuckets.has(agentId)) {
+                agentBuckets.set(agentId, buildBucket(agentId, employee?.full_name || ticket.selldo_agent_name || 'Unmapped Agent', {
+                    email: employee?.email || ticket.selldo_agent_email || null,
+                    team_id: ticket.presales_team_id || employee?.team_id || null
+                }));
+            }
+            addToBucket(agentBuckets.get(agentId), ticket, analysis);
+
+            const teamId = ticket.presales_team_id || `raw:${ticket.selldo_team_name || 'unknown'}`;
+            const team = teamMap.get(ticket.presales_team_id);
+            const leader = team?.team_leader_id ? employeeMap.get(team.team_leader_id) : null;
+            if (!teamBuckets.has(teamId)) {
+                teamBuckets.set(teamId, buildBucket(teamId, team?.name || ticket.selldo_team_name || 'Unmapped Team', {
+                    team_leader: leader ? { id: leader.id, full_name: leader.full_name, email: leader.email } : null
+                }));
+            }
+            addToBucket(teamBuckets.get(teamId), ticket, analysis);
+
+            const date = ticket.createdat?.slice(0, 10);
+            if (date) daily.set(date, (daily.get(date) || 0) + 1);
+            const d = new Date(ticket.createdat);
+            if (Number.isFinite(d.getTime())) {
+                const year = d.getUTCFullYear();
+                const week = Math.ceil((((d - new Date(Date.UTC(year, 0, 1))) / 86400000) + 1) / 7);
+                const key = `${year}-W${String(week).padStart(2, '0')}`;
+                weekly.set(key, (weekly.get(key) || 0) + 1);
+            }
+        }
+
+        const allRatings = (tickets || [])
+            .map((ticket) => toNumber(ticket.rating))
+            .filter((rating) => rating !== null);
+        summary.avg_duration_seconds = summary.total_calls ? Math.round(summary.duration_seconds / summary.total_calls) : 0;
+        summary.avg_rating_10 = allRatings.length ? roundTo(allRatings.reduce((a, b) => a + b, 0) / allRatings.length) : 0;
+
+        function finalizeBucket(bucket) {
+            const sourceTickets = (tickets || []).filter((ticket) => {
+                if (String(bucket.id).startsWith('raw:')) {
+                    return bucket.label === (ticket.selldo_agent_name || ticket.selldo_team_name || bucket.label);
+                }
+                return ticket.presales_agent_id === bucket.id || ticket.presales_team_id === bucket.id;
+            });
+            const ratings = sourceTickets.map((ticket) => toNumber(ticket.rating)).filter((rating) => rating !== null);
+            return {
+                ...bucket,
+                avg_duration_seconds: bucket.total_calls ? Math.round(bucket.duration_seconds / bucket.total_calls) : 0,
+                avg_rating_10: ratings.length ? roundTo(ratings.reduce((a, b) => a + b, 0) / ratings.length) : 0,
+                daily: Object.entries(bucket.daily).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
+                weekly: Object.entries(bucket.weekly).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week))
+            };
+        }
+
+        res.json({
+            period: periodKey,
+            from: fromDate.toISOString(),
+            to: now.toISOString(),
+            summary,
+            agents: Array.from(agentBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
+            teams: Array.from(teamBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
+            daily: Array.from(daily.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
+            weekly: Array.from(weekly.entries()).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week))
+        });
+    } catch (error) {
+        console.error('Presales performance analytics error:', error);
+        res.status(500).json({ error: 'Failed to generate presales performance analytics' });
     }
 });
 

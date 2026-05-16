@@ -41,6 +41,8 @@ interface Analysis {
             change?: number;
         }>;
     } | null;
+    call_outcome?: string | null;
+    call_authenticity?: string | null;
 }
 
 interface Ticket {
@@ -61,10 +63,16 @@ interface Ticket {
     telecmi_direction?: string | null;
     selldo_call_id?: string | null;
     selldo_agent_name?: string | null;
+    selldo_agent_email?: string | null;
     selldo_team_name?: string | null;
     selldo_call_status?: string | null;
     selldo_direction?: string | null;
     selldo_enriched_at?: string | null;
+    presales_agent_id?: string | null;
+    presales_team_id?: string | null;
+    presales_agent?: { id: string; full_name: string; email: string | null; role: string; team_id?: string | null } | null;
+    presales_team?: { id: string; name: string; team_leader_id?: string | null; status?: string | null } | null;
+    presales_team_leader?: { id: string; full_name: string; email: string | null; role: string } | null;
     notes?: string;
     creator_details?: {
         fullname: string;

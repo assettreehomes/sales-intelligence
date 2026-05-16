@@ -14,6 +14,7 @@ interface Ticket {
     createdat: string;
     durationseconds: number | null;
     createdby: string;
+    call_outcome?: string | null;
     is_flagged?: boolean;
     creator_details?: {
         fullname: string;

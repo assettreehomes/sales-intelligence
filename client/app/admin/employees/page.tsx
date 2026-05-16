@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
-import { getToken, API_URL, useAuthStore } from '@/stores/authStore';
+import { getToken, API_URL } from '@/stores/authStore';
 import {
     UserPlus,
     Loader2,
@@ -29,6 +29,27 @@ interface Employee {
     role: 'employee' | 'admin' | 'superadmin' | 'intern';
     status: 'active' | 'inactive';
     last_login?: string;
+    telecmi_agent_id?: string | null;
+}
+
+interface PresalesEmployee {
+    id: string;
+    full_name: string;
+    email: string | null;
+    role: 'agent' | 'team_leader';
+    team_id: string | null;
+    status: 'active' | 'inactive';
+    selldo_agent_name?: string | null;
+    telecmi_agent_id?: string | null;
+}
+
+interface PresalesTeam {
+    id: string;
+    name: string;
+    team_leader_id: string | null;
+    status: 'active' | 'inactive';
+    team_leader?: PresalesEmployee | null;
+    members?: PresalesEmployee[];
 }
 
 function generatePassword(): string {
@@ -37,10 +58,19 @@ function generatePassword(): string {
 }
 
 function EmployeesPageContent() {
-    const currentUserRole = useAuthStore(s => s.profile?.role);
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const [activeTab, setActiveTab] = useState<'platform' | 'presales'>('platform');
+    const [presalesEmployees, setPresalesEmployees] = useState<PresalesEmployee[]>([]);
+    const [presalesTeams, setPresalesTeams] = useState<PresalesTeam[]>([]);
     const [loading, setLoading] = useState(true);
+    const [presalesLoading, setPresalesLoading] = useState(false);
     const [search, setSearch] = useState('');
+    const [presalesName, setPresalesName] = useState('');
+    const [presalesEmail, setPresalesEmail] = useState('');
+    const [presalesRole, setPresalesRole] = useState<'agent' | 'team_leader'>('agent');
+    const [presalesTeamId, setPresalesTeamId] = useState('');
+    const [teamName, setTeamName] = useState('');
+    const [teamLeaderId, setTeamLeaderId] = useState('');
 
     // Add modal state
     const [showModal, setShowModal] = useState(false);
@@ -71,7 +101,7 @@ function EmployeesPageContent() {
         setEditEmp(emp);
         setEditName(emp.fullname);
         setEditEmail(emp.email);
-        setEditAgentId((emp as any).telecmi_agent_id || '');
+        setEditAgentId(emp.telecmi_agent_id || '');
         setNewPassword('');
     };
     const closeEdit = () => { setEditEmp(null); setNewPassword(''); };
@@ -152,6 +182,100 @@ function EmployeesPageContent() {
     }, []);
 
     useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
+
+    const fetchPresalesDirectory = useCallback(async () => {
+        setPresalesLoading(true);
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/presales/directory`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setPresalesEmployees(data.employees || []);
+                setPresalesTeams(data.teams || []);
+            } else {
+                showToast('error', data.error || 'Failed to load presales directory');
+            }
+        } catch {
+            showToast('error', 'Network error');
+        } finally {
+            setPresalesLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'presales') void fetchPresalesDirectory();
+    }, [activeTab, fetchPresalesDirectory]);
+
+    const handleCreatePresalesEmployee = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!presalesName.trim()) return;
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/presales/employees`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    full_name: presalesName.trim(),
+                    email: presalesEmail.trim() || null,
+                    role: presalesRole,
+                    team_id: presalesRole === 'agent' ? presalesTeamId || null : null
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to create presales employee');
+            setPresalesName('');
+            setPresalesEmail('');
+            setPresalesRole('agent');
+            setPresalesTeamId('');
+            showToast('success', 'Presales employee added');
+            await fetchPresalesDirectory();
+        } catch (error) {
+            showToast('error', error instanceof Error ? error.message : 'Failed to create presales employee');
+        }
+    };
+
+    const handleCreateTeam = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!teamName.trim()) return;
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/presales/teams`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    name: teamName.trim(),
+                    team_leader_id: teamLeaderId || null
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to create presales team');
+            setTeamName('');
+            setTeamLeaderId('');
+            showToast('success', 'Presales team added');
+            await fetchPresalesDirectory();
+        } catch (error) {
+            showToast('error', error instanceof Error ? error.message : 'Failed to create presales team');
+        }
+    };
+
+    const assignPresalesAgent = async (employeeId: string, teamId: string) => {
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_URL}/presales/employees/${employeeId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ team_id: teamId || null })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to update team');
+            showToast('success', 'Agent team updated');
+            await fetchPresalesDirectory();
+        } catch (error) {
+            showToast('error', error instanceof Error ? error.message : 'Failed to update team');
+        }
+    };
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -516,19 +640,40 @@ function EmployeesPageContent() {
                             </p>
                         </div>
                         <div className="flex items-center gap-3">
-                            <button
-                                id="add-employee-btn"
-                                onClick={() => setShowModal(true)}
-                                className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
-                            >
-                                <UserPlus className="w-4 h-4" />
-                                Add Employee
-                            </button>
+                            {activeTab === 'platform' && (
+                                <button
+                                    id="add-employee-btn"
+                                    onClick={() => setShowModal(true)}
+                                    className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                    Add Employee
+                                </button>
+                            )}
                             <NotificationBell />
                         </div>
                     </div>
 
+                    <div className="mb-5 inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('platform')}
+                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${activeTab === 'platform' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                        >
+                            Platform Users
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('presales')}
+                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${activeTab === 'presales' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                        >
+                            Presales Directory
+                        </button>
+                    </div>
+
                     {/* Search */}
+                    {activeTab === 'platform' ? (
+                    <>
                     <div className="relative mb-5">
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
@@ -655,6 +800,127 @@ function EmployeesPageContent() {
                             </table>
                         )}
                     </div>
+                    </>
+                    ) : (
+                        <div className="space-y-5">
+                            <div className="grid gap-5 lg:grid-cols-2">
+                                <form onSubmit={handleCreatePresalesEmployee} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                                    <h2 className="mb-4 text-base font-semibold text-gray-900">Add Presales Employee</h2>
+                                    <div className="grid gap-3">
+                                        <input
+                                            value={presalesName}
+                                            onChange={e => setPresalesName(e.target.value)}
+                                            placeholder="Full name"
+                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <input
+                                            value={presalesEmail}
+                                            onChange={e => setPresalesEmail(e.target.value)}
+                                            placeholder="Sell.Do email"
+                                            type="email"
+                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <select
+                                            value={presalesRole}
+                                            onChange={e => setPresalesRole(e.target.value as 'agent' | 'team_leader')}
+                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                        >
+                                            <option value="agent">Presales Agent</option>
+                                            <option value="team_leader">Team Leader</option>
+                                        </select>
+                                        {presalesRole === 'agent' && (
+                                            <select
+                                                value={presalesTeamId}
+                                                onChange={e => setPresalesTeamId(e.target.value)}
+                                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                            >
+                                                <option value="">No team yet</option>
+                                                {presalesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                                            </select>
+                                        )}
+                                        <button type="submit" className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">
+                                            Add Presales Employee
+                                        </button>
+                                    </div>
+                                </form>
+
+                                <form onSubmit={handleCreateTeam} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                                    <h2 className="mb-4 text-base font-semibold text-gray-900">Create Presales Team</h2>
+                                    <div className="grid gap-3">
+                                        <input
+                                            value={teamName}
+                                            onChange={e => setTeamName(e.target.value)}
+                                            placeholder="Team name"
+                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <select
+                                            value={teamLeaderId}
+                                            onChange={e => setTeamLeaderId(e.target.value)}
+                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                        >
+                                            <option value="">No leader yet</option>
+                                            {presalesEmployees.filter(e => e.role === 'team_leader').map(leader => (
+                                                <option key={leader.id} value={leader.id}>{leader.full_name}</option>
+                                            ))}
+                                        </select>
+                                        <button type="submit" className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">
+                                            Create Team
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                                    <div>
+                                        <h2 className="font-semibold text-gray-900">Presales Agents & Team Leaders</h2>
+                                        <p className="text-sm text-gray-500">{presalesEmployees.length} people · {presalesTeams.length} teams</p>
+                                    </div>
+                                    {presalesLoading && <Loader2 className="h-5 w-5 animate-spin text-purple-500" />}
+                                </div>
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            <th className="px-5 py-3 text-left">Name</th>
+                                            <th className="px-5 py-3 text-left">Role</th>
+                                            <th className="px-5 py-3 text-left">Team</th>
+                                            <th className="px-5 py-3 text-left">Email</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {presalesEmployees.map(emp => (
+                                            <tr key={emp.id}>
+                                                <td className="px-5 py-3.5 font-medium text-gray-900">{emp.full_name}</td>
+                                                <td className="px-5 py-3.5">
+                                                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">
+                                                        {emp.role === 'team_leader' ? 'Team Leader' : 'Agent'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3.5">
+                                                    {emp.role === 'agent' ? (
+                                                        <select
+                                                            value={emp.team_id || ''}
+                                                            onChange={e => assignPresalesAgent(emp.id, e.target.value)}
+                                                            className="rounded-lg border border-gray-200 px-2 py-1 text-sm"
+                                                        >
+                                                            <option value="">No team</option>
+                                                            {presalesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                                                        </select>
+                                                    ) : (
+                                                        <span className="text-gray-400">Can lead teams</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-gray-600">{emp.email || '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {presalesEmployees.length === 0 && (
+                                    <p className="py-10 text-center text-sm text-gray-500">No presales employees yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </main>
         </AdminShell>

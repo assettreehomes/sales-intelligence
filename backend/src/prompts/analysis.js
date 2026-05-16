@@ -52,6 +52,8 @@ Analyze the conversation and return ONLY a valid JSON object (no markdown, no co
     "Suggestions for improving future calls"
   ],
 
+  "call_outcome": "<interested|not_interested|follow_up_required>",
+
   "comparison_with_previous": {
     "overall_narrative": "For repeat visits: A 2-3 sentence summary comparing this visit to the previous one",
     "score_changes": {
@@ -79,6 +81,7 @@ IMPORTANT:
 - Include at least 5-10 key moments if the call is long
 - Be specific in transcript excerpts
 - Scores should reflect genuine assessment, not just high numbers
+- call_outcome must be one of exactly: interested, not_interested, follow_up_required
 - The comparison_with_previous section should ONLY be included for repeat visits (visit_number > 1)`;
 }
 
@@ -89,7 +92,7 @@ IMPORTANT:
  * @returns {string}
  */
 export function getPresalesAnalysisPrompt(context = {}) {
-  const { caller_number, caller_name, agent_name, duration_seconds } = context;
+  const { caller_number, caller_name, agent_name, agent_email, lead_id, team_name, duration_seconds } = context;
 
   return `You are a senior pre-sales performance analyst for a premium real estate company in India.
 Your job is to deeply evaluate a TELEPHONE CALL between a sales agent and a prospective buyer.
@@ -99,7 +102,10 @@ Your analysis will be used by sales managers to coach agents and track lead qual
 ## Call Context
 - Caller Number: ${caller_number || 'Unknown'}
 - Caller Name: ${caller_name && caller_name !== 'unknown' ? caller_name : 'Not identified on call'}
+- Lead ID: ${lead_id || 'Unknown'}
 - Agent: ${agent_name || 'Unknown'}
+- Agent Email: ${agent_email || 'Unknown'}
+- Team: ${team_name || 'Unknown'}
 - Recorded Duration: ${duration_seconds ? `${duration_seconds} seconds` : 'Unknown'}
 
 ## Your Task
@@ -222,7 +228,8 @@ or a honest low score — never fabricate data.
     "<Another recommendation>"
   ],
 
-  "call_outcome": "<appointment_booked|callback_promised|brochure_requested|not_interested|disconnected|follow_up_needed|unknown>",
+  "call_outcome": "<interested|not_interested|follow_up_required>",
+  "call_authenticity": "<real|fake>",
 
   "call_duration_seconds": <integer, your estimate of actual speaking duration>,
   "speakers_detected": <integer>,
@@ -238,5 +245,7 @@ or a honest low score — never fabricate data.
 5. transcript_excerpt must be actual words spoken on the call, not paraphrased summaries.
 6. If a prospect raised NO objections, set "objections" to an empty array [].
 7. lead_quality: hot = appointment booked + clear budget; warm = interested but no appointment; cold = no interest shown; unknown = too short to assess.
-8. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate scores to seem encouraging.`;
+8. call_outcome must be one of exactly: interested, not_interested, follow_up_required.
+9. call_authenticity: real = a genuine conversation with meaningful prospect interaction; fake = hello/hangup, silence, only agent monologue, wrong/irrelevant number, or any meaningless call that should not count as a genuine milestone.
+10. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate scores to seem encouraging.`;
 }

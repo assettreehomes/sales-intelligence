@@ -5,6 +5,7 @@ import { buckets } from '../config/gcs.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
+import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 
 const router = Router();
 
@@ -196,13 +197,34 @@ async function processCdr(cdr, skipInitialDelay = false) {
                 .maybeSingle();
 
             if (pending) {
+                let org = {
+                    agentId: pending.presales_agent_id || null,
+                    teamId: pending.presales_team_id || null
+                };
+                try {
+                    const mappedOrg = await resolvePresalesOrg({
+                        agent_name: pending.agent_name,
+                        agent_email: pending.agent_email,
+                        team_name: pending.team_name
+                    });
+                    org = {
+                        agentId: mappedOrg.agentId || org.agentId,
+                        teamId: mappedOrg.teamId || org.teamId
+                    };
+                } catch (orgError) {
+                    console.warn(`⚠️ TeleCMI: presales directory mapping skipped for pending Sell.Do call ${callId}:`, orgError.message);
+                }
+
                 const updates = {
                     selldo_call_id:     pending.call_id,
                     selldo_agent_name:  pending.agent_name,
+                    selldo_agent_email: pending.agent_email || null,
                     selldo_team_name:   pending.team_name,
                     selldo_call_status: pending.call_status,
                     selldo_direction:   pending.direction,
-                    selldo_enriched_at: new Date().toISOString()
+                    selldo_enriched_at: new Date().toISOString(),
+                    presales_agent_id:  org.agentId || null,
+                    presales_team_id:   org.teamId || null
                 };
 
                 if (pending.lead_id) {

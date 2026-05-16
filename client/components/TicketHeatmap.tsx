@@ -13,6 +13,9 @@ interface HeatmapData {
 interface TicketHeatmapProps {
     onDateSelect?: (date: string | null) => void;
     selectedDate?: string | null;
+    source?: 'telecmi' | 'all';
+    title?: string;
+    description?: string;
 }
 
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -179,7 +182,7 @@ function getHeatmapTone(level: number, isSelected: boolean, isDarkTheme: boolean
     return tones[normalizedLevel];
 }
 
-export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps) {
+export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', title = 'Daily Ticket Intensity Heatmap', description = 'Daily ticket volume for the selected month. Select a day to filter repository results.' }: TicketHeatmapProps) {
     const { session } = useAuth();
     const { theme } = useTheme();
     const [data, setData] = useState<HeatmapData[]>([]);
@@ -192,7 +195,8 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
 
         async function fetchHeatmap() {
             try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/tickets/calendar-heatmap`, {
+                const params = source === 'telecmi' ? '?source=telecmi' : '';
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/tickets/calendar-heatmap${params}`, {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
                     },
@@ -208,7 +212,7 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
         }
 
         void fetchHeatmap();
-    }, [session]);
+    }, [session, source]);
 
     const dataMap = useMemo(() => {
         const map = new Map<string, number>();
@@ -303,9 +307,9 @@ export function TicketHeatmap({ onDateSelect, selectedDate }: TicketHeatmapProps
         <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-label="Daily ticket intensity heatmap">
             <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900">Daily Ticket Intensity Heatmap</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
                     <p className="mt-1 text-sm text-gray-500">
-                        Daily ticket volume for the selected month. Select a day to filter repository results.
+                        {description}
                     </p>
                 </div>
 

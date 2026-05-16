@@ -29,6 +29,17 @@ import { Avatar } from '@/components/Avatar';
 import { useRef } from 'react';
 import { TicketHeatmap } from '@/components/TicketHeatmap';
 
+function getOutcomeBadge(outcome?: string | null) {
+    const map: Record<string, { label: string; className: string }> = {
+        interested: { label: 'Interested', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+        not_interested: { label: 'Not Interested', className: 'bg-red-50 text-red-700 border-red-200' },
+        follow_up_required: { label: 'Follow Up', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+    };
+    const cfg = outcome ? map[outcome] : null;
+    if (!cfg) return null;
+    return <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${cfg.className}`}>{cfg.label}</span>;
+}
+
 function AdminDashboardContent() {
     const router = useRouter();
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -680,6 +691,7 @@ function AdminDashboardContent() {
                                                         🚩 FLAGGED
                                                     </span>
                                                 )}
+                                                {getOutcomeBadge(ticket.call_outcome)}
                                             </div>
                                             <button
                                                 onClick={async (e) => {

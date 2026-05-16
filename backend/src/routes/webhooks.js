@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase.js';
 import { logActivity } from '../services/activityLog.js';
 import { getVisitSequence } from '../services/visitSequencing.js';
+import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 
 const router = Router();
 
@@ -227,6 +228,7 @@ router.post('/selldo/call', async (req, res) => {
             call_id,
             lead_id,
             agent_name,
+            agent_email,
             team_name,
             call_status,
             direction,
@@ -245,8 +247,18 @@ router.post('/selldo/call', async (req, res) => {
 
         const normalizedDuration = Number(duration);
         const durationSeconds = Number.isFinite(normalizedDuration) ? normalizedDuration : null;
+        const agentEmail = agent_email !== undefined && agent_email !== null && String(agent_email).trim()
+            ? String(agent_email).trim().toLowerCase()
+            : null;
 
         console.log(`📥 Sell.do call webhook: call_id=${callId}, lead_id=${leadId || 'none'}`);
+
+        let org = { agentId: null, teamId: null };
+        try {
+            org = await resolvePresalesOrg({ agent_name, agent_email: agentEmail, team_name });
+        } catch (orgError) {
+            console.warn(`⚠️ Sell.do call webhook: presales directory mapping skipped for ${callId}:`, orgError.message);
+        }
 
         const { data: matchedTicket, error: matchError } = await supabaseAdmin
             .from('tickets')
@@ -265,10 +277,13 @@ router.post('/selldo/call', async (req, res) => {
             const updates = {
                 selldo_call_id:     callId,
                 selldo_agent_name:  agent_name || null,
+                selldo_agent_email: agentEmail,
                 selldo_team_name:   team_name || null,
                 selldo_call_status: call_status || null,
                 selldo_direction:   direction || null,
-                selldo_enriched_at: new Date().toISOString()
+                selldo_enriched_at: new Date().toISOString(),
+                presales_agent_id:  org.agentId || null,
+                presales_team_id:   org.teamId || null
             };
 
             if (leadId) {
@@ -321,11 +336,14 @@ router.post('/selldo/call', async (req, res) => {
                 call_id: callId,
                 lead_id: leadId,
                 agent_name: agent_name || null,
+                agent_email: agentEmail,
                 team_name: team_name || null,
                 call_status: call_status || null,
                 direction: direction || null,
                 duration: durationSeconds,
                 raw_payload: req.body || {},
+                presales_agent_id: org.agentId || null,
+                presales_team_id: org.teamId || null,
                 matched: false
             })
             .select('id')

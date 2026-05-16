@@ -7,9 +7,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
 import { usePresalesStore } from '@/stores/presalesStore';
 import {
-    AlertCircle,
     Search,
-    SlidersHorizontal,
     Clock,
     Calendar,
     Star,
@@ -26,11 +24,9 @@ import {
     PhoneIncoming,
     PhoneMissed,
     BadgeCheck,
-    Flame,
-    Thermometer,
-    Snowflake,
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
+import { TicketHeatmap } from '@/components/TicketHeatmap';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -118,11 +114,21 @@ function StatusBadge({ status }: { status: string }) {
     );
 }
 
+function labelForOutcome(value?: string | null) {
+    if (value === 'interested') return 'Interested';
+    if (value === 'not_interested') return 'Not Interested';
+    if (value === 'follow_up_required') return 'Follow Up';
+    return null;
+}
+
+function getPersonName(person?: { full_name?: string; fullname?: string } | null) {
+    return person?.full_name || person?.fullname || 'Unknown';
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 function PresalesContent() {
     const router = useRouter();
-    const [filtersOpen, setFiltersOpen] = useState(false);
     const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
     const agentDropdownRef = useRef<HTMLDivElement>(null);
     const [searchInput, setSearchInput] = useState('');
@@ -130,6 +136,7 @@ function PresalesContent() {
     const {
         tickets,
         employees,
+        teams,
         totalTickets,
         loading,
         syncing,
@@ -200,6 +207,20 @@ function PresalesContent() {
     ];
 
     const selectedAgent = employees.find(e => e.id === filters.agentFilter);
+    const teamLeaders = employees.filter(e => e.role === 'team_leader');
+    const activeFilterCount = [
+        filters.statusFilter !== 'all',
+        filters.dateFilter !== 'all',
+        filters.ratingFilter !== 'all',
+        filters.agentFilter !== 'all',
+        filters.teamFilter !== 'all',
+        filters.teamLeaderFilter !== 'all',
+        filters.outcomeFilter !== 'all',
+        filters.authenticityFilter !== 'all',
+        filters.callStatusFilter !== 'all',
+        filters.directionFilter !== 'all',
+        Boolean(filters.searchQuery),
+    ].filter(Boolean).length;
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -236,7 +257,7 @@ function PresalesContent() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="Search by number or name…"
+                                placeholder="Search by phone, lead ID, agent, or team…"
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
                                 className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -274,19 +295,19 @@ function PresalesContent() {
                                 className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                             >
                                 <Users className="w-4 h-4 text-slate-400" />
-                                {selectedAgent ? selectedAgent.fullname : 'All Agents'}
+                                {selectedAgent ? getPersonName(selectedAgent) : 'All Agents'}
                                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                             </button>
                             {agentDropdownOpen && (
                                 <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
                                     <div className="max-h-52 overflow-y-auto py-1">
-                                        {[{ id: 'all', fullname: 'All Agents' }, ...employees].map(emp => (
+                                        {[{ id: 'all', full_name: 'All Agents', email: '' }, ...employees.filter(e => e.role !== 'team_leader')].map(emp => (
                                             <button
                                                 key={emp.id}
                                                 onClick={() => { setFilter('agentFilter', emp.id); setAgentDropdownOpen(false); }}
                                                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                                             >
-                                                <span className="text-slate-700 dark:text-slate-200">{emp.fullname}</span>
+                                                <span className="text-slate-700 dark:text-slate-200">{getPersonName(emp)}</span>
                                                 {filters.agentFilter === emp.id && <Check className="w-3.5 h-3.5 text-violet-600" />}
                                             </button>
                                         ))}
@@ -294,6 +315,66 @@ function PresalesContent() {
                                 </div>
                             )}
                         </div>
+
+                        <select
+                            value={filters.teamFilter}
+                            onChange={e => setFilter('teamFilter', e.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                            <option value="all">All Teams</option>
+                            {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                        </select>
+
+                        <select
+                            value={filters.teamLeaderFilter}
+                            onChange={e => setFilter('teamLeaderFilter', e.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                            <option value="all">All Team Leaders</option>
+                            {teamLeaders.map(leader => <option key={leader.id} value={leader.id}>{getPersonName(leader)}</option>)}
+                        </select>
+
+                        <select
+                            value={filters.outcomeFilter}
+                            onChange={e => setFilter('outcomeFilter', e.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                            <option value="all">All Outcomes</option>
+                            <option value="interested">Interested</option>
+                            <option value="not_interested">Not Interested</option>
+                            <option value="follow_up_required">Follow Up</option>
+                        </select>
+
+                        <select
+                            value={filters.authenticityFilter}
+                            onChange={e => setFilter('authenticityFilter', e.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                            <option value="all">Real + Fake</option>
+                            <option value="real">Real Calls</option>
+                            <option value="fake">Fake Calls</option>
+                        </select>
+
+                        <select
+                            value={filters.callStatusFilter}
+                            onChange={e => setFilter('callStatusFilter', e.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                            <option value="all">All Call Status</option>
+                            <option value="completed">Completed</option>
+                            <option value="missed">Missed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+
+                        <select
+                            value={filters.directionFilter}
+                            onChange={e => setFilter('directionFilter', e.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                            <option value="all">Inbound + Outbound</option>
+                            <option value="inbound">Inbound</option>
+                            <option value="outbound">Outbound</option>
+                        </select>
 
                         <button
                             onClick={() => setFilter('sortOrder', filters.sortOrder === 'desc' ? 'asc' : 'desc')}
@@ -304,7 +385,7 @@ function PresalesContent() {
                                 : <ArrowUpAZ className="w-4 h-4 text-slate-400" />}
                         </button>
 
-                        {(filters.statusFilter !== 'all' || filters.dateFilter !== '30days' || filters.agentFilter !== 'all' || filters.searchQuery) && (
+                        {activeFilterCount > 0 && (
                             <button
                                 onClick={() => { clearFilters(); setSearchInput(''); }}
                                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
@@ -328,6 +409,24 @@ function PresalesContent() {
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                         {loading ? 'Loading…' : `${totalTickets} calls found`}
                     </p>
+
+                    <TicketHeatmap
+                        source="telecmi"
+                        title="Presales Call Calendar"
+                        description="Daily TeleCMI call volume. Select a day to narrow presales results."
+                        selectedDate={filters.dateFilter === 'custom' && filters.customDateFrom === filters.customDateTo ? filters.customDateFrom : null}
+                        onDateSelect={(date) => {
+                            if (!date) {
+                                setFilter('dateFilter', 'all');
+                                setFilter('customDateFrom', '');
+                                setFilter('customDateTo', '');
+                                return;
+                            }
+                            setFilter('dateFilter', 'custom');
+                            setFilter('customDateFrom', date);
+                            setFilter('customDateTo', date);
+                        }}
+                    />
 
                     {/* Call cards */}
                     {loading ? (
@@ -407,15 +506,6 @@ function PresalesContent() {
                                                 {ticket.selldo_team_name}
                                             </span>
                                         )}
-                                        {ticket.telecmi_direction && (
-                                            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                                                ticket.telecmi_direction === 'inbound'
-                                                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
-                                                    : 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
-                                            }`}>
-                                                {ticket.telecmi_direction === 'inbound' ? 'Inbound' : 'Outbound'}
-                                            </span>
-                                        )}
                                         {ticket.durationseconds && (
                                             <span className="flex items-center gap-1">
                                                 <Clock className="w-3 h-3" />
@@ -442,6 +532,23 @@ function PresalesContent() {
                                             )}
                                         </div>
                                     )}
+
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {labelForOutcome(ticket.call_outcome) && (
+                                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                                                {labelForOutcome(ticket.call_outcome)}
+                                            </span>
+                                        )}
+                                        {ticket.call_authenticity && (
+                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                                ticket.call_authenticity === 'fake'
+                                                    ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
+                                                    : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                            }`}>
+                                                {ticket.call_authenticity === 'fake' ? 'Fake Call' : 'Real Call'}
+                                            </span>
+                                        )}
+                                    </div>
 
                                     {/* TeleCMI badge */}
                                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">

@@ -2088,11 +2088,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Agent</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_agent_name || '—'}</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_agent_name || ticket.presales_agent?.full_name || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Agent Email</p>
+                                        <p className="mt-1 break-all text-sm font-medium text-gray-900">{ticket.selldo_agent_email || ticket.presales_agent?.email || '—'}</p>
                                     </div>
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Team</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_team_name || '—'}</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_team_name || ticket.presales_team?.name || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Team Leader</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.presales_team_leader?.full_name || '—'}</p>
                                     </div>
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Call Status</p>
@@ -2101,6 +2109,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Direction</p>
                                         <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_direction || ticket.telecmi_direction || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Outcome</p>
+                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">{analysis?.call_outcome?.replaceAll('_', ' ') || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Authenticity</p>
+                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">{analysis?.call_authenticity || '—'}</p>
                                     </div>
                                 </div>
                             </section>

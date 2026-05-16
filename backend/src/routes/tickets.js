@@ -51,6 +51,17 @@ const REPORT_PDF_COLOR_OFF_WHITE = [0.843, 0.843, 0.804];
 const REPORT_PDF_COLOR_VIOLET = [0.549, 0.259, 0.784];
 const REPORT_PDF_COLOR_DEEP_PURPLE = [0.361, 0.078, 0.588];
 
+function normalizeCallOutcome(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return null;
+    if (['interested', 'appointment_booked', 'brochure_requested'].includes(raw)) return 'interested';
+    if (['not_interested', 'disconnected', 'not interested'].includes(raw)) return 'not_interested';
+    if (['follow_up_required', 'follow_up_needed', 'callback_promised', 'follow up required'].includes(raw)) {
+        return 'follow_up_required';
+    }
+    return ['interested', 'not_interested', 'follow_up_required'].includes(raw) ? raw : null;
+}
+
 function escapePdfText(value) {
     return String(value ?? '')
         .replaceAll('\\', '\\\\')
@@ -1163,6 +1174,71 @@ router.post('/upload', authMiddleware, requireEmployee, upload.single('audio'), 
     }
 });
 
+/**
+ * POST /tickets/emergency-upload
+ * Manual recording fallback for admins/employees when CRM-based creation is unavailable.
+ * Creates a draft ticket only; the existing /tickets/upload draft flow handles audio later.
+ */
+router.post('/emergency-upload', authMiddleware, requireEmployee, async (req, res) => {
+    try {
+        const clientId = String(req.body.client_id || '').trim();
+        const clientName = String(req.body.client_name || '').trim() || null;
+        const visitType = String(req.body.visit_type || 'emergency_recording').trim();
+        const notes = String(req.body.notes || '').trim() || null;
+
+        if (!clientId) {
+            return res.status(400).json({ error: 'client_id is required' });
+        }
+
+        const ticketId = uuidv4();
+        const now = new Date().toISOString();
+        const { visitNumber, previousTicketId } = await getVisitSequence(clientId);
+
+        const { data: ticket, error: ticketError } = await supabaseAdmin
+            .from('tickets')
+            .insert({
+                id: ticketId,
+                client_id: clientId,
+                client_name: clientName,
+                clientname: clientName,
+                visit_type: visitType,
+                visittype: visitType,
+                visit_number: visitNumber,
+                visitnumber: visitNumber,
+                previous_visit_ticket_id: previousTicketId,
+                previousvisitticketid: previousTicketId,
+                createdby: req.user.id,
+                created_by: req.user.id,
+                status: 'draft',
+                source: 'manual_emergency',
+                notes,
+                createdat: now,
+                created_at: now
+            })
+            .select()
+            .single();
+
+        if (ticketError) {
+            console.error('Emergency ticket creation error:', ticketError);
+            return res.status(500).json({ error: 'Failed to create emergency ticket', details: ticketError.message });
+        }
+
+        res.json({
+            success: true,
+            ticket_id: ticketId,
+            ticket,
+            status: 'draft',
+            visit_number: visitNumber,
+            previous_ticket_id: previousTicketId,
+            upload_endpoint: '/tickets/upload',
+            message: 'Emergency ticket created. Upload audio later using this ticket_id.'
+        });
+    } catch (error) {
+        console.error('Emergency ticket create error:', error);
+        res.status(500).json({ error: 'Failed to create emergency ticket' });
+    }
+});
+
 
 // Background analysis trigger
 async function triggerAnalysis(ticketId, ticket) {
@@ -1227,7 +1303,8 @@ async function triggerAnalysis(ticketId, ticket) {
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,
-                comparisonwithprevious: null
+                comparisonwithprevious: null,
+                call_outcome: normalizeCallOutcome(analysis.call_outcome)
             }, { onConflict: 'ticketid' });
 
         if (analysisError) {
@@ -1474,6 +1551,13 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             flaggedOnly,
             search,
             source,
+            presalesAgentId,
+            presalesTeamId,
+            presalesTeamLeaderId,
+            callOutcome,
+            callAuthenticity,
+            callStatus,
+            direction,
             page = 1,
             limit = 12
         } = req.query;
@@ -1517,6 +1601,58 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         // Created by filter
         if (createdBy && createdBy !== 'all') {
             query = query.eq('createdby', createdBy);
+        }
+
+        if (presalesAgentId && presalesAgentId !== 'all') {
+            query = query.eq('presales_agent_id', presalesAgentId);
+        }
+
+        if (presalesTeamId && presalesTeamId !== 'all') {
+            query = query.eq('presales_team_id', presalesTeamId);
+        }
+
+        if (presalesTeamLeaderId && presalesTeamLeaderId !== 'all') {
+            const { data: leaderTeams, error: leaderTeamsError } = await supabaseAdmin
+                .from('presales_teams')
+                .select('id')
+                .eq('team_leader_id', presalesTeamLeaderId);
+
+            if (leaderTeamsError) throw leaderTeamsError;
+            const teamIds = (leaderTeams || []).map((team) => team.id);
+            if (teamIds.length === 0) {
+                return res.json({ tickets: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
+            }
+            query = query.in('presales_team_id', teamIds);
+        }
+
+        if (callStatus && callStatus !== 'all') {
+            query = query.eq('selldo_call_status', callStatus);
+        }
+
+        if (direction && direction !== 'all') {
+            query = query.or(`selldo_direction.eq.${direction},telecmi_direction.eq.${direction}`);
+        }
+
+        if ((callOutcome && callOutcome !== 'all') || (callAuthenticity && callAuthenticity !== 'all')) {
+            let analysisFilter = supabaseAdmin
+                .from('analysisresults')
+                .select('ticketid');
+
+            if (callOutcome && callOutcome !== 'all') {
+                analysisFilter = analysisFilter.eq('call_outcome', callOutcome);
+            }
+            if (callAuthenticity && callAuthenticity !== 'all') {
+                analysisFilter = analysisFilter.eq('call_authenticity', callAuthenticity);
+            }
+
+            const { data: filteredAnalysis, error: filteredAnalysisError } = await analysisFilter;
+            if (filteredAnalysisError) throw filteredAnalysisError;
+
+            const matchingIds = (filteredAnalysis || []).map((row) => row.ticketid).filter(Boolean);
+            if (matchingIds.length === 0) {
+                return res.json({ tickets: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
+            }
+            query = query.in('id', matchingIds);
         }
 
         // Rating filter (DB rating is 0-10; UI works in 0-5 stars)
@@ -1566,6 +1702,11 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 clauses.add(`clientname.ilike.%${hashlessSearch}%`);
                 clauses.add(`visittype.ilike.%${hashlessSearch}%`);
                 clauses.add(`telecmi_lead_id.ilike.%${hashlessSearch}%`);
+                clauses.add(`telecmi_call_id.ilike.%${hashlessSearch}%`);
+                clauses.add(`selldo_call_id.ilike.%${hashlessSearch}%`);
+                clauses.add(`selldo_agent_name.ilike.%${hashlessSearch}%`);
+                clauses.add(`selldo_agent_email.ilike.%${hashlessSearch}%`);
+                clauses.add(`selldo_team_name.ilike.%${hashlessSearch}%`);
 
                 if (leadSearch && leadSearch !== hashlessSearch) {
                     clauses.add(`telecmi_lead_id.ilike.%${leadSearch}%`);
@@ -1698,6 +1839,25 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                     if (ticket.createdby && userMap[ticket.createdby]) {
                         ticket.creator_details = userMap[ticket.createdby];
                     }
+                });
+            }
+        }
+
+        if (finalTickets.length > 0) {
+            const finalTicketIds = finalTickets.map((ticket) => ticket.id);
+            const { data: analysisRows, error: analysisListError } = await supabaseAdmin
+                .from('analysisresults')
+                .select('ticketid, call_outcome, call_authenticity')
+                .in('ticketid', finalTicketIds);
+
+            if (analysisListError) {
+                console.warn('List tickets analysis enrichment skipped:', analysisListError.message);
+            } else if (analysisRows) {
+                const analysisMap = new Map(analysisRows.map((row) => [row.ticketid, row]));
+                finalTickets.forEach((ticket) => {
+                    const row = analysisMap.get(ticket.id);
+                    ticket.call_outcome = row?.call_outcome || null;
+                    ticket.call_authenticity = row?.call_authenticity || null;
                 });
             }
         }
@@ -2262,6 +2422,28 @@ router.post('/:id/delete', authMiddleware, requireAdmin, handleTicketDelete);
  */
 router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) => {
     try {
+        if (req.query.source === 'telecmi') {
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+            const { data: tickets, error } = await supabaseAdmin
+                .from('tickets')
+                .select('createdat')
+                .eq('source', 'telecmi')
+                .is('deletedat', null)
+                .gte('createdat', oneYearAgo.toISOString());
+
+            if (error) throw error;
+
+            const counts = {};
+            (tickets || []).forEach((ticket) => {
+                const date = (ticket.createdat || '').split('T')[0];
+                if (date) counts[date] = (counts[date] || 0) + 1;
+            });
+
+            return res.json(Object.entries(counts).map(([date, count]) => ({ date, count })));
+        }
+
         const { data, error } = await supabaseAdmin.rpc('get_ticket_heatmap');
 
         if (error) {
@@ -2326,6 +2508,48 @@ router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
 
             if (creator) {
                 ticket.creator_details = creator;
+            }
+        }
+
+        if (ticket.presales_agent_id || ticket.presales_team_id) {
+            try {
+                const [agentResult, teamResult] = await Promise.all([
+                    ticket.presales_agent_id
+                        ? supabaseAdmin
+                            .from('presales_employees')
+                            .select('id, full_name, email, role, team_id, status')
+                            .eq('id', ticket.presales_agent_id)
+                            .maybeSingle()
+                        : Promise.resolve({ data: null, error: null }),
+                    ticket.presales_team_id
+                        ? supabaseAdmin
+                            .from('presales_teams')
+                            .select('id, name, team_leader_id, status')
+                            .eq('id', ticket.presales_team_id)
+                            .maybeSingle()
+                        : Promise.resolve({ data: null, error: null })
+                ]);
+
+                if (agentResult.error) console.warn('Ticket presales agent fetch skipped:', agentResult.error.message);
+                if (teamResult.error) console.warn('Ticket presales team fetch skipped:', teamResult.error.message);
+
+                ticket.presales_agent = agentResult.data || null;
+                ticket.presales_team = teamResult.data || null;
+
+                if (teamResult.data?.team_leader_id) {
+                    const { data: leader, error: leaderError } = await supabaseAdmin
+                        .from('presales_employees')
+                        .select('id, full_name, email, role, status')
+                        .eq('id', teamResult.data.team_leader_id)
+                        .maybeSingle();
+
+                    if (leaderError) console.warn('Ticket presales team leader fetch skipped:', leaderError.message);
+                    ticket.presales_team_leader = leader || null;
+                } else {
+                    ticket.presales_team_leader = null;
+                }
+            } catch (presalesError) {
+                console.warn('Ticket presales directory enrichment skipped:', presalesError.message);
             }
         }
 
@@ -2572,7 +2796,8 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,
-                comparisonwithprevious: null
+                comparisonwithprevious: null,
+                call_outcome: normalizeCallOutcome(analysis.call_outcome)
             }, { onConflict: 'ticketid' });
 
         if (analysisError) {
