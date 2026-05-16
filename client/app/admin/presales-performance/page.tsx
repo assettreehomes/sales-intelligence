@@ -5,7 +5,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
 import { API_URL, getToken } from '@/stores/authStore';
-import { BarChart3, Clock, Loader2, PhoneCall, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, Clock, Loader2, PhoneCall, Search, ShieldCheck, Users } from 'lucide-react';
 
 type OutcomeCounts = {
     interested: number;
@@ -48,18 +48,27 @@ function fmtDuration(seconds: number) {
 }
 
 function OutcomeStrip({ counts }: { counts: OutcomeCounts }) {
+    const total = (counts.interested || 0) + (counts.not_interested || 0) + (counts.follow_up_required || 0);
+    const pct = (value: number) => total ? Math.max(4, (value / total) * 100) : 0;
     return (
-        <div className="grid grid-cols-3 gap-2 text-xs">
-            <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">Interested {counts.interested || 0}</span>
-            <span className="rounded-lg bg-red-50 px-2 py-1 font-semibold text-red-700">Not Interested {counts.not_interested || 0}</span>
-            <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">Follow Up {counts.follow_up_required || 0}</span>
+        <div className="min-w-72 space-y-2">
+            <div className="flex h-2 overflow-hidden rounded-full bg-slate-100">
+                <span className="bg-emerald-500" style={{ width: `${pct(counts.interested || 0)}%` }} />
+                <span className="bg-red-400" style={{ width: `${pct(counts.not_interested || 0)}%` }} />
+                <span className="bg-amber-400" style={{ width: `${pct(counts.follow_up_required || 0)}%` }} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+                <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">Int {counts.interested || 0}</span>
+                <span className="rounded-lg bg-red-50 px-2 py-1 font-semibold text-red-700">Not {counts.not_interested || 0}</span>
+                <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">Follow {counts.follow_up_required || 0}</span>
+            </div>
         </div>
     );
 }
 
 function BucketTable({ title, rows, mode }: { title: string; rows: PerformanceBucket[]; mode: 'agent' | 'team' }) {
     return (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
             <h2 className="mb-4 text-base font-semibold text-slate-900">{title}</h2>
             <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-sm">
@@ -97,7 +106,7 @@ function BucketTable({ title, rows, mode }: { title: string; rows: PerformanceBu
                 </table>
             </div>
             {rows.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No presales calls in this period.</p>}
-        </section>
+        </div>
     );
 }
 
@@ -105,6 +114,9 @@ function PresalesPerformanceContent() {
     const [period, setPeriod] = useState('30d');
     const [data, setData] = useState<PresalesPerformance | null>(null);
     const [loading, setLoading] = useState(true);
+    const [view, setView] = useState<'agents' | 'teams'>('agents');
+    const [query, setQuery] = useState('');
+    const [sortBy, setSortBy] = useState<'calls' | 'interested' | 'not_interested' | 'fake'>('calls');
 
     useEffect(() => {
         let cancelled = false;
@@ -130,6 +142,21 @@ function PresalesPerformanceContent() {
     }, [period]);
 
     const maxDaily = useMemo(() => Math.max(...(data?.daily || []).map(d => d.count), 1), [data]);
+    const activeRows = useMemo(() => {
+        const rows = view === 'agents' ? data?.agents || [] : data?.teams || [];
+        const q = query.trim().toLowerCase();
+        return rows
+            .filter(row => !q || row.label.toLowerCase().includes(q) || String(row.email || '').toLowerCase().includes(q))
+            .sort((a, b) => {
+                if (sortBy === 'interested') return (b.outcome_counts.interested || 0) - (a.outcome_counts.interested || 0);
+                if (sortBy === 'not_interested') return (b.outcome_counts.not_interested || 0) - (a.outcome_counts.not_interested || 0);
+                if (sortBy === 'fake') return (b.authenticity_counts.fake || 0) - (a.authenticity_counts.fake || 0);
+                return b.total_calls - a.total_calls;
+            });
+    }, [data, query, sortBy, view]);
+    const outcomeTotal = data
+        ? (data.summary.outcome_counts.interested || 0) + (data.summary.outcome_counts.not_interested || 0) + (data.summary.outcome_counts.follow_up_required || 0)
+        : 0;
 
     return (
         <AdminShell activeSection="presalesPerformance">
@@ -180,6 +207,31 @@ function PresalesPerformanceContent() {
                                 </article>
                             </div>
 
+                            <section className="grid gap-3 lg:grid-cols-[1fr_420px]">
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                    <div className="mb-4 flex items-center justify-between gap-3">
+                                        <div>
+                                            <h2 className="text-base font-semibold text-slate-900">Outcome Mix</h2>
+                                            <p className="text-sm text-slate-500">{outcomeTotal} classified calls in this period</p>
+                                        </div>
+                                    </div>
+                                    <OutcomeStrip counts={data.summary.outcome_counts} />
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                    <h2 className="text-base font-semibold text-slate-900">Authenticity</h2>
+                                    <div className="mt-4 grid grid-cols-2 gap-3">
+                                        <div className="rounded-xl bg-emerald-50 p-4">
+                                            <p className="text-xs font-semibold uppercase text-emerald-700">Real</p>
+                                            <p className="mt-1 text-3xl font-semibold text-emerald-900">{data.summary.authenticity_counts.real || 0}</p>
+                                        </div>
+                                        <div className="rounded-xl bg-red-50 p-4">
+                                            <p className="text-xs font-semibold uppercase text-red-700">Fake</p>
+                                            <p className="mt-1 text-3xl font-semibold text-red-900">{data.summary.authenticity_counts.fake || 0}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
                             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <div className="mb-4 flex items-center gap-2">
                                     <Users className="h-5 w-5 text-violet-600" />
@@ -198,8 +250,27 @@ function PresalesPerformanceContent() {
                                 </div>
                             </section>
 
-                            <BucketTable title="Agent-wise Reports" rows={data.agents || []} mode="agent" />
-                            <BucketTable title="Team-based Reports" rows={data.teams || []} mode="team" />
+                            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                                    <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-slate-50 p-1">
+                                        <button onClick={() => setView('agents')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'agents' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Agents</button>
+                                        <button onClick={() => setView('teams')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'teams' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Teams</button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search agent or team" className="rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm" />
+                                        </div>
+                                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                            <option value="calls">Sort by calls</option>
+                                            <option value="interested">Sort by interested</option>
+                                            <option value="not_interested">Sort by not interested</option>
+                                            <option value="fake">Sort by fake</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <BucketTable title={view === 'agents' ? 'Agent-wise Reports' : 'Team-based Reports'} rows={activeRows} mode={view === 'agents' ? 'agent' : 'team'} />
+                            </section>
                         </>
                     ) : (
                         <div className="rounded-2xl border border-red-100 bg-red-50 p-8 text-center text-sm font-medium text-red-700">

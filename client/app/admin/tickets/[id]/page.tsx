@@ -2122,6 +2122,56 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             </section>
                         )}
 
+                        {isPresales && analysis && (
+                            <section className="rounded-2xl border border-violet-100 bg-violet-50/80 p-4 shadow-sm">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                                            Presales AI Outcome
+                                        </p>
+                                        <h2 className="mt-1 text-lg font-semibold text-gray-900">
+                                            Conversation quality and intent
+                                        </h2>
+                                    </div>
+                                    {analysis.call_authenticity && (
+                                        <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                            analysis.call_authenticity === 'fake'
+                                                ? 'bg-red-100 text-red-700 ring-red-200'
+                                                : 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+                                        }`}>
+                                            {analysis.call_authenticity === 'fake' ? 'Fake / Meaningless' : 'Real Call'}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Call Outcome</p>
+                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">
+                                            {analysis.call_outcome?.replaceAll('_', ' ') || 'Awaiting re-analysis'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Authenticity</p>
+                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">
+                                            {analysis.call_authenticity || 'Awaiting re-analysis'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Lead Interest</p>
+                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">
+                                            {String(analysis.scores?.interest || analysis.customer_interest_level || '—')}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Detected Speakers</p>
+                                        <p className="mt-1 text-sm font-medium text-gray-900">
+                                            {String(analysis.scores?.speakers || analysis.speakers_detected || '—')}
+                                        </p>
+                                    </div>
+                                </div>
+                            </section>
+                        )}
+
                         {/* Audio Player */}
                         <div className="ticket-audio-player rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden border border-white/8 bg-[radial-gradient(130%_190%_at_0%_0%,rgba(141,59,197,0.35),rgba(13,16,31,0.97)_54%,rgba(4,7,20,0.98)_100%)] text-white">
                             <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(90deg,rgba(141,59,197,0.14),rgba(87,26,155,0.08),transparent)]" />

@@ -32,6 +32,81 @@ function emptyOutcomeCounts() {
 function addOutcome(counts, value) {
     if (value && Object.prototype.hasOwnProperty.call(counts, value)) counts[value] += 1;
 }
+function analysisTextBlob(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return '';
+    }
+}
+function normalizeOutcome(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (['interested', 'not_interested', 'follow_up_required'].includes(raw)) return raw;
+    if (['appointment_booked', 'brochure_requested'].includes(raw)) return 'interested';
+    if (['not interested', 'disconnected'].includes(raw)) return 'not_interested';
+    if (['follow_up_needed', 'callback_promised', 'follow up required'].includes(raw)) return 'follow_up_required';
+    return null;
+}
+function derivePresalesOutcome(analysis) {
+    const direct = normalizeOutcome(analysis?.call_outcome);
+    if (direct) return direct;
+
+    const blob = analysisTextBlob([
+        analysis?.summary,
+        analysis?.actionitems,
+        analysis?.keymoments,
+        analysis?.objections,
+        analysis?.lead_qualification,
+        analysis?.scores
+    ]).toLowerCase();
+
+    if (!blob) return null;
+    if (/(not interested|no interest|clear rejection|rejection|declined|do not call|not looking|not required|wrong number|unavailable|system failure|no agent ever connected|hold music)/i.test(blob)) return 'not_interested';
+    if (/(appointment|site visit|visit booked|confirmed visit|hot lead|high interest|interested prospect|prospect is interested)/i.test(blob)) return 'interested';
+    if (/(follow.?up|call.?back|callback|brochure|whatsapp|send details|next step|reschedule|investigate|reconnect|try again)/i.test(blob)) return 'follow_up_required';
+
+    const interest = String(analysis?.scores?.interest || analysis?.customer_interest_level || '').toLowerCase();
+    if (interest === 'high') return 'interested';
+    if (interest === 'medium') return 'follow_up_required';
+    if (interest === 'low') return 'not_interested';
+
+    const leadQuality = String(analysis?.lead_qualification?.lead_quality || '').toLowerCase();
+    if (leadQuality === 'hot') return 'interested';
+    if (leadQuality === 'warm') return 'follow_up_required';
+    if (leadQuality === 'cold') return 'not_interested';
+
+    return null;
+}
+function derivePresalesAuthenticity(analysis) {
+    const direct = String(analysis?.call_authenticity || '').trim().toLowerCase();
+    if (direct === 'real' || direct === 'fake') return direct;
+
+    const blob = analysisTextBlob([
+        analysis?.summary,
+        analysis?.actionitems,
+        analysis?.keymoments,
+        analysis?.objections,
+        analysis?.scores
+    ]).toLowerCase();
+
+    if (!blob) return null;
+    if (/(system failure|hold music|automated|no agent ever connected|silence|wrong number|meaningless|fake call|hello.?hang|hang.?up quickly|person was unavailable)/i.test(blob)) return 'fake';
+
+    const speakers = Number(analysis?.scores?.speakers ?? analysis?.speakers_detected ?? 0);
+    if (speakers >= 2 || /(prospect|customer|caller).{0,40}(said|replied|asked|stated|confirmed|declined|objected)/i.test(blob)) return 'real';
+
+    return null;
+}
+function enrichPresalesAnalysisFields(analysis) {
+    if (!analysis) return analysis;
+    return {
+        ...analysis,
+        call_outcome: derivePresalesOutcome(analysis),
+        call_authenticity: derivePresalesAuthenticity(analysis)
+    };
+}
 
 /**
  * GET /analytics/employees
@@ -304,10 +379,10 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             const batch = ticketIds.slice(i, i + 200);
             const { data, error } = await supabaseAdmin
                 .from('analysisresults')
-                .select('ticketid, rating, call_outcome, call_authenticity')
+                .select('ticketid, rating, summary, keymoments, actionitems, objections, scores, lead_qualification, call_outcome, call_authenticity')
                 .in('ticketid', batch);
             if (error) throw error;
-            if (data) analysisRows.push(...data);
+            if (data) analysisRows.push(...data.map(enrichPresalesAnalysisFields));
         }
 
         const analysisByTicket = new Map(analysisRows.map((row) => [row.ticketid, row]));
