@@ -82,6 +82,7 @@ IMPORTANT:
 - Be specific in transcript excerpts
 - Scores should reflect genuine assessment, not just high numbers
 - call_outcome must be one of exactly: interested, not_interested, follow_up_required
+- call_outcome is mandatory, must be a top-level JSON key, must never be null, and must not be placed only inside scores
 - The comparison_with_previous section should ONLY be included for repeat visits (visit_number > 1)`;
 }
 
@@ -111,8 +112,37 @@ Your analysis will be used by sales managers to coach agents and track lead qual
 ## Your Task
 Listen carefully to the entire call and return a single valid JSON object.
 Do NOT include markdown, code blocks, or any text outside the JSON.
-Every field below is REQUIRED. If you cannot determine a value, use null for optional fields
-or a honest low score — never fabricate data.
+
+Every field in the schema below is REQUIRED and must have a concrete, valid value.
+The ONLY fields that may be null are: comparison_with_previous (always null for this flow),
+budget_range, timeline, appointment_details, and better_response (null only when not applicable).
+All other fields — including call_outcome, call_authenticity, summary, overall_score, scores,
+lead_qualification, key_moments, call_duration_seconds, speakers_detected, language_detected —
+must always be populated. Never return null for these fields.
+
+## FAKE / INVALID CALL HANDLING
+If the call is fake, silent, a wrong number, a hello/hangup, agent-only monologue, or too
+short to evaluate meaningfully, you must STILL return a fully populated JSON — never null fields.
+Use these minimum values for fake or unanalysable calls:
+- call_authenticity: "fake"
+- call_outcome: "not_interested"
+- overall_score: 1
+- All six skill scores (rapport_building, needs_discovery, objection_handling,
+  closing_techniques, product_knowledge, professionalism): 1
+- politeness: 0, confidence: 0
+- interest: "low", speakers: 1 (or actual count if detectable)
+- lead_quality: "unknown"
+- budget_discussed, timeline_discussed, location_preference_discussed, appointment_secured: false
+- budget_range, timeline, appointment_details: null
+- purpose: "not_discussed"
+- summary: one or two sentences describing what made the call fake or unanalysable
+  (e.g. "Call was immediately disconnected after the agent's greeting. No meaningful
+  conversation occurred and no prospect interaction was captured.")
+- key_moments: at least one entry describing the only event that occurred
+  (e.g. the connection, the hangup, or the silence)
+- objections: [] (empty array — no real objection was raised)
+- action_items: at least one item (e.g. "Flag call as dropped/fake in CRM")
+- recommendations: at least one item (e.g. "Investigate why the call was not connected")
 
 ## SCORING RUBRICS (apply these strictly)
 
@@ -239,13 +269,30 @@ or a honest low score — never fabricate data.
 
 ## STRICT RULES
 1. Return ONLY the JSON object — no markdown fences, no prose before or after.
-2. key_moments: include a MINIMUM of 5 moments for calls over 2 minutes. Always include the opening, the first objection (if any), any commitment moment, and the closing.
-3. start_time_ms and end_time_ms must be realistic millisecond values based on the audio (e.g. 30 seconds in = 30000ms).
-4. overall_score = (rapport_building + needs_discovery + objection_handling + closing_techniques + product_knowledge + professionalism) / 6, rounded to 1 decimal.
-5. transcript_excerpt must be actual words spoken on the call, not paraphrased summaries.
-6. If a prospect raised NO objections, set "objections" to an empty array [].
-7. lead_quality: hot = appointment booked + clear budget; warm = interested but no appointment; cold = no interest shown; unknown = too short to assess.
-8. call_outcome must be one of exactly: interested, not_interested, follow_up_required.
-9. call_authenticity: real = a genuine conversation with meaningful prospect interaction; fake = hello/hangup, silence, only agent monologue, wrong/irrelevant number, or any meaningless call that should not count as a genuine milestone.
-10. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate scores to seem encouraging.`;
+2. key_moments: include a MINIMUM of 5 moments for calls over 2 minutes; at least 1 for shorter
+   or fake calls. Always include the opening, the first objection (if any), any commitment
+   moment, and the closing. Never return an empty key_moments array.
+3. start_time_ms and end_time_ms must be realistic millisecond values based on the audio
+   (e.g. 30 seconds in = 30000 ms). For fake/silent calls use 0 and the total duration.
+4. overall_score = (rapport_building + needs_discovery + objection_handling +
+   closing_techniques + product_knowledge + professionalism) / 6, rounded to 1 decimal.
+5. transcript_excerpt must be actual words spoken on the call. For fake calls, use whatever
+   audio fragment exists (e.g. "Hello?" / silence / dial tone). Never leave it empty or null.
+6. coaching_note must always be a non-empty sentence. For fake calls, note what the agent
+   should do (e.g. "Follow up to determine why the call dropped immediately").
+7. If a prospect raised NO objections, set "objections" to an empty array [].
+8. lead_quality: hot = appointment booked + clear budget; warm = interested but no
+   appointment; cold = no interest shown; unknown = too short or fake to assess.
+9. call_outcome is MANDATORY, must be a top-level JSON key, must never be null, and must
+   be exactly one of: interested, not_interested, follow_up_required.
+10. call_authenticity is MANDATORY, must be a top-level JSON key, must never be null, and
+    must be exactly one of: real, fake.
+11. Do NOT place call_outcome or call_authenticity only inside scores. They must be present
+    at the top level of the returned JSON object.
+12. call_authenticity: real = a genuine conversation with meaningful prospect interaction;
+    fake = hello/hangup, silence, agent-only monologue, wrong number, or any call with no
+    real prospect engagement.
+13. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate.
+14. language_detected must always be one of: Hindi, English, Tamil, Telugu, Mixed, Other.
+    Never return null for this field — use "Other" if the language is unrecognisable.`;
 }

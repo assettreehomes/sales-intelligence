@@ -1,74 +1,17 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase.js';
-import { buckets } from '../config/gcs.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
+import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 
 const router = Router();
 
 const TELECMI_APP_ID = process.env.TELECMI_APP_ID;
 const TELECMI_SECRET  = process.env.TELECMI_SECRET;
 const MIN_DURATION_SECONDS = 10;
-
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Download a recording from TeleCMI and upload it to GCS.
- * Retries up to 3 times with delays — TeleCMI recording files take
- * 30-90s to become available after a call ends.
- */
-async function downloadAndStoreRecording(filename, ticketId, skipInitialDelay = false) {
-    const url = `https://rest.telecmi.com/v2/play?appid=${TELECMI_APP_ID}&secret=${TELECMI_SECRET}&file=${encodeURIComponent(filename)}`;
-
-    // Sync: recordings already on TeleCMI servers → 2 fast attempts
-    // Webhook: recording may still be processing → 4 attempts with longer waits
-    const MAX_ATTEMPTS = skipInitialDelay ? 2 : 4;
-    const DELAYS_MS    = skipInitialDelay ? [5_000] : [30_000, 30_000];
-
-    let lastError;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        if (attempt > 1) {
-            const delay = DELAYS_MS[attempt - 2] || 5_000;
-            console.log(`🔁 TeleCMI: Retry ${attempt - 1}/${MAX_ATTEMPTS - 1} for ${filename} — waiting ${delay / 1000}s`);
-            await sleep(delay);
-        } else if (!skipInitialDelay) {
-            console.log(`⏳ TeleCMI: Waiting 45s for recording to be ready: ${filename}`);
-            await sleep(45_000);
-        }
-
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`TeleCMI download failed (${response.status}) for filename: ${filename}`);
-            }
-
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer      = Buffer.from(arrayBuffer);
-
-            if (buffer.length < 1000) {
-                throw new Error(`TeleCMI returned suspiciously small file (${buffer.length} bytes) — recording may not be ready yet`);
-            }
-
-            const gcsPath = `${ticketId}.mp3`;
-            const gcsFile = buckets.uploads.file(gcsPath);
-
-            await gcsFile.save(buffer, {
-                contentType: 'audio/mpeg',
-                metadata: { ticketId, source: 'telecmi', telecmiFilename: filename }
-            });
-
-            return `gs://${buckets.uploads.name}/${gcsPath}`;
-        } catch (err) {
-            lastError = err;
-            console.warn(`⚠️  TeleCMI: Download attempt ${attempt} failed for ${filename}: ${err.message}`);
-        }
-    }
-
-    throw lastError;
-}
 
 /**
  * Core CDR processing pipeline. Shared by both webhook and sync.
@@ -262,7 +205,7 @@ async function processCdr(cdr, skipInitialDelay = false) {
 
     // ── Download recording → GCS ─────────────────────────────────────────────
     try {
-        await downloadAndStoreRecording(filename, ticketId, skipInitialDelay);
+        await storeTelecmiRecordingForAnalysis(filename, ticketId, skipInitialDelay);
 
         await supabaseAdmin
             .from('tickets')

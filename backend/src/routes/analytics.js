@@ -32,82 +32,6 @@ function emptyOutcomeCounts() {
 function addOutcome(counts, value) {
     if (value && Object.prototype.hasOwnProperty.call(counts, value)) counts[value] += 1;
 }
-function analysisTextBlob(value) {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
-    try {
-        return JSON.stringify(value);
-    } catch {
-        return '';
-    }
-}
-function normalizeOutcome(value) {
-    const raw = String(value || '').trim().toLowerCase();
-    if (['interested', 'not_interested', 'follow_up_required'].includes(raw)) return raw;
-    if (['appointment_booked', 'brochure_requested'].includes(raw)) return 'interested';
-    if (['not interested', 'disconnected'].includes(raw)) return 'not_interested';
-    if (['follow_up_needed', 'callback_promised', 'follow up required'].includes(raw)) return 'follow_up_required';
-    return null;
-}
-function derivePresalesOutcome(analysis) {
-    const direct = normalizeOutcome(analysis?.call_outcome);
-    if (direct) return direct;
-
-    const blob = analysisTextBlob([
-        analysis?.summary,
-        analysis?.actionitems,
-        analysis?.keymoments,
-        analysis?.objections,
-        analysis?.lead_qualification,
-        analysis?.scores
-    ]).toLowerCase();
-
-    if (!blob) return null;
-    if (/(not interested|no interest|clear rejection|rejection|declined|do not call|not looking|not required|wrong number|unavailable|system failure|no agent ever connected|hold music)/i.test(blob)) return 'not_interested';
-    if (/(appointment|site visit|visit booked|confirmed visit|hot lead|high interest|interested prospect|prospect is interested)/i.test(blob)) return 'interested';
-    if (/(follow.?up|call.?back|callback|brochure|whatsapp|send details|next step|reschedule|investigate|reconnect|try again)/i.test(blob)) return 'follow_up_required';
-
-    const interest = String(analysis?.scores?.interest || analysis?.customer_interest_level || '').toLowerCase();
-    if (interest === 'high') return 'interested';
-    if (interest === 'medium') return 'follow_up_required';
-    if (interest === 'low') return 'not_interested';
-
-    const leadQuality = String(analysis?.lead_qualification?.lead_quality || '').toLowerCase();
-    if (leadQuality === 'hot') return 'interested';
-    if (leadQuality === 'warm') return 'follow_up_required';
-    if (leadQuality === 'cold') return 'not_interested';
-
-    return null;
-}
-function derivePresalesAuthenticity(analysis) {
-    const direct = String(analysis?.call_authenticity || '').trim().toLowerCase();
-    if (direct === 'real' || direct === 'fake') return direct;
-
-    const blob = analysisTextBlob([
-        analysis?.summary,
-        analysis?.actionitems,
-        analysis?.keymoments,
-        analysis?.objections,
-        analysis?.scores
-    ]).toLowerCase();
-
-    if (!blob) return null;
-    if (/(system failure|hold music|automated|no agent ever connected|silence|wrong number|meaningless|fake call|hello.?hang|hang.?up quickly|person was unavailable)/i.test(blob)) return 'fake';
-
-    const speakers = Number(analysis?.scores?.speakers ?? analysis?.speakers_detected ?? 0);
-    if (speakers >= 2 || /(prospect|customer|caller).{0,40}(said|replied|asked|stated|confirmed|declined|objected)/i.test(blob)) return 'real';
-
-    return null;
-}
-function enrichPresalesAnalysisFields(analysis) {
-    if (!analysis) return analysis;
-    return {
-        ...analysis,
-        call_outcome: derivePresalesOutcome(analysis),
-        call_authenticity: derivePresalesAuthenticity(analysis)
-    };
-}
-
 /**
  * GET /analytics/employees
  * Per-employee deep performance stats with skill breakdowns.
@@ -132,10 +56,12 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(500).json({ error: 'Failed to fetch users' });
         }
 
-        // 2. Fetch tickets in period
+        // 2. Fetch tickets in period (exclude TeleCMI — those belong to Presales Performance)
         const { data: tickets, error: ticketsError } = await supabaseAdmin
             .from('tickets')
             .select('id, status, rating, createdby, createdat, istrainingcall, visittype, client_id')
+            .neq('source', 'telecmi')
+            .neq('visittype', 'telecmi_call')
             .is('deletedat', null)
             .gte('createdat', fromDate.toISOString());
 
@@ -157,6 +83,16 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
                     .select('ticketid, rating, scores, call_outcome, call_authenticity')
                     .in('ticketid', batch);
                 if (!error && data) analysisRows.push(...data);
+            }
+        }
+
+        // Infer call_outcome from scores.interest for rows where it was never stored
+        for (const row of analysisRows) {
+            if (!row.call_outcome) {
+                const int = String(row.scores?.interest || '').toLowerCase();
+                if      (int === 'high')   row.call_outcome = 'interested';
+                else if (int === 'low')    row.call_outcome = 'not_interested';
+                else if (int === 'medium') row.call_outcome = 'follow_up_required';
             }
         }
 
@@ -363,7 +299,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
                 .select('id, name, team_leader_id, status'),
             supabaseAdmin
                 .from('tickets')
-                .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name')
+                .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name, call_outcome, call_authenticity')
                 .eq('source', 'telecmi')
                 .is('deletedat', null)
                 .gte('createdat', fromDate.toISOString())
@@ -379,15 +315,57 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             const batch = ticketIds.slice(i, i + 200);
             const { data, error } = await supabaseAdmin
                 .from('analysisresults')
-                .select('ticketid, rating, summary, keymoments, actionitems, objections, scores, lead_qualification, call_outcome, call_authenticity')
+                .select('ticketid, rating, summary, keymoments, actionitems, objections, scores, call_outcome, call_authenticity')
                 .in('ticketid', batch);
             if (error) throw error;
-            if (data) analysisRows.push(...data.map(enrichPresalesAnalysisFields));
+            if (data) analysisRows.push(...data);
+        }
+
+        // For rows missing call_outcome/call_authenticity (historical data before columns were added),
+        // infer from available signals. Priority: lead_quality > interest level.
+        let inferredCount = 0;
+        for (const row of analysisRows) {
+            if (!row.call_outcome) {
+                const lq  = row.scores?.lead_qualification?.lead_quality?.toLowerCase?.() || '';
+                const int = String(row.scores?.interest || '').toLowerCase();
+                // lead_quality is most reliable (explicit AI classification)
+                if      (lq === 'hot')   { row.call_outcome = 'interested';         row._inferred = true; }
+                else if (lq === 'warm')  { row.call_outcome = 'follow_up_required'; row._inferred = true; }
+                else if (lq === 'cold')  { row.call_outcome = 'not_interested';     row._inferred = true; }
+                // Fall back to interest level (always present in scores)
+                else if (int === 'high') { row.call_outcome = 'interested';         row._inferred = true; }
+                else if (int === 'low')  { row.call_outcome = 'not_interested';     row._inferred = true; }
+                else if (int === 'medium') { row.call_outcome = 'follow_up_required'; row._inferred = true; }
+                if (row._inferred) inferredCount++;
+            }
+            if (!row.call_authenticity) {
+                // Use speakers count as the primary signal — 1 speaker = no customer, likely fake/unanswered
+                // Fall back to rating + duration heuristic when speakers data is absent
+                const ticket = (tickets || []).find(t => t.id === row.ticketid);
+                const dur    = toNumber(ticket?.durationseconds) || 0;
+                const score  = toNumber(row.rating) ?? 10;
+                const spk    = toNumber(row.scores?.speakers);
+                if (spk !== null) {
+                    row.call_authenticity = (spk <= 1 && dur < 30) ? 'fake' : 'real';
+                } else {
+                    row.call_authenticity = (score <= 2 && dur < 20) ? 'fake' : 'real';
+                }
+            }
         }
 
         const analysisByTicket = new Map(analysisRows.map((row) => [row.ticketid, row]));
         const employeeMap = new Map((employees || []).map((employee) => [employee.id, employee]));
         const teamMap = new Map((teams || []).map((team) => [team.id, team]));
+
+        // ── DEBUG: inferred outcome counts ──────────────────────────────
+        const inferredOutcomeCounts = { interested: 0, not_interested: 0, follow_up_required: 0 };
+        const inferredAuthCounts = { real: 0, fake: 0 };
+        for (const row of analysisRows) {
+            if (row.call_outcome && Object.prototype.hasOwnProperty.call(inferredOutcomeCounts, row.call_outcome)) inferredOutcomeCounts[row.call_outcome]++;
+            if (row.call_authenticity === 'real' || row.call_authenticity === 'fake') inferredAuthCounts[row.call_authenticity]++;
+        }
+        console.log('[presales-perf] inferred outcome counts:', inferredOutcomeCounts, '| auth counts:', inferredAuthCounts);
+        // ────────────────────────────────────────────────────────────────
 
         const buildBucket = (id, label, extra = {}) => ({
             id,
@@ -422,9 +400,11 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             bucket.total_calls += 1;
             bucket.duration_seconds += toNumber(ticket.durationseconds) || 0;
             if (ticket.status === 'analyzed') bucket.analyzed_calls += 1;
-            addOutcome(bucket.outcome_counts, analysis?.call_outcome);
-            if (analysis?.call_authenticity === 'real' || analysis?.call_authenticity === 'fake') {
-                bucket.authenticity_counts[analysis.call_authenticity] += 1;
+            const outcome = ticket.call_outcome || analysis?.call_outcome;
+            const authenticity = ticket.call_authenticity || analysis?.call_authenticity;
+            addOutcome(bucket.outcome_counts, outcome);
+            if (authenticity === 'real' || authenticity === 'fake') {
+                bucket.authenticity_counts[authenticity] += 1;
             }
 
             const date = ticket.createdat?.slice(0, 10) || 'unknown';
@@ -444,9 +424,11 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             summary.total_calls += 1;
             summary.duration_seconds += toNumber(ticket.durationseconds) || 0;
             if (ticket.status === 'analyzed') summary.analyzed_calls += 1;
-            addOutcome(summary.outcome_counts, analysis?.call_outcome);
-            if (analysis?.call_authenticity === 'real' || analysis?.call_authenticity === 'fake') {
-                summary.authenticity_counts[analysis.call_authenticity] += 1;
+            const outcome = ticket.call_outcome || analysis?.call_outcome;
+            const authenticity = ticket.call_authenticity || analysis?.call_authenticity;
+            addOutcome(summary.outcome_counts, outcome);
+            if (authenticity === 'real' || authenticity === 'fake') {
+                summary.authenticity_counts[authenticity] += 1;
             }
 
             const agentId = ticket.presales_agent_id || `raw:${ticket.selldo_agent_email || ticket.selldo_agent_name || 'unknown'}`;
@@ -503,10 +485,18 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             };
         }
 
+        const realOutcomeCount = analysisRows.filter(r => !r._inferred && r.call_outcome).length;
         res.json({
             period: periodKey,
             from: fromDate.toISOString(),
             to: now.toISOString(),
+            outcome_data_quality: {
+                real: realOutcomeCount,
+                inferred: inferredCount,
+                unclassified: analysisRows.length - realOutcomeCount - inferredCount,
+                total_analyzed: analysisRows.length,
+                is_partial: realOutcomeCount < analysisRows.length,
+            },
             summary,
             agents: Array.from(agentBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
             teams: Array.from(teamBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
@@ -541,6 +531,8 @@ router.get('/leaderboard', authMiddleware, requireAdmin, async (req, res) => {
         const { data: tickets } = await supabaseAdmin
             .from('tickets')
             .select('id, status, rating, createdby, istrainingcall')
+            .neq('source', 'telecmi')
+            .neq('visittype', 'telecmi_call')
             .is('deletedat', null)
             .gte('createdat', fromDate.toISOString());
 

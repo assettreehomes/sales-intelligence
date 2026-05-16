@@ -628,9 +628,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const { id } = use(params);
     const router = useRouter();
     const searchParams = useSearchParams();
-    const isPresales = searchParams.get('from') === 'presales';
-    const backHref = isPresales ? '/admin/presales' : '/admin/tickets';
-    const backLabel = isPresales ? 'Pre-Sales Calls' : 'Tickets';
+    const isPresalesUrl = searchParams.get('from') === 'presales';
     const { profile } = useAuth();
     const isSuperAdmin = profile?.role === 'superadmin';
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -659,6 +657,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         setCurrentTime,
         setDuration
     } = useTicketDetailStore();
+
+    // Derive from ticket data so presales sections render regardless of navigation path
+    const isPresales = isPresalesUrl || ticket?.source === 'telecmi' || ticket?.visittype === 'telecmi_call';
+    const backHref = isPresales ? '/admin/presales' : '/admin/tickets';
+    const backLabel = isPresales ? 'Pre-Sales Calls' : 'Tickets';
 
     // Refs for auto-scrolling key moments
     const initialAudioPreferences = useMemo<AudioPreferences>(() => getStoredAudioPreferences(), []);
@@ -2112,7 +2115,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Outcome</p>
-                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">{analysis?.call_outcome?.replaceAll('_', ' ') || '—'}</p>
+                                        <div className="mt-1">
+                                            {analysis?.call_outcome ? (
+                                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                                    analysis.call_outcome === 'interested'
+                                                        ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+                                                        : analysis.call_outcome === 'not_interested'
+                                                        ? 'bg-red-100 text-red-700 ring-red-200'
+                                                        : 'bg-amber-100 text-amber-700 ring-amber-200'
+                                                }`}>
+                                                    {analysis.call_outcome.replaceAll('_', ' ')}
+                                                </span>
+                                            ) : <span className="text-sm font-medium text-gray-400">—</span>}
+                                        </div>
                                     </div>
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Authenticity</p>
@@ -2146,14 +2161,24 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Call Outcome</p>
-                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">
-                                            {analysis.call_outcome?.replaceAll('_', ' ') || 'Awaiting re-analysis'}
-                                        </p>
+                                        <div className="mt-1">
+                                            {analysis.call_outcome ? (
+                                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                                    analysis.call_outcome === 'interested'
+                                                        ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+                                                        : analysis.call_outcome === 'not_interested'
+                                                        ? 'bg-red-100 text-red-700 ring-red-200'
+                                                        : 'bg-amber-100 text-amber-700 ring-amber-200'
+                                                }`}>
+                                                    {analysis.call_outcome.replaceAll('_', ' ')}
+                                                </span>
+                                            ) : <span className="text-sm font-medium text-gray-400">—</span>}
+                                        </div>
                                     </div>
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Authenticity</p>
                                         <p className="mt-1 text-sm font-medium capitalize text-gray-900">
-                                            {analysis.call_authenticity || 'Awaiting re-analysis'}
+                                            {analysis.call_authenticity || '—'}
                                         </p>
                                     </div>
                                     <div>
@@ -2491,11 +2516,27 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 {/* Executive Brief */}
                                 <div className="space-y-6">
                                     <div className="bg-white p-7 rounded-2xl border border-gray-200 shadow-sm">
-                                        <div className="flex items-center gap-2 mb-6">
-                                            <div className="p-2 bg-purple-100 rounded-lg">
-                                                <Zap className="w-5 h-5 text-purple-600" />
+                                        <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-2 bg-purple-100 rounded-lg">
+                                                    <Zap className="w-5 h-5 text-purple-600" />
+                                                </div>
+                                                <h2 className="text-lg font-semibold text-gray-900">Executive Brief</h2>
                                             </div>
-                                            <h2 className="text-lg font-semibold text-gray-900">Executive Brief</h2>
+                                            {analysis?.call_outcome && (
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ring-1 ${
+                                                    analysis.call_outcome === 'interested'
+                                                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                                                        : analysis.call_outcome === 'not_interested'
+                                                        ? 'bg-red-50 text-red-700 ring-red-200'
+                                                        : 'bg-amber-50 text-amber-700 ring-amber-200'
+                                                }`}>
+                                                    {analysis.call_outcome === 'interested' && <CheckCircle className="w-3.5 h-3.5" />}
+                                                    {analysis.call_outcome === 'not_interested' && <XCircle className="w-3.5 h-3.5" />}
+                                                    {analysis.call_outcome === 'follow_up_required' && <AlertTriangle className="w-3.5 h-3.5" />}
+                                                    {analysis.call_outcome.replaceAll('_', ' ')}
+                                                </span>
+                                            )}
                                         </div>
 
                                         <p className="text-[15px] leading-8 text-gray-700">{analysis?.summary || 'No summary available.'}</p>

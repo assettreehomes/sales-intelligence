@@ -3,15 +3,17 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AdminShell } from '@/components/AdminShell';
 import { useAuth } from '@/contexts/AuthContext';
+import { RatingTrendChart, HorizontalBarChart, SkillRadarChart, RatingDistChart } from '@/components/ui/charts';
 import {
     TrendingUp,
     Users,
     Star,
     CheckCircle2,
+    XCircle,
+    AlertTriangle,
     Trophy,
     BarChart3,
     Target,
-
     RefreshCw,
     Camera
 } from 'lucide-react';
@@ -138,11 +140,11 @@ const SKILL_CHART_LABELS: Record<string, string> = {
 };
 
 const RATING_DISTRIBUTION_COLOR_BY_LABEL: Record<string, string> = {
-    poor: 'var(--performance-dist-poor)',
-    fair: 'var(--performance-dist-fair)',
-    good: 'var(--performance-dist-good)',
-    great: 'var(--performance-dist-great)',
-    excellent: 'var(--performance-dist-excellent)',
+    poor:      '#ef4444',
+    fair:      '#f59e0b',
+    good:      '#10b981',
+    great:     '#3b82f6',
+    excellent: '#8b5cf6',
 };
 
 const PERIODS = [
@@ -152,7 +154,7 @@ const PERIODS = [
 ];
 
 // ═══════════════════════════════════════════════
-// SVG Chart Components (Zero Dependencies)
+// SVG Micro Components
 // ═══════════════════════════════════════════════
 
 function SparklineSVG({ data, width = 120, height = 32, color = 'var(--performance-accent)' }: {
@@ -188,270 +190,6 @@ function SparklineSVG({ data, width = 120, height = 32, color = 'var(--performan
     );
 }
 
-function RadarChartSVG({
-    labels,
-    values,
-    size = 160,
-    color = 'var(--performance-accent)',
-}: {
-    labels: string[];
-    values: number[];
-    size?: number;
-    color?: string;
-}) {
-    const cx = size / 2;
-    const cy = size / 2;
-    const r = size / 2 - 30;
-    const n = labels.length;
-    const angleStep = (2 * Math.PI) / n;
-    const gridColor = 'var(--performance-chart-grid)';
-    const labelColor = 'var(--performance-chart-label)';
-    const labelRadius = r + 10;
-
-    const getPoint = (i: number, val: number) => {
-        const angle = (i * angleStep) - Math.PI / 2;
-        const norm = Math.min(val / 10, 1);
-        return {
-            x: cx + norm * r * Math.cos(angle),
-            y: cy + norm * r * Math.sin(angle),
-        };
-    };
-
-    // Grid levels
-    const levels = [0.25, 0.5, 0.75, 1.0];
-
-    return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="performance-radar-chart drop-shadow-sm">
-            {/* Grid */}
-            {levels.map((level) => {
-                const pts = Array.from({ length: n }, (_, i) => {
-                    const angle = (i * angleStep) - Math.PI / 2;
-                    return `${cx + level * r * Math.cos(angle)},${cy + level * r * Math.sin(angle)}`;
-                });
-                return (
-                    <polygon
-                        key={level}
-                        points={pts.join(' ')}
-                        fill="none"
-                        stroke={gridColor}
-                        strokeWidth={0.5}
-                    />
-                );
-            })}
-            {/* Axes */}
-            {Array.from({ length: n }, (_, i) => {
-                const angle = (i * angleStep) - Math.PI / 2;
-                return (
-                    <line
-                        key={i}
-                        x1={cx}
-                        y1={cy}
-                        x2={cx + r * Math.cos(angle)}
-                        y2={cy + r * Math.sin(angle)}
-                        stroke={gridColor}
-                        strokeWidth={0.5}
-                    />
-                );
-            })}
-            {/* Data polygon */}
-            <polygon
-                points={values.map((v, i) => {
-                    const p = getPoint(i, v);
-                    return `${p.x},${p.y}`;
-                }).join(' ')}
-                fill={color}
-                fillOpacity={0.2}
-                stroke={color}
-                strokeWidth={2}
-            />
-            {/* Data points */}
-            {values.map((v, i) => {
-                const p = getPoint(i, v);
-                return (
-                    <g key={i}>
-                        <circle cx={p.x} cy={p.y} r={3} fill={color} />
-                        <title>{`${labels[i]}: ${v.toFixed(1)}`}</title>
-                    </g>
-                );
-            })}
-            {/* Labels */}
-            {labels.map((label, i) => {
-                const angle = (i * angleStep) - Math.PI / 2;
-                const lx = cx + labelRadius * Math.cos(angle);
-                const ly = cy + labelRadius * Math.sin(angle);
-                const anchor = Math.cos(angle) > 0.28 ? 'start' : Math.cos(angle) < -0.28 ? 'end' : 'middle';
-                return (
-                    <text
-                        key={i}
-                        x={lx}
-                        y={ly}
-                        textAnchor={anchor}
-                        dominantBaseline="central"
-                        fill={labelColor}
-                        className="text-[10px] font-semibold"
-                    >
-                        {label}
-                    </text>
-                );
-            })}
-        </svg>
-    );
-}
-
-function AreaChartSVG({
-    data,
-    width = 500,
-    height = 180,
-    xAxisLabel = 'Date',
-    yAxisLabel = 'Average Rating (/5)',
-}: {
-    data: { label: string; value: number | null }[];
-    width?: number;
-    height?: number;
-    xAxisLabel?: string;
-    yAxisLabel?: string;
-}) {
-    const filtered = data.filter((d) => d.value !== null) as { label: string; value: number }[];
-    if (filtered.length < 2) {
-        return (
-            <div style={{ width, height, color: 'var(--performance-muted)' }} className="flex items-center justify-center text-sm">
-                Not enough data
-            </div>
-        );
-    }
-
-    const padL = 50;
-    const padR = 12;
-    const padT = 16;
-    const padB = 38;
-    const chartW = width - padL - padR;
-    const chartH = height - padT - padB;
-    const maxVal = Math.max(...filtered.map((d) => d.value), 1);
-    const minVal = Math.min(...filtered.map((d) => d.value), 0);
-    const range = maxVal - minVal || 1;
-    const gradientId = 'performance-area-gradient';
-
-    const points = filtered.map((d, i) => ({
-        x: padL + (i / (filtered.length - 1)) * chartW,
-        y: padT + chartH - ((d.value - minVal) / range) * chartH,
-        label: d.label,
-        value: d.value,
-    }));
-
-    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-    const areaPath = `${linePath} L${points[points.length - 1].x},${padT + chartH} L${points[0].x},${padT + chartH} Z`;
-
-    // Y-axis ticks
-    const yTicks = 4;
-    const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minVal + (i / yTicks) * range);
-
-    return (
-        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-            <defs>
-                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--performance-accent)" stopOpacity={0.34} />
-                    <stop offset="100%" stopColor="var(--performance-accent)" stopOpacity={0.02} />
-                </linearGradient>
-            </defs>
-            {/* Y grid lines + labels */}
-            {yTickVals.map((val, i) => {
-                const y = padT + chartH - ((val - minVal) / range) * chartH;
-                return (
-                    <g key={i}>
-                        <line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke="var(--performance-chart-grid)" strokeWidth={1} />
-                        <text x={padL - 6} y={y + 3} textAnchor="end" fill="var(--performance-chart-label)" className="text-[10px]">
-                            {val.toFixed(1)}
-                        </text>
-                    </g>
-                );
-            })}
-            {/* Area + Line */}
-            <path d={areaPath} fill={`url(#${gradientId})`} />
-            <path d={linePath} fill="none" stroke="var(--performance-accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-            {/* Data points */}
-            {points.map((p, i) => (
-                <g key={i}>
-                    <circle cx={p.x} cy={p.y} r={3} fill="var(--performance-accent)" stroke="var(--performance-surface-elevated)" strokeWidth={1.5} />
-                    <title>{`${p.label}: ${p.value.toFixed(2)}`}</title>
-                </g>
-            ))}
-            {/* X-axis labels (show max 8) */}
-            {points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 8)) === 0 || i === points.length - 1).map((p, i) => (
-                <text key={i} x={p.x} y={height - 6} textAnchor="middle" fill="var(--performance-chart-label)" className="text-[9px]">
-                    {p.label.length > 5 ? p.label.slice(5) : p.label}
-                </text>
-            ))}
-            <text x={padL + chartW / 2} y={height - 20} textAnchor="middle" fill="var(--performance-chart-label)" className="text-[10px] font-semibold">
-                {xAxisLabel}
-            </text>
-            <text
-                x={14}
-                y={padT + chartH / 2}
-                textAnchor="middle"
-                transform={`rotate(-90 14 ${padT + chartH / 2})`}
-                fill="var(--performance-chart-label)"
-                className="text-[10px] font-semibold"
-            >
-                {yAxisLabel}
-            </text>
-        </svg>
-    );
-}
-
-function BarChartSVG({
-    data,
-    width = 500,
-    height = 200,
-    xAxisLabel = 'Value',
-    valueFormatter,
-}: {
-    data: { label: string; value: number; color: string }[];
-    width?: number;
-    height?: number;
-    xAxisLabel?: string;
-    valueFormatter?: (value: number) => string;
-}) {
-    if (data.length === 0) return null;
-
-    const padL = 60;
-    const padR = 16;
-    const padT = 8;
-    const padB = 28;
-    const chartW = width - padL - padR;
-    const chartH = height - padT - padB;
-    const maxVal = Math.max(...data.map((d) => d.value), 1);
-    const barH = Math.min(28, (chartH - (data.length - 1) * 6) / data.length);
-    const gap = 6;
-
-    return (
-        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-            {data.map((d, i) => {
-                const y = padT + i * (barH + gap);
-                const w = (d.value / maxVal) * chartW;
-                return (
-                    <g key={i}>
-                        {/* Background track */}
-                        <rect x={padL} y={y} width={chartW} height={barH} rx={4} fill="var(--performance-chart-track)" />
-                        {/* Bar */}
-                        <rect x={padL} y={y} width={w} height={barH} rx={4} fill={d.color} opacity={0.85} />
-                        {/* Label */}
-                        <text x={padL - 6} y={y + barH / 2 + 1} textAnchor="end" dominantBaseline="central" fill="var(--performance-chart-label)" className="text-[11px] font-medium">
-                            {d.label}
-                        </text>
-                        {/* Value */}
-                        <text x={padL + w + 6} y={y + barH / 2 + 1} dominantBaseline="central" fill="var(--performance-chart-label)" className="text-[10px] font-semibold">
-                            {valueFormatter ? valueFormatter(d.value) : d.value}
-                        </text>
-                        <title>{`${d.label}: ${valueFormatter ? valueFormatter(d.value) : d.value}`}</title>
-                    </g>
-                );
-            })}
-            <text x={padL + chartW} y={height - 8} textAnchor="end" fill="var(--performance-chart-label)" className="text-[10px] font-semibold">
-                {xAxisLabel}
-            </text>
-        </svg>
-    );
-}
 
 function CircularProgress({ value, size = 56, strokeWidth = 5, color = 'var(--performance-accent)' }: {
     value: number;
@@ -656,8 +394,9 @@ export default function PerformancePage() {
     const trendChartData = useMemo(() => {
         if (!analytics?.trend) return [];
         return analytics.trend.map((t) => ({
-            label: t.date,
-            value: t.avg_rating_5,
+            date: t.date,
+            rating: t.avg_rating_5,
+            tickets: t.tickets,
         }));
     }, [analytics]);
 
@@ -665,8 +404,8 @@ export default function PerformancePage() {
         if (!analytics?.rating_distribution) return [];
         return analytics.rating_distribution.map((b) => ({
             label: b.label,
-            value: b.count,
-            color: RATING_DISTRIBUTION_COLOR_BY_LABEL[b.label.trim().toLowerCase()] ?? 'var(--performance-dist-default)',
+            count: b.count,
+            color: RATING_DISTRIBUTION_COLOR_BY_LABEL[b.label.trim().toLowerCase()] ?? '#6d28d9',
         }));
     }, [analytics]);
 
@@ -801,18 +540,47 @@ export default function PerformancePage() {
                     </section>
 
                     <section className="grid gap-3 md:grid-cols-3">
-                        <article className="performance-card p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Interested</p>
-                            <p className="mt-1 text-2xl font-semibold text-gray-900">{s?.outcome_counts?.interested ?? 0}</p>
-                        </article>
-                        <article className="performance-card p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Not Interested</p>
-                            <p className="mt-1 text-2xl font-semibold text-gray-900">{s?.outcome_counts?.not_interested ?? 0}</p>
-                        </article>
-                        <article className="performance-card p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Follow Up Required</p>
-                            <p className="mt-1 text-2xl font-semibold text-gray-900">{s?.outcome_counts?.follow_up_required ?? 0}</p>
-                        </article>
+                        {(() => {
+                            const interested = s?.outcome_counts?.interested ?? 0;
+                            const notInterested = s?.outcome_counts?.not_interested ?? 0;
+                            const followUp = s?.outcome_counts?.follow_up_required ?? 0;
+                            const total = interested + notInterested + followUp;
+                            const pct = (v: number) => total ? ((v / total) * 100).toFixed(0) : '0';
+                            return (
+                                <>
+                                    <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '260ms' }}>
+                                        <div className="performance-kpi-top">
+                                            <span className="performance-kpi-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#059669' }}>
+                                                <CheckCircle2 className="w-5 h-5" />
+                                            </span>
+                                            <span className="performance-kpi-meta" style={{ color: '#059669' }}>{pct(interested)}% of outcomes</span>
+                                        </div>
+                                        <p className="performance-kpi-value">{interested}</p>
+                                        <p className="performance-kpi-label">Interested</p>
+                                    </article>
+                                    <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '300ms' }}>
+                                        <div className="performance-kpi-top">
+                                            <span className="performance-kpi-icon" style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626' }}>
+                                                <XCircle className="w-5 h-5" />
+                                            </span>
+                                            <span className="performance-kpi-meta" style={{ color: '#dc2626' }}>{pct(notInterested)}% of outcomes</span>
+                                        </div>
+                                        <p className="performance-kpi-value">{notInterested}</p>
+                                        <p className="performance-kpi-label">Not Interested</p>
+                                    </article>
+                                    <article className="performance-card performance-kpi-card performance-fade-up" style={{ animationDelay: '340ms' }}>
+                                        <div className="performance-kpi-top">
+                                            <span className="performance-kpi-icon" style={{ background: 'rgba(245,158,11,0.12)', color: '#d97706' }}>
+                                                <AlertTriangle className="w-5 h-5" />
+                                            </span>
+                                            <span className="performance-kpi-meta" style={{ color: '#d97706' }}>{pct(followUp)}% of outcomes</span>
+                                        </div>
+                                        <p className="performance-kpi-value">{followUp}</p>
+                                        <p className="performance-kpi-label">Follow-Up Required</p>
+                                    </article>
+                                </>
+                            );
+                        })()}
                     </section>
 
                     <section className="performance-main-grid">
@@ -890,11 +658,11 @@ export default function PerformancePage() {
                                     <h3 className="performance-spotlight-name">{topPerformer.fullname}</h3>
                                     <p className="performance-spotlight-role">{topPerformer.role}</p>
                                     <div className="performance-spotlight-chart">
-                                        <RadarChartSVG
+                                        <SkillRadarChart
                                             labels={skillKeys.slice(0, 6).map((k) => SKILL_CHART_LABELS[k])}
                                             values={skillKeys.slice(0, 6).map((k) => topPerformerEmployee.skills[k] || 0)}
                                             size={168}
-                                            color="var(--performance-spotlight-radar)"
+                                            color="#8b5cf6"
                                         />
                                     </div>
                                     <div className="performance-spotlight-stats">
@@ -926,7 +694,7 @@ export default function PerformancePage() {
                                     <h2 className="performance-panel-title">Team Rating Trend</h2>
                                 </div>
                             </div>
-                            <AreaChartSVG data={trendChartData} width={520} height={188} xAxisLabel="Date" yAxisLabel="Avg Rating (/5)" />
+                            <RatingTrendChart data={trendChartData} height={188} />
                         </div>
 
                         <div className="performance-card performance-panel performance-fade-up" style={{ animationDelay: '340ms' }}>
@@ -936,16 +704,13 @@ export default function PerformancePage() {
                                     <h2 className="performance-panel-title">Top Employees by Rating</h2>
                                 </div>
                             </div>
-                            <BarChartSVG
+                            <HorizontalBarChart
                                 data={topEmployeesForComparison.map((e) => ({
-                                    label: e.fullname.split(' ')[0],
+                                    name: e.fullname.split(' ')[0],
                                     value: e.avg_rating_10,
-                                    color: 'var(--performance-accent)',
                                 }))}
-                                width={520}
-                                height={Math.max(140, topEmployeesForComparison.length * 34 + 18)}
-                                xAxisLabel="Rating (0 to 10)"
-                                valueFormatter={(value) => value.toFixed(2)}
+                                height={Math.max(140, topEmployeesForComparison.length * 40 + 24)}
+                                maxValue={10}
                             />
                         </div>
                     </section>
@@ -1010,12 +775,7 @@ export default function PerformancePage() {
                                     <h2 className="performance-panel-title">Rating Distribution</h2>
                                 </div>
                             </div>
-                            <BarChartSVG
-                                data={ratingDistChart}
-                                width={320}
-                                height={200}
-                                xAxisLabel="Number of Employees"
-                            />
+                            <RatingDistChart data={ratingDistChart} height={200} />
                         </div>
                     </section>
 
@@ -1058,7 +818,7 @@ export default function PerformancePage() {
                                     </div>
 
                                     <div className="flex justify-center mb-3">
-                                        <RadarChartSVG
+                                        <SkillRadarChart
                                             labels={skillKeys.slice(0, 6).map((k) => SKILL_CHART_LABELS[k])}
                                             values={skillKeys.slice(0, 6).map((k) => emp.skills[k] || 0)}
                                             size={134}

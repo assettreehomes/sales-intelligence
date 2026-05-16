@@ -9,6 +9,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
 import { getVisitSequence, getPreviousAnalysis, getVisitChain } from '../services/visitSequencing.js';
 import { analyzeAudio, runComparisonAnalysis } from '../services/vertexai.js';
+import { analyzePresalesAudio } from '../services/presalesAnalysis.js';
+import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 
 const router = Router();
 
@@ -60,91 +62,6 @@ function normalizeCallOutcome(value) {
         return 'follow_up_required';
     }
     return ['interested', 'not_interested', 'follow_up_required'].includes(raw) ? raw : null;
-}
-
-function analysisTextBlob(value) {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
-    try {
-        return JSON.stringify(value);
-    } catch {
-        return '';
-    }
-}
-
-function derivePresalesOutcome(analysis) {
-    const direct = normalizeCallOutcome(analysis?.call_outcome);
-    if (direct) return direct;
-
-    const blob = analysisTextBlob([
-        analysis?.summary,
-        analysis?.actionitems,
-        analysis?.keymoments,
-        analysis?.objections,
-        analysis?.lead_qualification,
-        analysis?.scores
-    ]).toLowerCase();
-
-    if (!blob) return null;
-
-    if (/(not interested|no interest|clear rejection|rejection|declined|do not call|not looking|not required|wrong number|unavailable|system failure|no agent ever connected|hold music)/i.test(blob)) {
-        return 'not_interested';
-    }
-
-    if (/(appointment|site visit|visit booked|confirmed visit|hot lead|high interest|interested prospect|prospect is interested)/i.test(blob)) {
-        return 'interested';
-    }
-
-    if (/(follow.?up|call.?back|callback|brochure|whatsapp|send details|next step|reschedule|investigate|reconnect|try again)/i.test(blob)) {
-        return 'follow_up_required';
-    }
-
-    const interest = String(analysis?.scores?.interest || analysis?.customer_interest_level || '').toLowerCase();
-    if (interest === 'high') return 'interested';
-    if (interest === 'medium') return 'follow_up_required';
-    if (interest === 'low') return 'not_interested';
-
-    const leadQuality = String(analysis?.lead_qualification?.lead_quality || '').toLowerCase();
-    if (leadQuality === 'hot') return 'interested';
-    if (leadQuality === 'warm') return 'follow_up_required';
-    if (leadQuality === 'cold') return 'not_interested';
-
-    return null;
-}
-
-function derivePresalesAuthenticity(analysis) {
-    const direct = String(analysis?.call_authenticity || '').trim().toLowerCase();
-    if (direct === 'real' || direct === 'fake') return direct;
-
-    const blob = analysisTextBlob([
-        analysis?.summary,
-        analysis?.actionitems,
-        analysis?.keymoments,
-        analysis?.objections,
-        analysis?.scores
-    ]).toLowerCase();
-
-    if (!blob) return null;
-
-    if (/(system failure|hold music|automated|no agent ever connected|silence|wrong number|meaningless|fake call|hello.?hang|hang.?up quickly|person was unavailable)/i.test(blob)) {
-        return 'fake';
-    }
-
-    const speakers = Number(analysis?.scores?.speakers ?? analysis?.speakers_detected ?? 0);
-    if (speakers >= 2 || /(prospect|customer|caller).{0,40}(said|replied|asked|stated|confirmed|declined|objected)/i.test(blob)) {
-        return 'real';
-    }
-
-    return null;
-}
-
-function enrichPresalesAnalysisFields(analysis) {
-    if (!analysis) return analysis;
-    return {
-        ...analysis,
-        call_outcome: derivePresalesOutcome(analysis),
-        call_authenticity: derivePresalesAuthenticity(analysis)
-    };
 }
 
 function isPresalesTicket(ticket) {
@@ -1936,7 +1853,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             const finalTicketIds = finalTickets.map((ticket) => ticket.id);
             const { data: analysisRows, error: analysisListError } = await supabaseAdmin
                 .from('analysisresults')
-                .select('ticketid, summary, keymoments, actionitems, objections, scores, lead_qualification, call_outcome, call_authenticity')
+                .select('ticketid, summary, keymoments, actionitems, objections, scores, call_outcome, call_authenticity')
                 .in('ticketid', finalTicketIds);
 
             if (analysisListError) {
@@ -1945,9 +1862,8 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 const analysisMap = new Map(analysisRows.map((row) => [row.ticketid, row]));
                 finalTickets.forEach((ticket) => {
                     const row = analysisMap.get(ticket.id);
-                    const enriched = enrichPresalesAnalysisFields(row);
-                    ticket.call_outcome = enriched?.call_outcome || null;
-                    ticket.call_authenticity = enriched?.call_authenticity || null;
+                    ticket.call_outcome = row?.call_outcome || null;
+                    ticket.call_authenticity = row?.call_authenticity || null;
                 });
             }
         }
@@ -1983,6 +1899,8 @@ router.get('/analytics/overview', authMiddleware, requireAdmin, async (req, res)
         const { data: tickets, error: ticketsError } = await supabaseAdmin
             .from('tickets')
             .select('id, status, rating, istrainingcall, createdat, visittype, client_id, clientname, createdby')
+            .neq('source', 'telecmi')
+            .neq('visittype', 'telecmi_call')
             .is('deletedat', null)
             .gte('createdat', fromDate.toISOString())
             .order('createdat', { ascending: true });
@@ -2545,6 +2463,9 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
             const { data: tickets, error: queryError } = await supabaseAdmin
                 .from('tickets')
                 .select('createdat')
+                .neq('source', 'telecmi')
+                .neq('visittype', 'telecmi_call')
+                .is('deletedat', null)
                 .gte('createdat', oneYearAgo.toISOString());
 
             if (queryError) throw queryError;
@@ -2561,7 +2482,9 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
             return res.json(result);
         }
 
-        res.json(data);
+        // Filter out TeleCMI entries from RPC result (RPC has no source filter)
+        const filtered = (data || []).filter(row => row.source !== 'telecmi' && row.visittype !== 'telecmi_call');
+        res.json(filtered);
     } catch (error) {
         console.error('Calendar heatmap error:', error);
         res.status(500).json({ error: 'Failed to fetch heatmap data' });
@@ -2649,7 +2572,7 @@ router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
             .select('*')
             .eq('ticketid', id)
             .single();
-        const analysis = isPresalesTicket(ticket) ? enrichPresalesAnalysisFields(analysisRow) : analysisRow;
+        const analysis = analysisRow;
 
         // Get previous analysis row for comparisons
         const previousTicketId = ticket.previous_visit_ticket_id || ticket.previousvisitticketid || null;
@@ -2815,8 +2738,11 @@ router.post('/:id/promote', authMiddleware, requireAdmin, async (req, res) => {
  * Role: admin
  */
 router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
+    let presalesTempUploaded = false;
+    let analysisTicketId = null;
     try {
         const { id } = req.params;
+        analysisTicketId = id;
 
         // Fetch ticket details
         const { data: ticket, error: ticketError } = await supabaseAdmin
@@ -2829,11 +2755,27 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(404).json({ error: 'Ticket not found' });
         }
 
-        // Check if audio exists
-        const { exists } = await checkAudioExists(id);
-        if (!exists) {
-            return res.status(400).json({ error: 'Audio file not found for this ticket' });
+        const presalesTicket = isPresalesTicket(ticket);
+
+        if (presalesTicket && !ticket.telecmi_filename) {
+            return res.status(400).json({ error: 'TeleCMI filename missing for this presales ticket' });
         }
+
+        if (!presalesTicket) {
+            const { exists } = await checkAudioExists(id);
+            if (!exists) {
+                return res.status(400).json({ error: 'Audio file not found for this ticket' });
+            }
+        }
+
+        await supabaseAdmin
+            .from('tickets')
+            .update({
+                status: 'processing',
+                analysis_started_at: new Date().toISOString(),
+                analysiserror: null
+            })
+            .eq('id', id);
 
         // Determine visit number — robust fallback for old tickets missing visitnumber
         let visitNumber = Math.max(ticket.visit_number || 0, ticket.visitnumber || 0);
@@ -2856,19 +2798,39 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
 
         // ── Phase 1: Core audio analysis (no comparison) ──
         console.log(`🔍 Phase 1: Re-analyzing ticket ${id} (Visit #${visitNumber})`);
-        const analysis = await analyzeAudio(id, {
-            client_id: ticket.client_id,
-            client_name: ticket.clientname,
-            visit_number: visitNumber
-        });
+        if (presalesTicket) {
+            await storeTelecmiRecordingForAnalysis(ticket.telecmi_filename, id, true);
+            presalesTempUploaded = true;
+        }
 
-        // Normalize scores
+        const analysis = presalesTicket
+            ? await analyzePresalesAudio(id, {
+                caller_number: ticket.client_id,
+                caller_name: ticket.clientname,
+                agent_name: ticket.selldo_agent_name || ticket.agent_name || null,
+                agent_email: ticket.selldo_agent_email || null,
+                duration_seconds: ticket.durationseconds || null,
+                lead_id: ticket.telecmi_lead_id || null,
+                team_name: ticket.selldo_team_name || null
+            })
+            : await analyzeAudio(id, {
+                client_id: ticket.client_id,
+                client_name: ticket.clientname,
+                visit_number: visitNumber
+            });
+
+        // Normalize scores — presales and site-visit paths share this block;
+        // presales-specific fields are only added when the ticket is a presales ticket.
         const normalizedScores = {
             ...(analysis.scores || {}),
-            politeness: analysis.politeness_score ?? analysis.scores?.politeness ?? null,
-            confidence: analysis.confidence_score ?? analysis.scores?.confidence ?? null,
-            interest: analysis.customer_interest_level ?? analysis.scores?.interest ?? null,
-            speakers: analysis.speakers_detected ?? analysis.scores?.speakers ?? null
+            politeness: analysis.scores?.politeness ?? null,
+            confidence: analysis.scores?.confidence ?? null,
+            interest: analysis.scores?.interest ?? null,
+            speakers: analysis.scores?.speakers ?? analysis.speakers_detected ?? null,
+            ...(presalesTicket && {
+                lead_qualification: analysis.lead_qualification || null,
+                language_detected: analysis.language_detected || null
+            })
         };
 
         // Store Phase 1 results
@@ -2881,14 +2843,17 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 summary: analysis.summary || null,
                 keymoments: analysis.key_moments ? analysis.key_moments.map(m => ({
                     ...m,
-                    time: m.timestamp || m.start_time_ms
+                    description: m.transcript_excerpt || m.coaching_note || m.description || null,
+                    sentiment: m.category || m.sentiment || null,
+                    time: m.timestamp || (m.start_time_ms ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}` : null)
                 })) : [],
                 improvementsuggestions: analysis.recommendations || analysis.improvement_suggestions || [],
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,
                 comparisonwithprevious: null,
-                call_outcome: normalizeCallOutcome(analysis.call_outcome)
+                call_outcome: normalizeCallOutcome(analysis.call_outcome),
+                call_authenticity: presalesTicket ? (analysis.call_authenticity || null) : null
             }, { onConflict: 'ticketid' });
 
         if (analysisError) {
@@ -2902,9 +2867,23 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 status: 'analyzed',
                 rating: analysis.overall_score || null,
                 analysiscompletedat: new Date().toISOString(),
-                istrainingcall: (analysis.overall_score || 0) >= 4.0
+                istrainingcall: (analysis.overall_score || 0) >= 4.0,
+                ...(presalesTicket && {
+                    call_outcome:      normalizeCallOutcome(analysis.call_outcome) || null,
+                    call_authenticity: analysis.call_authenticity || null
+                })
             })
             .eq('id', id);
+
+        if (presalesTempUploaded) {
+            try {
+                await buckets.uploads.file(`${id}.mp3`).delete();
+                presalesTempUploaded = false;
+                console.log(`🗑️  GCS temp file deleted after presales re-analysis for ticket ${id}`);
+            } catch (deleteErr) {
+                console.warn(`⚠️  GCS temp delete warning after presales re-analysis for ${id}:`, deleteErr.message);
+            }
+        }
 
         console.log(`✅ Phase 1 complete for re-analysis: ${id} (Score: ${analysis.overall_score})`);
 
@@ -2971,6 +2950,19 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
 
     } catch (error) {
         console.error('Re-analysis failed:', error);
+        if (presalesTempUploaded && analysisTicketId) {
+            try {
+                await buckets.uploads.file(`${analysisTicketId}.mp3`).delete();
+            } catch (deleteErr) {
+                console.warn(`⚠️  GCS temp cleanup failed after re-analysis error for ${analysisTicketId}:`, deleteErr.message);
+            }
+        }
+        if (analysisTicketId) {
+            await supabaseAdmin
+                .from('tickets')
+                .update({ status: 'analysis_failed', analysiserror: error.message })
+                .eq('id', analysisTicketId);
+        }
         res.status(500).json({ error: 'Analysis failed: ' + error.message });
     }
 });

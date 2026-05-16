@@ -541,12 +541,12 @@ function PresalesContent() {
                                     )}
 
                                     <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {(ticket.status === 'analyzed' || ticket.call_outcome) && (
+                                        {ticket.call_outcome && (
                                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${outcomeBadgeClass(ticket.call_outcome)}`}>
-                                                {labelForOutcome(ticket.call_outcome) || 'Needs Re-analysis'}
+                                                Outcome: {labelForOutcome(ticket.call_outcome)}
                                             </span>
                                         )}
-                                        {(ticket.status === 'analyzed' || ticket.call_authenticity) && (
+                                        {ticket.call_authenticity && (
                                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                                                 ticket.call_authenticity === 'fake'
                                                     ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
@@ -554,7 +554,7 @@ function PresalesContent() {
                                                         ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
                                                         : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
                                             }`}>
-                                                {ticket.call_authenticity === 'fake' ? 'Fake Call' : ticket.call_authenticity === 'real' ? 'Real Call' : 'Needs Re-analysis'}
+                                                Authenticity: {ticket.call_authenticity === 'fake' ? 'Fake' : 'Real'}
                                             </span>
                                         )}
                                     </div>
