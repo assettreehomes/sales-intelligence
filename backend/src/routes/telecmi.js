@@ -9,9 +9,12 @@ import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.j
 
 const router = Router();
 
-const TELECMI_APP_ID = process.env.TELECMI_APP_ID;
-const TELECMI_SECRET  = process.env.TELECMI_SECRET;
+const TELECMI_APP_ID     = process.env.TELECMI_APP_ID;
+const TELECMI_SECRET     = process.env.TELECMI_SECRET;
 const MIN_DURATION_SECONDS = 10;
+const SYNC_STAGGER_MS    = Number(process.env.VERTEX_SYNC_STAGGER_MS) || 1500;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 /**
  * Core CDR processing pipeline. Shared by both webhook and sync.
@@ -339,6 +342,8 @@ router.post('/sync', authMiddleware, requireAdmin, async (req, res) => {
             results.errors.push({ cmiuid: cdr.cmiuid, error: err.message });
             console.error(`❌ TeleCMI sync: CDR ${cdr.cmiuid} failed:`, err.message);
         }
+        // Stagger each CDR to prevent simultaneous GCS uploads + analysis bursts
+        await sleep(SYNC_STAGGER_MS);
     }
 
     console.log(`✅ TeleCMI sync complete:`, results);

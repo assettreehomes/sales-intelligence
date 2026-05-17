@@ -1,4 +1,5 @@
 import { SchemaType, VertexAI } from '@google-cloud/vertexai';
+import { callVertex, is429 } from './vertexQueue.js';
 import { checkAudioExists, getAudioUri, buckets } from '../config/gcs.js';
 import { getPresalesAnalysisPrompt } from '../prompts/analysis.js';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -244,7 +245,7 @@ function validatePresalesAnalysis(analysis) {
 }
 
 async function generatePresalesAnalysis(audioUri, mimeType, prompt) {
-    const response = await model.generateContent({
+    const response = await callVertex(() => model.generateContent({
         contents: [{
             role: 'user',
             parts: [
@@ -258,7 +259,7 @@ async function generatePresalesAnalysis(audioUri, mimeType, prompt) {
             responseMimeType: 'application/json',
             responseSchema: presalesResponseSchema
         }
-    });
+    }), 'presales-phase1');
 
     const text = response.response?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error('No response from Vertex AI for presales analysis');
@@ -286,6 +287,7 @@ export async function analyzePresalesAudio(ticketId, ticketInfo = {}) {
     try {
         analysis = await generatePresalesAnalysis(audioUri, mimeType, prompt);
     } catch (error) {
+        if (is429(error)) throw error; // queue already retried with backoff — don't re-attempt
         console.warn(`⚠️ Presales Phase 1 validation failed for ${ticketId}; retrying. Reason: ${error.message}`);
         analysis = await generatePresalesAnalysis(audioUri, mimeType, `${prompt}
 

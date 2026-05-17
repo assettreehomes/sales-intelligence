@@ -2957,7 +2957,12 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 .update({ status: 'analysis_failed', analysiserror: error.message })
                 .eq('id', analysisTicketId);
         }
-        res.status(500).json({ error: 'Analysis failed: ' + error.message });
+        const isTelecmiUnavailable = error.message?.includes('TeleCMI recording unavailable');
+        const statusCode = isTelecmiUnavailable ? 422 : 500;
+        const userMessage = isTelecmiUnavailable
+            ? 'Recording no longer available on TeleCMI — the file may have expired. Re-analysis is only possible within TeleCMI\'s retention window.'
+            : 'Analysis failed: ' + error.message;
+        res.status(statusCode).json({ error: userMessage });
     }
 });
 

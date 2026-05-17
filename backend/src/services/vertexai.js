@@ -1,4 +1,5 @@
 import { SchemaType, VertexAI } from '@google-cloud/vertexai';
+import { callVertex, is429 } from './vertexQueue.js';
 import { checkAudioExists, getAudioUri } from '../config/gcs.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -79,7 +80,7 @@ function validateAnalysis(analysis) {
 }
 
 async function generateAnalysis(audioUri, mimeType, prompt) {
-  const response = await model.generateContent({
+  const response = await callVertex(() => model.generateContent({
     contents: [{
       role: 'user',
       parts: [
@@ -93,7 +94,7 @@ async function generateAnalysis(audioUri, mimeType, prompt) {
       responseMimeType: 'application/json',
       responseSchema: analysisResponseSchema
     }
-  });
+  }), 'site-visit-phase1');
 
   const text = response.response?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('No response text from Vertex AI');
@@ -218,6 +219,7 @@ export async function analyzeAudio(ticketId, ticketInfo = {}) {
     try {
       analysis = await generateAnalysis(audioUri, mimeType, prompt);
     } catch (validationError) {
+      if (is429(validationError)) throw validationError; // queue already retried with backoff — don't re-attempt
       console.warn(`⚠️ Phase 1 validation failed for ${ticketId}; retrying with mandatory-field repair:`, validationError.message);
       analysis = await generateAnalysis(audioUri, mimeType, `${prompt}
 
@@ -248,7 +250,7 @@ export async function runComparisonAnalysis(currentAnalysis, previousAnalysis, v
   console.log(`📊 Phase 2: Running comparison (Visit #${visitNumber} vs Visit #${visitNumber - 1})`);
 
   try {
-    const response = await model.generateContent({
+    const response = await callVertex(() => model.generateContent({
       contents: [{
         role: 'user',
         parts: [{ text: prompt }]
@@ -258,7 +260,7 @@ export async function runComparisonAnalysis(currentAnalysis, previousAnalysis, v
         maxOutputTokens: 4096,
         responseMimeType: 'application/json'
       }
-    });
+    }), 'site-visit-phase2');
 
     const text = response.response?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error('No response from Vertex AI for comparison');

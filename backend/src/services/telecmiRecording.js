@@ -33,7 +33,17 @@ export async function downloadTelecmiRecording(filename, skipInitialDelay = fals
 
             const buffer = Buffer.from(await response.arrayBuffer());
             if (buffer.length < 1000) {
-                throw new Error(`TeleCMI returned suspiciously small file (${buffer.length} bytes) — recording may not be ready yet`);
+                // Try to parse as JSON error — TeleCMI returns small JSON payloads for 404/expired files
+                let telecmiError = null;
+                try {
+                    const parsed = JSON.parse(buffer.toString('utf8'));
+                    telecmiError = parsed?.message || parsed?.error || parsed?.msg || null;
+                } catch (_) { /* not JSON — truly a corrupt/empty audio file */ }
+
+                const reason = telecmiError
+                    ? `TeleCMI error: ${telecmiError}`
+                    : `file too small (${buffer.length} bytes) — recording may not be ready yet`;
+                throw new Error(`TeleCMI recording unavailable — ${reason}`);
             }
 
             return buffer;
