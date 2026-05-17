@@ -289,7 +289,6 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
         const [
             { data: employees, error: employeesError },
             { data: teams, error: teamsError },
-            { data: tickets, error: ticketsError }
         ] = await Promise.all([
             supabaseAdmin
                 .from('presales_employees')
@@ -297,19 +296,34 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             supabaseAdmin
                 .from('presales_teams')
                 .select('id, name, team_leader_id, status'),
-            supabaseAdmin
-                .from('tickets')
-                .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name, call_outcome, call_authenticity')
-                .eq('source', 'telecmi')
-                .is('deletedat', null)
-                .gte('createdat', fromDate.toISOString())
         ]);
 
         if (employeesError) throw employeesError;
         if (teamsError) throw teamsError;
-        if (ticketsError) throw ticketsError;
 
-        const ticketIds = (tickets || []).map((ticket) => ticket.id);
+        // Paginate tickets — PostgREST caps at 1000 rows by default; with 1900+ tickets we must page through all
+        const tickets = [];
+        {
+            let rangeFrom = 0;
+            const PAGE = 1000;
+            while (true) {
+                const { data: page, error: pageError } = await supabaseAdmin
+                    .from('tickets')
+                    .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name, call_outcome, call_authenticity')
+                    .eq('source', 'telecmi')
+                    .is('deletedat', null)
+                    .gte('createdat', fromDate.toISOString())
+                    .order('createdat', { ascending: false })
+                    .range(rangeFrom, rangeFrom + PAGE - 1);
+                if (pageError) throw pageError;
+                if (!page || page.length === 0) break;
+                tickets.push(...page);
+                if (page.length < PAGE) break;
+                rangeFrom += PAGE;
+            }
+        }
+
+        const ticketIds = tickets.map((ticket) => ticket.id);
         let analysisRows = [];
         for (let i = 0; i < ticketIds.length; i += 200) {
             const batch = ticketIds.slice(i, i + 200);
@@ -379,6 +393,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             authenticity_counts: { real: 0, fake: 0 },
             daily: {},
             weekly: {},
+            _ticketIds: new Set(),
             ...extra
         });
 
@@ -398,6 +413,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
 
         function addToBucket(bucket, ticket, analysis) {
             bucket.total_calls += 1;
+            bucket._ticketIds.add(ticket.id);
             bucket.duration_seconds += toNumber(ticket.durationseconds) || 0;
             if (ticket.status === 'analyzed') bucket.analyzed_calls += 1;
             const outcome = ticket.call_outcome || analysis?.call_outcome;
@@ -468,18 +484,20 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
         summary.avg_duration_seconds = summary.total_calls ? Math.round(summary.duration_seconds / summary.total_calls) : 0;
         summary.avg_rating_10 = allRatings.length ? roundTo(allRatings.reduce((a, b) => a + b, 0) / allRatings.length) : 0;
 
+        const ticketMap = new Map(tickets.map(t => [t.id, t]));
         function finalizeBucket(bucket) {
-            const sourceTickets = (tickets || []).filter((ticket) => {
-                if (String(bucket.id).startsWith('raw:')) {
-                    return bucket.label === (ticket.selldo_agent_name || ticket.selldo_team_name || bucket.label);
-                }
-                return ticket.presales_agent_id === bucket.id || ticket.presales_team_id === bucket.id;
-            });
-            const ratings = sourceTickets.map((ticket) => toNumber(ticket.rating)).filter((rating) => rating !== null);
+            // Use the tracked ticket IDs to calculate avg_rating_10 — avoids the broken
+            // label-match heuristic that incorrectly pulled in unrelated unmapped tickets.
+            let ratingSum = 0, ratingCount = 0;
+            for (const id of bucket._ticketIds) {
+                const r = toNumber(ticketMap.get(id)?.rating);
+                if (r !== null) { ratingSum += r; ratingCount++; }
+            }
+            const { _ticketIds, ...bucketRest } = bucket;
             return {
-                ...bucket,
+                ...bucketRest,
                 avg_duration_seconds: bucket.total_calls ? Math.round(bucket.duration_seconds / bucket.total_calls) : 0,
-                avg_rating_10: ratings.length ? roundTo(ratings.reduce((a, b) => a + b, 0) / ratings.length) : 0,
+                avg_rating_10: ratingCount ? roundTo(ratingSum / ratingCount) : 0,
                 daily: Object.entries(bucket.daily).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
                 weekly: Object.entries(bucket.weekly).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week))
             };

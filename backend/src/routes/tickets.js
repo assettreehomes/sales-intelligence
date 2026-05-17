@@ -2428,17 +2428,27 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-            const { data: tickets, error } = await supabaseAdmin
-                .from('tickets')
-                .select('createdat')
-                .eq('source', 'telecmi')
-                .is('deletedat', null)
-                .gte('createdat', oneYearAgo.toISOString());
-
-            if (error) throw error;
+            // Paginate — PostgREST default limit is 1000; telecmi tickets exceed this
+            const allTickets = [];
+            let rangeFrom = 0;
+            const PAGE = 1000;
+            while (true) {
+                const { data: page, error: pageError } = await supabaseAdmin
+                    .from('tickets')
+                    .select('createdat')
+                    .eq('source', 'telecmi')
+                    .is('deletedat', null)
+                    .gte('createdat', oneYearAgo.toISOString())
+                    .range(rangeFrom, rangeFrom + PAGE - 1);
+                if (pageError) throw pageError;
+                if (!page || page.length === 0) break;
+                allTickets.push(...page);
+                if (page.length < PAGE) break;
+                rangeFrom += PAGE;
+            }
 
             const counts = {};
-            (tickets || []).forEach((ticket) => {
+            allTickets.forEach((ticket) => {
                 const date = (ticket.createdat || '').split('T')[0];
                 if (date) counts[date] = (counts[date] || 0) + 1;
             });
