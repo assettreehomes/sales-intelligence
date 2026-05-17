@@ -242,9 +242,11 @@ function PresalesPerformanceContent() {
     const [error, setError] = useState<string | null>(null);
     const [view, setView] = useState<'agents' | 'teams'>('agents');
     const [query, setQuery] = useState('');
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-    async function load(pd = period) {
-        setLoading(true); setError(null);
+    async function load(pd = period, silent = false) {
+        if (!silent) setLoading(true);
+        setError(null);
         try {
             const token = await getToken();
             const res = await fetch(`${API_URL}/analytics/presales-performance?period=${pd}`, {
@@ -253,14 +255,22 @@ function PresalesPerformanceContent() {
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Failed to load');
             setData(json);
+            setLastUpdated(new Date());
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }
 
+    // Load on mount and whenever period changes
     useEffect(() => { void load(period); }, [period]);
+
+    // Auto-refresh every 60 seconds — picks up new analyzed calls without manual refresh
+    useEffect(() => {
+        const interval = setInterval(() => { void load(period, true); }, 60_000);
+        return () => clearInterval(interval);
+    }, [period]);
 
     const activeRows = useMemo(() => {
         const rows = view === 'agents' ? data?.agents || [] : data?.teams || [];
@@ -310,11 +320,18 @@ function PresalesPerformanceContent() {
                                         </button>
                                     ))}
                                 </div>
-                                <button onClick={() => load(period)} disabled={loading}
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors"
-                                    style={{ borderColor: t.toggleBorder, color: t.refreshBtn }}>
-                                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                                </button>
+                                <div className="flex flex-col items-end gap-0.5">
+                                    <button onClick={() => load(period)} disabled={loading}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors"
+                                        style={{ borderColor: t.toggleBorder, color: t.refreshBtn }}>
+                                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                                    </button>
+                                    {lastUpdated && (
+                                        <span className="text-[10px] tabular-nums" style={{ color: t.textFaint }}>
+                                            {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    )}
+                                </div>
                                 <NotificationBell />
                             </div>
                         </div>
@@ -455,7 +472,9 @@ function PresalesPerformanceContent() {
                                 <div className="flex items-center gap-2 mb-4">
                                     <TrendingUp className="h-4 w-4" style={{ color: '#8b5cf6' }} />
                                     <p className={sectionHead} style={{ color: t.textStrong }}>Daily Call Trend</p>
-                                    <span className="ml-auto text-xs" style={mutedText}>Last 30 days</span>
+                                    <span className="ml-auto text-xs" style={mutedText}>
+                                        {PERIODS.find(p => p.key === period)?.label ?? 'Last 30 days'}
+                                    </span>
                                 </div>
                                 {data.daily?.length > 0
                                     ? <DailyTrendChart data={data.daily} height={160} />

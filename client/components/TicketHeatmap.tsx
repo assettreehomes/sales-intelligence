@@ -193,7 +193,7 @@ export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', titl
         const accessToken = session?.access_token;
         if (!accessToken) return;
 
-        async function fetchHeatmap() {
+        async function fetchHeatmap(silent = false) {
             try {
                 const params = source === 'telecmi' ? '?source=telecmi' : '';
                 const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/tickets/calendar-heatmap${params}`, {
@@ -207,11 +207,15 @@ export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', titl
             } catch (err) {
                 console.error(err);
             } finally {
-                setLoading(false);
+                if (!silent) setLoading(false);
             }
         }
 
         void fetchHeatmap();
+
+        // Auto-refresh every 60s — picks up new calls without page reload
+        const interval = setInterval(() => void fetchHeatmap(true), 60_000);
+        return () => clearInterval(interval);
     }, [session, source]);
 
     const dataMap = useMemo(() => {
