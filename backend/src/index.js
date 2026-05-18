@@ -33,19 +33,17 @@ app.set('trust proxy', true); // Cloud Run sits behind a load balancer — trust
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',')
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : []),
+];
 
 app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-
-        // Allow localhost in development
-        if (process.env.NODE_ENV === 'development') {
-            return callback(null, true);
-        }
 
         // Allow all Vercel deployments (*.vercel.app)
         if (origin.endsWith('.vercel.app')) {
@@ -53,11 +51,11 @@ app.use(cors({
         }
 
         // Check against allowed origins list
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
         }
+
+        callback(new Error('Not allowed by CORS'));
     },
     credentials: true
 }));
