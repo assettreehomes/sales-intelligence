@@ -230,13 +230,16 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
 
     setFilter: (key, value) => {
         set(state => ({ filters: { ...state.filters, [key]: value }, currentPage: 1 }));
+        void get().fetchTickets();
     },
 
     clearFilters: () => {
         set({ filters: { ...DEFAULT_FILTERS }, currentPage: 1 });
+        void get().fetchTickets();
     },
 
     setPage: (page) => {
         set({ currentPage: page });
+        void get().fetchTickets();
     },
 }));

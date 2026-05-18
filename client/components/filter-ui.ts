@@ -18,6 +18,9 @@ export const filterChevronClass =
 export const filterPanelClass =
     'max-h-64 overflow-auto rounded-xl border border-gray-200/90 bg-white p-1.5 shadow-2xl shadow-black/10 ring-1 ring-black/5 dark:border-slate-600 dark:bg-slate-900 dark:shadow-black/40 dark:ring-white/10';
 
+export const filterPanelAnchoredClass =
+    `absolute top-full z-[200] mt-1.5 ${filterPanelClass}`;
+
 export function filterOptionClass(selected: boolean) {
     return `flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
         selected

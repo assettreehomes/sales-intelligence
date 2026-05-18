@@ -148,10 +148,10 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
         setPage,
     } = usePresalesStore();
 
-    // Initial fetch + re-fetch on filter/page change
+    // Initial load (filter/page changes trigger fetch via presalesStore.setFilter / setPage)
     useEffect(() => {
         fetchTickets();
-    }, [filters, currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [fetchTickets]);
 
     // Debounced search
     useEffect(() => {

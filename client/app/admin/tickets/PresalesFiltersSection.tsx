@@ -8,7 +8,7 @@ import { TicketsSortButtons } from './components/TicketsSortButtons';
 import {
     filterLabelClass,
     filterOptionClass,
-    filterPanelClass,
+    filterPanelAnchoredClass,
     filterTriggerInlineClass,
     filterValueClass,
 } from '@/components/filter-ui';
@@ -116,10 +116,6 @@ export function PresalesFiltersSection({ setSearchInput }: PresalesFiltersSectio
     return (
         <>
             <div className="flex flex-wrap items-center gap-3">
-                <TicketsFilterSelect label="Status" value={filters.statusFilter} onChange={(v) => setFilter('statusFilter', v)} options={STATUS_OPTIONS} />
-                <TicketsFilterSelect label="Date" value={filters.dateFilter} onChange={(v) => setFilter('dateFilter', v)} options={DATE_OPTIONS} />
-                <TicketsFilterSelect label="Rating" value={filters.ratingFilter} onChange={(v) => setFilter('ratingFilter', v)} options={RATING_OPTIONS} />
-
                 <div className="relative" ref={agentDropdownRef}>
                     <button
                         type="button"
@@ -135,11 +131,12 @@ export function PresalesFiltersSection({ setSearchInput }: PresalesFiltersSectio
                         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 dark:text-slate-500" />
                     </button>
                     {agentDropdownOpen && (
-                        <div className={`${filterPanelClass} right-0 z-[100] mt-1.5 max-h-52 w-64 min-w-full`}>
+                        <div className={`${filterPanelAnchoredClass} right-0 max-h-52 w-64 min-w-full`}>
                             {[{ id: 'all', full_name: 'All Agents' }, ...employees.filter((e) => e.role !== 'team_leader')].map((emp) => (
                                 <button
                                     key={emp.id}
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => {
                                         setFilter('agentFilter', emp.id);
                                         setAgentDropdownOpen(false);
@@ -153,6 +150,10 @@ export function PresalesFiltersSection({ setSearchInput }: PresalesFiltersSectio
                         </div>
                     )}
                 </div>
+
+                <TicketsFilterSelect label="Status" value={filters.statusFilter} onChange={(v) => setFilter('statusFilter', v)} options={STATUS_OPTIONS} />
+                <TicketsFilterSelect label="Date" value={filters.dateFilter} onChange={(v) => setFilter('dateFilter', v)} options={DATE_OPTIONS} />
+                <TicketsFilterSelect label="Rating" value={filters.ratingFilter} onChange={(v) => setFilter('ratingFilter', v)} options={RATING_OPTIONS} />
 
                 <TicketsFilterSelect
                     label="Team"

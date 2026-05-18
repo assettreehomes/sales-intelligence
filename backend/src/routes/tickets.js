@@ -1604,7 +1604,8 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         }
 
         if (presalesAgentId && presalesAgentId !== 'all') {
-            query = query.eq('presales_agent_id', presalesAgentId);
+            // Match linked presales employee or legacy createdby when agent id was not backfilled
+            query = query.or(`presales_agent_id.eq.${presalesAgentId},createdby.eq.${presalesAgentId}`);
         }
 
         if (presalesTeamId && presalesTeamId !== 'all') {

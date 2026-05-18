@@ -98,7 +98,7 @@ export function FilterDropdown({
     useEffect(() => {
         if (!open) return;
 
-        function onPointerDown(e: MouseEvent) {
+        function onOutsideClick(e: MouseEvent) {
             const target = e.target as Node;
             if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
             setOpen(false);
@@ -112,13 +112,18 @@ export function FilterDropdown({
             updateMenuPosition();
         }
 
-        document.addEventListener('mousedown', onPointerDown);
+        // Defer so the opening click does not immediately close the menu
+        const outsideTimer = window.setTimeout(() => {
+            document.addEventListener('click', onOutsideClick, true);
+        }, 0);
+
         document.addEventListener('keydown', onKey);
         window.addEventListener('resize', onReposition);
         window.addEventListener('scroll', onReposition, true);
 
         return () => {
-            document.removeEventListener('mousedown', onPointerDown);
+            window.clearTimeout(outsideTimer);
+            document.removeEventListener('click', onOutsideClick, true);
             document.removeEventListener('keydown', onKey);
             window.removeEventListener('resize', onReposition);
             window.removeEventListener('scroll', onReposition, true);
@@ -172,6 +177,7 @@ export function FilterDropdown({
                             role="option"
                             aria-selected={isSelected}
                             className={filterOptionClass(isSelected)}
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                                 onChange(opt.value);
                                 setOpen(false);
