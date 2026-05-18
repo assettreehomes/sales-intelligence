@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useRef } from 'react';
 import { Avatar } from '@/components/Avatar';
+import { SegmentedToggle } from '@/components/SegmentedToggle';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -447,18 +448,14 @@ export default function PerformancePage() {
                                 <p className="performance-subtitle">Track coaching impact, quality trends, and individual momentum in one place.</p>
                             </div>
                             <div className="performance-controls performance-fade-up" style={{ animationDelay: '80ms' }}>
-                                <div className="performance-period-switch">
-                                    {PERIODS.map((p) => (
-                                        <button
-                                            key={p.key}
-                                            onClick={() => setPeriod(p.key)}
-                                            className={`performance-period-btn ${period === p.key ? 'is-active' : ''}`}
-                                            title={`View metrics for last ${p.label}`}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
-                                </div>
+                                <SegmentedToggle
+                                    value={period}
+                                    onChange={setPeriod}
+                                    shape="pill"
+                                    className="segmented-toggle--performance"
+                                    ariaLabel="Performance time period"
+                                    options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
+                                />
                                 <button
                                     onClick={fetchData}
                                     disabled={loading}

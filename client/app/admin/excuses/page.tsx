@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
+import { FilterDropdown } from '@/components/FilterDropdown';
 import { API_URL, getToken } from '@/stores/authStore';
 import { notifyError, notifySuccess } from '@/lib/toast';
 import {
@@ -183,17 +184,19 @@ function ExcusesPageContent() {
                                     className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 md:w-64"
                                 />
                             </div>
-                            <select
+                            <FilterDropdown
+                                variant="inline"
+                                label="Status"
                                 value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value as ExcuseStatusFilter)}
-                                className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                            >
-                                <option value="pending">Pending</option>
-                                <option value="resolved">Resolved</option>
-                                <option value="accepted">Accepted</option>
-                                <option value="rejected">Rejected</option>
-                                <option value="all">All</option>
-                            </select>
+                                onChange={(v) => setStatusFilter(v as ExcuseStatusFilter)}
+                                options={[
+                                    { value: 'pending', label: 'Pending' },
+                                    { value: 'resolved', label: 'Resolved' },
+                                    { value: 'accepted', label: 'Accepted' },
+                                    { value: 'rejected', label: 'Rejected' },
+                                    { value: 'all', label: 'All' },
+                                ]}
+                            />
                             <NotificationBell />
                         </div>
                     </div>

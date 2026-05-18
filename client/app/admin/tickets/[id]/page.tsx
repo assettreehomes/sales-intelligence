@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
+import { FilterDropdown } from '@/components/FilterDropdown';
 import { useTicketDetailStore } from '@/stores/ticketDetailStore';
 import { API_URL, getToken } from '@/stores/authStore';
 import { notifyError, notifyInfo, notifySuccess } from '@/lib/toast';
@@ -480,17 +481,16 @@ function TicketNotesSection({ ticketId, initialNotes }: { ticketId: string; init
                     {activeTab === 'write' && (
                         <div className="space-y-3 border-b border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70">
                             <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-                                <select
-                                    value={selectedTemplate?.id}
-                                    onChange={(e) => setSelectedTemplateId(e.target.value)}
-                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
-                                >
-                                    {EMPLOYEE_NOTE_TEMPLATES.map((template) => (
-                                        <option key={template.id} value={template.id}>
-                                            {template.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                <FilterDropdown
+                                    variant="bare"
+                                    className="w-full"
+                                    value={selectedTemplate?.id ?? ''}
+                                    onChange={setSelectedTemplateId}
+                                    options={EMPLOYEE_NOTE_TEMPLATES.map((template) => ({
+                                        value: template.id,
+                                        label: template.name,
+                                    }))}
+                                />
                                 <button
                                     type="button"
                                     onClick={() => applyTemplate('replace')}
@@ -660,8 +660,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
     // Derive from ticket data so presales sections render regardless of navigation path
     const isPresales = isPresalesUrl || ticket?.source === 'telecmi' || ticket?.visittype === 'telecmi_call';
-    const backHref = isPresales ? '/admin/presales' : '/admin/tickets';
-    const backLabel = isPresales ? 'Pre-Sales Calls' : 'Tickets';
+    const backHref = isPresales ? '/admin/tickets?view=presales' : '/admin/tickets';
+    const backLabel = 'Tickets';
 
     // Refs for auto-scrolling key moments
     const initialAudioPreferences = useMemo<AudioPreferences>(() => getStoredAudioPreferences(), []);

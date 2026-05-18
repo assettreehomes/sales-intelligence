@@ -5,6 +5,8 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { API_URL, getToken } from '@/stores/authStore';
 import { notifyError } from '@/lib/toast';
+import { FilterDropdown } from '@/components/FilterDropdown';
+import { SegmentedToggle } from '@/components/SegmentedToggle';
 import {
     Download,
     ChevronLeft,
@@ -529,32 +531,24 @@ function ActivityLogPageContent() {
 
                     <div className="activity-filter-shell mb-6 rounded-xl p-4">
                         <div className="flex flex-wrap items-center gap-3">
-                            <select
+                            <FilterDropdown
+                                variant="inline"
+                                label="Action"
                                 value={actionFilter}
-                                onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-                                className="activity-select rounded-lg px-3 py-2.5 text-sm focus:outline-none"
-                            >
-                                {actionOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
+                                onChange={(v) => { setActionFilter(v); setPage(1); }}
+                                options={actionOptions}
+                            />
 
-                            <div className="activity-view-switch inline-flex rounded-lg p-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setViewMode('timeline')}
-                                    className={`activity-view-btn rounded-md px-3 py-1.5 text-sm font-medium transition ${viewMode === 'timeline' ? 'is-active' : ''}`}
-                                >
-                                    Timeline View
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setViewMode('table')}
-                                    className={`activity-view-btn rounded-md px-3 py-1.5 text-sm font-medium transition ${viewMode === 'table' ? 'is-active' : ''}`}
-                                >
-                                    Table View
-                                </button>
-                            </div>
+                            <SegmentedToggle
+                                value={viewMode}
+                                onChange={setViewMode}
+                                size="toolbar"
+                                ariaLabel="Activity view mode"
+                                options={[
+                                    { value: 'timeline', label: 'Timeline View' },
+                                    { value: 'table', label: 'Table View' },
+                                ]}
+                            />
 
                             <div className="flex items-center gap-1.5">
                                 {DATE_PRESETS.map((preset, idx) => (
