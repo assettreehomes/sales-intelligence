@@ -15,10 +15,10 @@ export const CHART_COLORS = {
     emerald:   '#10b981',
     red:       '#ef4444',
     amber:     '#f59e0b',
-    muted:     'rgba(255,255,255,0.12)',
-    grid:      'rgba(139,92,246,0.15)',
-    text:      'rgba(255,255,255,0.55)',
-    textStrong:'rgba(255,255,255,0.85)',
+    muted:     'var(--chart-muted, rgba(139,92,246,0.12))',
+    grid:      'var(--chart-grid, rgba(139,92,246,0.18))',
+    text:      'var(--chart-text, rgba(30,16,64,0.6))',
+    textStrong:'var(--chart-text-strong, rgba(30,16,64,0.9))',
 };
 
 // Outcome colors
@@ -38,7 +38,7 @@ function ChartTooltip({ active, payload, label, formatter }: {
     if (!active || !payload?.length) return null;
     return (
         <div className="rounded-xl border px-3 py-2 shadow-xl text-xs"
-            style={{ background: '#1a0f2e', borderColor: 'rgba(139,92,246,0.4)', color: '#fff' }}>
+            style={{ background: 'var(--chart-tooltip-bg, #1a0f2e)', borderColor: 'var(--chart-tooltip-border, rgba(139,92,246,0.4))', color: 'var(--chart-text-strong, #fff)' }}>
             {label && <p className="mb-1 font-semibold" style={{ color: CHART_COLORS.textStrong }}>{label}</p>}
             {payload.map((p, i) => (
                 <div key={i} className="flex items-center gap-2">

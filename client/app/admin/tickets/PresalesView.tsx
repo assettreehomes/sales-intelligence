@@ -148,16 +148,16 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
         setPage,
     } = usePresalesStore();
 
-    // Initial load (filter/page changes trigger fetch via presalesStore.setFilter / setPage)
     useEffect(() => {
         fetchTickets();
-    }, [fetchTickets]);
+    }, [filters, currentPage, fetchTickets]);
 
-    // Debounced search
     useEffect(() => {
-        const t = setTimeout(() => setFilter('searchQuery', searchInput), 400);
+        const normalized = searchInput.trim();
+        if (normalized === filters.searchQuery) return;
+        const t = setTimeout(() => setFilter('searchQuery', normalized), 400);
         return () => clearTimeout(t);
-    }, [searchInput, setFilter]);
+    }, [searchInput, filters.searchQuery, setFilter]);
 
     const totalPages = Math.ceil(totalTickets / ticketsPerPage);
 

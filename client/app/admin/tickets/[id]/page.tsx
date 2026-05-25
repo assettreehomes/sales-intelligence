@@ -52,6 +52,9 @@ import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
 import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/contexts/AuthContext';
+import { TicketDetailWorkspace } from './TicketDetailWorkspace';
+import { TicketStickyPlayer } from './TicketStickyPlayer';
+import { TicketCoachingCards } from './TicketCoachingCards';
 
 type HoveredChartPoint = {
     x: number;
@@ -673,6 +676,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const reportMenuRef = useRef<HTMLDivElement | null>(null);
     const reportContainerRef = useRef<HTMLElement | null>(null);
     const waveformShellRef = useRef<HTMLDivElement>(null);
+    const [isHeroVisible, setIsHeroVisible] = useState(true);
     const previousReanalyzeStatusRef = useRef(reanalyzeStatus);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [hoveredChartPoint, setHoveredChartPoint] = useState<HoveredChartPoint | null>(null);
@@ -768,9 +772,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
     const sortedMoments = analysis?.keymoments
         ? [...analysis.keymoments].sort((a, b) => {
-            const aTime = a.time || a.timestamp || '00:00';
-            const bTime = b.time || b.timestamp || '00:00';
-            return parseTime(aTime) - parseTime(bTime);
+            // Prefer start_time_ms (exact ms), fall back to string time parsing
+            const aMs = typeof a.start_time_ms === 'number' ? a.start_time_ms : parseTime(a.time || a.timestamp || '00:00') * 1000;
+            const bMs = typeof b.start_time_ms === 'number' ? b.start_time_ms : parseTime(b.time || b.timestamp || '00:00') * 1000;
+            return aMs - bMs;
         })
         : [];
 
@@ -806,6 +811,32 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         void loadTicket();
         return () => { active = false; };
     }, [id, fetchTicket, fetchAudioUrl]);
+
+    useEffect(() => {
+        if (typeof IntersectionObserver === 'undefined') return;
+        let cleanup: (() => void) | null = null;
+        let raf = 0;
+        const attach = () => {
+            const target = waveformShellRef.current?.closest<HTMLElement>('.ci-audio-hero') || waveformShellRef.current;
+            if (!target) {
+                raf = window.requestAnimationFrame(attach);
+                return;
+            }
+            const observer = new IntersectionObserver(
+                ([entry]) => {
+                    setIsHeroVisible(entry.isIntersecting && entry.intersectionRatio > 0.1);
+                },
+                { threshold: [0, 0.1, 0.5, 1] }
+            );
+            observer.observe(target);
+            cleanup = () => observer.disconnect();
+        };
+        attach();
+        return () => {
+            if (raf) window.cancelAnimationFrame(raf);
+            if (cleanup) cleanup();
+        };
+    }, [ticket?.id, audioUrl]);
 
     // Fetch flag status on page load
     useEffect(() => {
@@ -1829,9 +1860,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     return (
         <ProtectedRoute allowedRoles={['superadmin', 'admin']}>
             <AdminShell activeSection="tickets">
-                <main ref={reportContainerRef} className="ticket-print-main min-h-screen">
+                <main ref={reportContainerRef} className="ticket-print-main ticket-detail-page min-h-screen bg-slate-50 dark:bg-slate-950">
                     {/* Header */}
-                    <header className="bg-white border-b border-gray-200 px-5 py-4 md:px-7">
+                    <header className="ticket-detail-header border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90 md:px-7">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
                                 <Link
@@ -2017,635 +2048,82 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         </div>
                     )}
 
-                    <div className="px-5 py-7 md:px-7 max-w-[90rem] mx-auto space-y-5">
-                        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                <div className="inline-flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5">
-                                    <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wide">
-                                        {ticket.status}
-                                    </span>
-                                    <span className="text-sm font-medium text-gray-500">
-                                        {new Date(ticket.createdat).toLocaleString()}
-                                    </span>
-                                </div>
+                    <TicketStickyPlayer
+                        visible={!isHeroVisible && Boolean(audioUrl)}
+                        isPlaying={isPlaying}
+                        progressPercent={progressPercent}
+                        displayedCurrentTime={displayedCurrentTime}
+                        duration={duration}
+                        formatTime={formatTime}
+                        togglePlayback={togglePlayback}
+                        label={analysis?.call_outcome ? `Now reviewing · ${analysis.call_outcome.replaceAll('_', ' ')}` : 'Now reviewing'}
+                    />
 
-                                <div className="flex flex-wrap items-stretch gap-3 lg:justify-end">
-                                    <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[150px]">
-                                        <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Client ID</p>
-                                        {isPresales ? (
-                                            <>
-                                                <p className="text-[1.65rem] leading-none font-semibold text-gray-900">
-                                                    {ticket.telecmi_lead_id ? `Lead #${ticket.telecmi_lead_id}` : maskPhone(ticket.client_id)}
-                                                </p>
-                                                {(() => {
-                                                    const sub = ticket.telecmi_lead_id
-                                                        ? maskPhone(ticket.client_id)
-                                                        : ticket.telecmi_user ? `Ext. ${ticket.telecmi_user.split('_')[0]}` : null;
-                                                    return sub ? (
-                                                        <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
-                                                    ) : null;
-                                                })()}
-                                            </>
-                                        ) : (
-                                            <p className="text-[1.65rem] leading-none font-semibold text-gray-900">{ticket.client_id}</p>
-                                        )}
-                                    </div>
-                                    <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:w-auto sm:min-w-[170px]">
-                                        <p className="text-xs text-gray-500 uppercase font-semibold mb-1 tracking-wide">Agent</p>
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
-                                                <span className="text-xs font-semibold text-gray-700">
-                                                    {isPresales && agentName === 'Unknown Agent' && ticket.telecmi_user ? 'UA' : agentInitials}
-                                                </span>
-                                            </div>
-                                            <p className="text-lg font-semibold leading-none text-gray-900">
-                                                {isPresales && agentName === 'Unknown Agent' && ticket.telecmi_user
-                                                    ? `Ext. ${ticket.telecmi_user.split('_')[0]}`
-                                                    : agentName}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {isPresales && ticket.selldo_enriched_at && (
-                            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 shadow-sm">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                                            CRM Context
-                                        </p>
-                                        <h2 className="mt-1 text-lg font-semibold text-gray-900">
-                                            Sell.Do call enrichment
-                                        </h2>
-                                    </div>
-                                    <span className="inline-flex w-fit items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                                        Sell.Do
-                                    </span>
-                                </div>
-                                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Lead ID</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.telecmi_lead_id || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Agent</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_agent_name || ticket.presales_agent?.full_name || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Agent Email</p>
-                                        <p className="mt-1 break-all text-sm font-medium text-gray-900">{ticket.selldo_agent_email || ticket.presales_agent?.email || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Team</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_team_name || ticket.presales_team?.name || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Team Leader</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.presales_team_leader?.full_name || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Call Status</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_call_status || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Direction</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">{ticket.selldo_direction || ticket.telecmi_direction || '—'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Outcome</p>
-                                        <div className="mt-1">
-                                            {analysis?.call_outcome ? (
-                                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                                                    analysis.call_outcome === 'interested'
-                                                        ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
-                                                        : analysis.call_outcome === 'not_interested'
-                                                        ? 'bg-red-100 text-red-700 ring-red-200'
-                                                        : 'bg-amber-100 text-amber-700 ring-amber-200'
-                                                }`}>
-                                                    {analysis.call_outcome.replaceAll('_', ' ')}
-                                                </span>
-                                            ) : <span className="text-sm font-medium text-gray-400">—</span>}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80">Authenticity</p>
-                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">{analysis?.call_authenticity || '—'}</p>
-                                    </div>
-                                </div>
-                            </section>
-                        )}
-
-                        {isPresales && analysis && (
-                            <section className="rounded-2xl border border-violet-100 bg-violet-50/80 p-4 shadow-sm">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
-                                            Presales AI Outcome
-                                        </p>
-                                        <h2 className="mt-1 text-lg font-semibold text-gray-900">
-                                            Conversation quality and intent
-                                        </h2>
-                                    </div>
-                                    {analysis.call_authenticity && (
-                                        <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                                            analysis.call_authenticity === 'fake'
-                                                ? 'bg-red-100 text-red-700 ring-red-200'
-                                                : 'bg-emerald-100 text-emerald-700 ring-emerald-200'
-                                        }`}>
-                                            {analysis.call_authenticity === 'fake' ? 'Fake / Meaningless' : 'Real Call'}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Call Outcome</p>
-                                        <div className="mt-1">
-                                            {analysis.call_outcome ? (
-                                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                                                    analysis.call_outcome === 'interested'
-                                                        ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
-                                                        : analysis.call_outcome === 'not_interested'
-                                                        ? 'bg-red-100 text-red-700 ring-red-200'
-                                                        : 'bg-amber-100 text-amber-700 ring-amber-200'
-                                                }`}>
-                                                    {analysis.call_outcome.replaceAll('_', ' ')}
-                                                </span>
-                                            ) : <span className="text-sm font-medium text-gray-400">—</span>}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Authenticity</p>
-                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">
-                                            {analysis.call_authenticity || '—'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Lead Interest</p>
-                                        <p className="mt-1 text-sm font-medium capitalize text-gray-900">
-                                            {String(analysis.scores?.interest || analysis.customer_interest_level || '—')}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700/80">Detected Speakers</p>
-                                        <p className="mt-1 text-sm font-medium text-gray-900">
-                                            {String(analysis.scores?.speakers || analysis.speakers_detected || '—')}
-                                        </p>
-                                    </div>
-                                </div>
-                            </section>
-                        )}
-
-                        {/* Audio Player */}
-                        <div className="ticket-audio-player rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden border border-white/8 bg-[radial-gradient(130%_190%_at_0%_0%,rgba(141,59,197,0.35),rgba(13,16,31,0.97)_54%,rgba(4,7,20,0.98)_100%)] text-white">
-                            <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(90deg,rgba(141,59,197,0.14),rgba(87,26,155,0.08),transparent)]" />
-
-                            <div className="relative z-10 space-y-4">
-                                <div className="ticket-audio-strip rounded-full border border-white/15 bg-[linear-gradient(90deg,rgba(9,12,26,0.93),rgba(6,9,21,0.96))] px-3 py-2.5 sm:px-4 sm:py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
-                                    <div className="flex items-center gap-2 sm:gap-3">
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            <button
-                                                onClick={() => { void togglePlayback(); }}
-                                                className={`ticket-audio-main-btn inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-gradient-to-r from-purple-600 to-indigo-600 text-white transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/35 ${isPlaying ? 'shadow-md shadow-purple-500/35' : ''}`}
-                                                aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
-                                            >
-                                                {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
-                                            </button>
-                                            <button
-                                                onClick={() => { void restartPlayback(); }}
-                                                className="ticket-audio-action-btn hidden h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition-colors hover:bg-white/10 md:inline-flex"
-                                                aria-label="Replay from start"
-                                            >
-                                                <RotateCcw className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => { void seekBy(-10); }}
-                                                className="ticket-audio-action-btn inline-flex h-9 min-w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 px-2 text-xs font-semibold text-white transition-colors hover:bg-white/10"
-                                                aria-label="Skip backward 10 seconds"
-                                            >
-                                                -10
-                                            </button>
-                                        </div>
-
-                                        <div className="mx-1 sm:mx-2 md:mx-4 flex min-w-[120px] flex-1 items-center gap-2 sm:gap-3">
-                                            <span className="w-11 text-right font-mono text-xs text-gray-200">
-                                                {formatTime(displayedCurrentTime)}
-                                            </span>
-
-                                            {/* Waveform Visualizer */}
-                                            <div
-                                                ref={waveformShellRef}
-                                                className="ticket-audio-waveform-shell flex-1"
-                                            >
-                                                {waveformHeights.map((h, i) => {
-                                                    // Both use 0-100 scale consistently
-                                                    const barPct = (i / WAVEFORM_BAR_COUNT) * 100;
-                                                    const isPlayed = progressPercent > 0 && barPct < progressPercent;
-                                                    const isBuffered = !isPlayed && bufferedPercent > 0 && barPct < bufferedPercent;
-
-                                                    const classes = ['ticket-audio-waveform-bar'];
-                                                    if (isPlayed) classes.push('wf-played');
-                                                    if (isPlayed && isPlaying) classes.push('wf-live');
-                                                    if (isBuffered) classes.push('wf-buffered');
-
-                                                    return (
-                                                        <div
-                                                            key={i}
-                                                            className={classes.join(' ')}
-                                                            style={{ height: `${Math.max(8, Math.round(h * 100))}%` }}
-                                                        />
-                                                    );
-                                                })}
-
-                                                {/* Playhead needle — pixel-accurate using measured shell width */}
-                                                {(() => {
-                                                    const shellWidth = waveformShellRef.current?.offsetWidth ?? 0;
-                                                    const BAR_SLOT = 3 + 2;
-                                                    const playedBarIndex = Math.floor((progressPercent / 100) * WAVEFORM_BAR_COUNT);
-                                                    const barGridPx = playedBarIndex * BAR_SLOT + 3;
-                                                    const cursorLeft = shellWidth > 0
-                                                        ? (barGridPx / shellWidth) * 100
-                                                        : progressPercent;
-
-                                                    return (
-                                                        <div
-                                                            className={`ticket-audio-waveform-cursor${isPlaying ? ' wf-playing' : ''}`}
-                                                            style={{ left: `${cursorLeft}%` }}
-                                                        />
-                                                    );
-                                                })()}
-
-                                                {/* Invisible range input for all seek interactions */}
-                                                <input
-                                                    type="range"
-                                                    min={0}
-                                                    max={Math.max(duration, 0.1)}
-                                                    step={0.01}
-                                                    value={displayedCurrentTime}
-                                                    onMouseDown={() => setIsScrubbing(true)}
-                                                    onTouchStart={() => setIsScrubbing(true)}
-                                                    onChange={(event) => handleSeekInput(Number(event.currentTarget.value))}
-                                                    onMouseUp={commitScrub}
-                                                    onTouchEnd={commitScrub}
-                                                    onKeyUp={commitScrub}
-                                                    onBlur={commitScrub}
-                                                    className="ticket-audio-waveform-input"
-                                                    aria-label="Seek timeline"
-                                                />
-                                            </div>
-
-                                            <span className="w-11 font-mono text-xs text-gray-300">
-                                                {formatTime(duration)}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            <button
-                                                onClick={() => { void seekBy(10); }}
-                                                className="ticket-audio-action-btn inline-flex h-9 min-w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 px-2 text-xs font-semibold text-white transition-colors hover:bg-white/10"
-                                                aria-label="Skip forward 10 seconds"
-                                            >
-                                                +10
-                                            </button>
-
-                                            <button
-                                                onClick={toggleMute}
-                                                className="ticket-audio-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition-colors hover:bg-white/10"
-                                                aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
-                                            >
-                                                <VolumeIcon className="w-4 h-4" />
-                                            </button>
-
-                                            <div className="ticket-audio-volume-shell">
-                                                <div className="ticket-audio-volume-track ticket-audio-volume-track-base" />
-                                                <div
-                                                    className="ticket-audio-volume-track ticket-audio-volume-track-fill"
-                                                    style={{ width: `${volumePercent}%` }}
-                                                />
-                                                <input
-                                                    type="range"
-                                                    min={0}
-                                                    max={1}
-                                                    step={0.01}
-                                                    value={effectiveVolume}
-                                                    onChange={(event) => applyVolume(Number(event.currentTarget.value))}
-                                                    className="ticket-audio-volume-input ticket-audio-volume-inline"
-                                                    aria-label="Volume"
-                                                />
-                                            </div>
-
-                                            <button
-                                                onClick={cyclePlaybackSpeed}
-                                                className="ticket-audio-action-btn inline-flex h-9 items-center justify-center gap-1 rounded-full border border-white/20 bg-white/5 px-2 text-white transition-colors hover:bg-white/10"
-                                                aria-label={`Playback speed ${formatSpeed(playbackSpeed)}`}
-                                                title="Cycle playback speed"
-                                            >
-                                                <Gauge className="w-4 h-4" />
-                                                <span className="hidden sm:inline text-xs font-semibold">{formatSpeed(playbackSpeed)}</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {audioError && (
-                                    <p className="text-xs text-red-300 px-1">{audioError}</p>
-                                )}
-                                {!audioUrl && (
-                                    <p className="text-xs text-amber-200 px-1">Requesting signed playback URL from backend...</p>
-                                )}
-                            </div>
-
-                            <audio
-                                ref={audioRef}
-                                src={audioUrl || undefined}
-                                className="hidden"
-                                preload="metadata"
-                                crossOrigin="anonymous"
-                                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                                onProgress={updateBufferedProgress}
-                                onLoadedMetadata={(e) => {
-                                    const audioDuration = Number.isFinite(e.currentTarget.duration)
-                                        ? e.currentTarget.duration
-                                        : 0;
-                                    setDuration(audioDuration);
-                                    e.currentTarget.playbackRate = playbackSpeed;
-                                    e.currentTarget.volume = clamp(volume, 0, 1);
-                                    e.currentTarget.muted = isMuted;
-                                    updateBufferedProgress();
-                                    setAudioError(null);
-                                }}
-                                onPlay={() => setIsPlaying(true)}
-                                onPause={() => setIsPlaying(false)}
-                                onEnded={() => {
-                                    setIsPlaying(false);
-                                    setCurrentTime(0);
-                                    setScrubTime(null);
-                                }}
-                                onError={() => {
-                                    setAudioError('Failed to load recording URL.');
-                                    setIsPlaying(false);
-                                }}
-                            />
-                        </div>
-
-                        {/* Metrics Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-                            <div
-                                title={`Exact score: ${metricCards.politeness} / 100`}
-                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase">Politeness</span>
-                                    <Smile className="w-5 h-5 text-green-500 transition-transform group-hover:scale-110" />
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold text-gray-900">{metricCards.politeness}%</span>
-                                    <span className="text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">High</span>
-                                </div>
-                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                                    Exact score: {metricCards.politeness} / 100
-                                </p>
-                            </div>
-
-                            <div
-                                title={`Exact score: ${metricCards.confidence} / 100`}
-                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase">Confidence</span>
-                                    <Zap className="w-5 h-5 text-blue-500 transition-transform group-hover:scale-110" />
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold text-gray-900">{metricCards.confidence}%</span>
-                                    <span className="text-xs font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Steady</span>
-                                </div>
-                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                                    Exact score: {metricCards.confidence} / 100
-                                </p>
-                            </div>
-
-                            <div
-                                title={`Exact score: ${metricCards.interestScore} / 100`}
-                                className="group relative overflow-hidden bg-gradient-to-br from-purple-600 to-indigo-700 text-white p-5 rounded-2xl border border-transparent shadow-sm transition-shadow hover:shadow-lg"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-white/80 uppercase">Interest</span>
-                                    <ThumbsUp className="w-5 h-5 text-white transition-transform group-hover:scale-110" />
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold uppercase">{metricCards.interestRaw}</span>
-                                </div>
-                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-white/25 bg-black/20 px-2 py-1 text-[11px] text-white/90 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                                    Mapped score: {metricCards.interestScore} / 100
-                                </p>
-                            </div>
-
-                            <div
-                                title={`Exact score: ${Math.min(metricCards.speakers * 50, 100)} / 100`}
-                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase">Speakers</span>
-                                    <Users className="w-5 h-5 text-gray-400 transition-transform group-hover:scale-110" />
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold text-gray-900">{metricCards.speakers}</span>
-                                    <div className="flex items-center gap-2">
-                                        <div
-                                            className={`relative ${isSuperAdmin ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                                            onClick={handleAvatarClick}
-                                            title={isSuperAdmin ? "Click to upload avatar" : ticket?.creator_details?.fullname}
-                                        >
-                                            <Avatar
-                                                name={ticket?.creator_details?.fullname || 'Unknown'}
-                                                src={ticket?.creator_details?.avatar_url}
-                                                size="md"
-                                            />
-                                            {isSuperAdmin && (
-                                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 hover:opacity-100 transition-opacity">
-                                                    <Camera className="w-4 h-4 text-white" />
-                                                </div>
-                                            )}
-                                            <input
-                                                ref={fileInputRef}
-                                                type="file"
-                                                className="hidden"
-                                                accept="image/*"
-                                                onChange={handleAvatarUpload}
-                                            />
-                                        </div>
-                                        {ticket?.creator_details && (
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-medium text-gray-900">
-                                                    {ticket.creator_details.fullname}
-                                                </span>
-                                                <span className="text-[10px] text-gray-500">
-                                                    Primary Speaker
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                                    Conversation complexity: {Math.min(metricCards.speakers * 50, 100)} / 100
-                                </p>
-                            </div>
-
-                            <div
-                                title={`Exact score: ${metricCards.ratingOutOf100} / 100`}
-                                className="group relative overflow-hidden bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-shadow hover:shadow-lg"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase">Rating</span>
-                                    <Star className="w-5 h-5 text-amber-400 fill-amber-400 transition-transform group-hover:scale-110" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-2xl font-semibold text-gray-900">{Math.round((analysis?.rating || 0) / 2)} <span className="text-base text-gray-400 font-normal">/ 5</span></span>
-                                    {renderStars(analysis?.rating || 0)}
-                                </div>
-                                <p className="ticket-metric-score-hint pointer-events-none absolute left-5 bottom-4 inline-flex rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-600 opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                                    Exact score: {metricCards.ratingOutOf100} / 100
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Main Analysis Grid */}
-                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                            <div className="xl:col-span-2 space-y-6">
-                                {/* Executive Brief */}
-                                <div className="space-y-6">
-                                    <div className="bg-white p-7 rounded-2xl border border-gray-200 shadow-sm">
-                                        <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-2 bg-purple-100 rounded-lg">
-                                                    <Zap className="w-5 h-5 text-purple-600" />
-                                                </div>
-                                                <h2 className="text-lg font-semibold text-gray-900">Executive Brief</h2>
-                                            </div>
-                                            {analysis?.call_outcome && (
-                                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ring-1 ${
-                                                    analysis.call_outcome === 'interested'
-                                                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                                                        : analysis.call_outcome === 'not_interested'
-                                                        ? 'bg-red-50 text-red-700 ring-red-200'
-                                                        : 'bg-amber-50 text-amber-700 ring-amber-200'
-                                                }`}>
-                                                    {analysis.call_outcome === 'interested' && <CheckCircle className="w-3.5 h-3.5" />}
-                                                    {analysis.call_outcome === 'not_interested' && <XCircle className="w-3.5 h-3.5" />}
-                                                    {analysis.call_outcome === 'follow_up_required' && <AlertTriangle className="w-3.5 h-3.5" />}
-                                                    {analysis.call_outcome.replaceAll('_', ' ')}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <p className="text-[15px] leading-8 text-gray-700">{analysis?.summary || 'No summary available.'}</p>
-
-                                        <div className="mt-6 flex flex-wrap gap-2">
-                                            {ticket.visittype && (
-                                                <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm font-medium">
-                                                    #{ticket.visittype}
-                                                </span>
-                                            )}
-                                            <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm font-medium">
-                                                #Pricing
-                                            </span>
-                                            <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm font-medium">
-                                                #Negotiation
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Objections / Action Items */}
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        {/* Objections */}
-                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                                            <div className="flex items-center gap-2 mb-4 text-red-600">
-                                                <AlertCircle className="w-5 h-5" />
-                                                <h3 className="text-lg font-semibold">Key Objections</h3>
-                                            </div>
-                                            <ul className="space-y-3">
-                                                {analysis?.objections?.length ? (
-                                                    analysis.objections.map((obj, i) => (
-                                                        <li key={i} className="analysis-objection-item flex gap-3 items-start p-4 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-sm">
-                                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 shrink-0 mt-0.5">
-                                                                <AlertCircle className="w-4 h-4" />
-                                                            </span>
-                                                            <div className="flex-1">
-                                                                <p className="text-base leading-7 text-gray-900 font-semibold">
-                                                                    {typeof obj === 'string' ? obj : obj.objection}
-                                                                </p>
-                                                                {typeof obj !== 'string' && obj.response && (
-                                                                    <p className="text-sm leading-6 text-gray-600 mt-1.5">Response: {obj.response}</p>
-                                                                )}
-                                                            </div>
-                                                        </li>
-                                                    ))
-                                                ) : (
-                                                    <p className="text-gray-500 text-sm italic">No objections detected.</p>
-                                                )}
-                                            </ul>
-                                        </div>
-
-                                        {/* Action Items */}
-                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                                            <div className="flex items-center gap-2 mb-4 text-green-600">
-                                                <Sparkles className="w-5 h-5" />
-                                                <h3 className="text-lg font-semibold">Next Steps</h3>
-                                            </div>
-                                            {hasAnyActionItems ? (
-                                                <div className="space-y-4">
-                                                    {aiActionItems.length > 0 && (
-                                                        <ul className="space-y-3">
-                                                            {aiActionItems.map((item, i) => (
-                                                                <li key={`ai-${i}`} className="analysis-next-step-item flex gap-3 items-start p-4 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-sm">
-                                                                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-green-700 shrink-0 mt-0.5">
-                                                                        <ChevronRight className="w-4 h-4" />
-                                                                    </span>
-                                                                    <span className="text-base leading-7 text-gray-900 font-semibold">{item}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    )}
-
-                                                    {trackedActionItems.length > 0 && (
-                                                        <ul className="space-y-3">
-                                                            {trackedActionItems.map((item) => (
-                                                                <li key={item.id} className="flex gap-3 items-start p-4 bg-blue-50 rounded-xl border border-blue-100 transition-all hover:-translate-y-0.5 hover:shadow-sm">
-                                                                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full shrink-0 mt-0.5 ${item.completed ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                                        <ChevronRight className="w-4 h-4" />
-                                                                    </span>
-                                                                    <div className="flex-1">
-                                                                        <p className="text-sm text-gray-900 font-semibold">{item.title}</p>
-                                                                        {item.description && (
-                                                                            <p className="text-xs text-gray-600 mt-1">{item.description}</p>
-                                                                        )}
-                                                                        <div className="flex gap-2 mt-2">
-                                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.completed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                                                {item.completed ? 'COMPLETED' : 'OPEN'}
-                                                                            </span>
-                                                                            {item.due_date && (
-                                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                                                                    DUE {new Date(item.due_date).toLocaleDateString()}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <p className="text-gray-500 text-sm italic">No action items detected.</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-5 md:p-6 rounded-2xl border border-gray-200 shadow-sm">
+                    <div className="ticket-detail-body">
+                        <TicketDetailWorkspace
+                            ticket={ticket}
+                            analysis={analysis}
+                            isPresales={isPresales}
+                            agentName={agentName}
+                            agentInitials={agentInitials}
+                            metricCards={metricCards}
+                            sortedMoments={sortedMoments}
+                            seekToMoment={seekToMoment}
+                            getSentimentColor={getSentimentColor}
+                            renderStars={renderStars}
+                            isSuperAdmin={isSuperAdmin}
+                            onAvatarClick={handleAvatarClick}
+                            callDuration={duration}
+                            audio={{
+                                isPlaying,
+                                togglePlayback,
+                                restartPlayback,
+                                seekBy,
+                                formatTime,
+                                displayedCurrentTime,
+                                duration,
+                                progressPercent,
+                                bufferedPercent,
+                                waveformHeights,
+                                waveformBarCount: WAVEFORM_BAR_COUNT,
+                                waveformShellRef,
+                                handleSeekInput,
+                                commitScrub,
+                                setIsScrubbing,
+                                toggleMute,
+                                isMuted,
+                                VolumeIcon,
+                                volumePercent,
+                                effectiveVolume,
+                                applyVolume,
+                                cyclePlaybackSpeed,
+                                formatSpeed,
+                                playbackSpeed,
+                                audioError,
+                                audioUrl,
+                                audioRef,
+                                updateBufferedProgress,
+                                setCurrentTime,
+                                setDuration,
+                                setIsPlaying,
+                                setScrubTime,
+                                setAudioError,
+                                playbackSpeedValue: playbackSpeed,
+                                volume,
+                                clamp,
+                            }}
+                        >
+                                <div className="ci-panel">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                                        <h3 className="text-base md:text-lg font-semibold text-gray-900">Current vs Previous Conversation</h3>
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="ci-panel__title">Current vs Previous Conversation</h3>
+                                            {comparisonInsights?.deltaScore !== null && comparisonInsights?.deltaScore !== undefined && (
+                                                <span className={`ci-trend-chip ci-trend-chip--${comparisonInsights.deltaScore > 0 ? 'up' : comparisonInsights.deltaScore < 0 ? 'down' : 'flat'}`}>
+                                                    {comparisonInsights.deltaScore > 0 ? <TrendingUp className="h-3 w-3" /> : comparisonInsights.deltaScore < 0 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                                                    {comparisonInsights.deltaScore > 0 ? `+${comparisonInsights.deltaScore}` : comparisonInsights.deltaScore} vs previous
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                                             <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
                                                 <button
@@ -2707,6 +2185,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                             </feMerge>
                                                         </filter>
                                                     </defs>
+
+                                                    <text
+                                                        x={14}
+                                                        y={comparisonChart.padding.top + comparisonChart.chartHeight / 2}
+                                                        textAnchor="middle"
+                                                        fontSize="10"
+                                                        fill="var(--chart-grid-label)"
+                                                        fontWeight="600"
+                                                        letterSpacing="0.08em"
+                                                        transform={`rotate(-90 14 ${comparisonChart.padding.top + comparisonChart.chartHeight / 2})`}
+                                                    >
+                                                        SCORE (0-100)
+                                                    </text>
 
                                                     {[...Array(comparisonChart.yTicks)].map((_, tickIndex) => {
                                                         const ratio = tickIndex / (comparisonChart.yTicks - 1);
@@ -2996,79 +2487,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                         </div>
                                     )}
                                 </div>
-                            </div>
-
-                            <div className="xl:col-span-1 space-y-6">
-                                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm xl:sticky xl:top-24">
-                                    <div className="flex items-center gap-2 mb-6">
-                                        <div className="p-2 bg-blue-100 rounded-lg">
-                                            <Clock className="w-5 h-5 text-blue-600" />
-                                        </div>
-                                        <h2 className="text-lg font-semibold text-gray-900">Key Moments</h2>
-                                    </div>
-
-                                    <div
-                                        ref={momentsContainerRef}
-                                        className="space-y-5 relative max-h-[360px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent"
-                                    >
-                                        <div className="absolute left-3.5 top-0 bottom-0 w-0.5 bg-gray-100 min-h-full" />
-                                        {sortedMoments.length ? (
-                                            sortedMoments.map((moment, i) => {
-                                                const isActive = i === activeMomentIndex;
-                                                const momentTime = moment.time || moment.timestamp || '00:00';
-                                                const momentLabel = moment.label || moment.description || 'Key moment';
-                                                const momentDescription = moment.description || moment.label || '';
-                                                return (
-                                                    <div
-                                                        key={i}
-                                                        ref={(el) => { momentRefs.current[i] = el; }}
-                                                        onClick={() => seekToMoment(momentTime)}
-                                                        className={`relative pl-10 group cursor-pointer p-3 rounded-xl transition-all duration-300 border ${isActive
-                                                            ? 'bg-purple-50 border-purple-200 shadow-sm scale-[1.01]'
-                                                            : 'hover:bg-gray-50 border-transparent'
-                                                            }`}
-                                                    >
-                                                        <div className={`absolute left-[11px] top-7 w-2.5 h-2.5 rounded-full border-2 border-white ring-2 z-10 transition-colors ${isActive ? 'bg-purple-600 ring-purple-200 scale-125' :
-                                                            moment.sentiment === 'positive' ? 'bg-green-500 ring-green-100' :
-                                                                moment.sentiment === 'negative' ? 'bg-red-500 ring-red-100' :
-                                                                    'bg-gray-400 ring-gray-100'
-                                                            }`} />
-
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded transition-colors ${isActive ? 'text-purple-700 bg-purple-100' : 'text-gray-500 bg-gray-100'}`}>
-                                                                {momentTime}
-                                                            </span>
-                                                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getSentimentColor(moment.sentiment)}`}>
-                                                                {moment.sentiment}
-                                                            </span>
-                                                        </div>
-                                                        <h4 className={`font-semibold text-sm mb-1 transition-colors ${isActive ? 'text-purple-900' : 'text-gray-900 group-hover:text-purple-600'}`}>
-                                                            {momentLabel}
-                                                        </h4>
-                                                        <p className={`text-xs line-clamp-2 transition-colors ${isActive ? 'text-purple-700' : 'text-gray-500'}`}>
-                                                            &quot;{momentDescription}&quot;
-                                                        </p>
-                                                    </div>
-                                                );
-                                            })
-                                        ) : (
-                                            <p className="text-gray-500 text-sm italic pl-10">No key moments found.</p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                                    <h3 className="text-base font-semibold text-gray-900 mb-4">Raw Analysis JSON</h3>
-                                    <div className="max-h-[280px] overflow-auto rounded-lg border border-gray-200 bg-gray-950 p-4">
-                                        <pre className="text-xs text-green-200 whitespace-pre-wrap break-words">
-                                            {analysis
-                                                ? JSON.stringify(analysis, null, 2)
-                                                : 'No analysis JSON found for this ticket.'}
-                                        </pre>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
                         {/* Excuses Timeline */}
                         {excuses.length > 0 && (
@@ -3114,30 +2532,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                         )}
 
-                        {/* Suggestions Section */}
                         {analysis?.improvementsuggestions && analysis.improvementsuggestions.length > 0 && (
-                            <div className="bg-white p-6 md:p-7 rounded-2xl border border-gray-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Sparkles className="w-5 h-5 text-amber-500" />
-                                    <h3 className="text-lg font-semibold text-gray-900">Improvement Suggestions</h3>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {analysis.improvementsuggestions.map((suggestion, i) => (
-                                        <div key={i} className="analysis-suggestion-item p-4 rounded-xl transition-all hover:shadow-sm">
-                                            <div className="flex items-start gap-3">
-                                                <div className="analysis-suggestion-index h-7 w-7 rounded-lg bg-gradient-to-br from-amber-100 to-amber-50 text-amber-700 text-sm font-semibold flex items-center justify-center border border-amber-200 shadow-sm">
-                                                    {i + 1}
-                                                </div>
-                                                <p className="text-sm leading-6 text-gray-800">{suggestion}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            <TicketCoachingCards suggestions={analysis.improvementsuggestions} />
                         )}
 
+                        </TicketDetailWorkspace>
+
                         {/* ── Admin Notes (Markdown) ── */}
-                        <TicketNotesSection ticketId={id} initialNotes={ticket?.notes || ''} />
+                        <section className="ticket-detail-notes" aria-label="Employee notes">
+                            <TicketNotesSection ticketId={id} initialNotes={ticket?.notes || ''} />
+                        </section>
                     </div>
 
                     {/* ── Flag Confirmation Modal ── */}

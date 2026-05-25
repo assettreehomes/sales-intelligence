@@ -60,12 +60,6 @@ const CALL_OPTIONS = [
     { value: 'failed', label: 'Failed' },
 ];
 
-const DIR_OPTIONS = [
-    { value: 'all', label: 'Inbound + Outbound' },
-    { value: 'inbound', label: 'Inbound' },
-    { value: 'outbound', label: 'Outbound' },
-];
-
 function getPersonName(person?: { full_name?: string; fullname?: string } | null) {
     return person?.full_name || person?.fullname || 'Unknown';
 }
@@ -170,7 +164,6 @@ export function PresalesFiltersSection({ setSearchInput }: PresalesFiltersSectio
                 <TicketsFilterSelect label="Outcome" value={filters.outcomeFilter} onChange={(v) => setFilter('outcomeFilter', v)} options={OUTCOME_OPTIONS} />
                 <TicketsFilterSelect label="Auth" value={filters.authenticityFilter} onChange={(v) => setFilter('authenticityFilter', v)} options={AUTH_OPTIONS} />
                 <TicketsFilterSelect label="Call" value={filters.callStatusFilter} onChange={(v) => setFilter('callStatusFilter', v)} options={CALL_OPTIONS} />
-                <TicketsFilterSelect label="Dir" value={filters.directionFilter} onChange={(v) => setFilter('directionFilter', v)} options={DIR_OPTIONS} />
 
                 <TicketsSortButtons sortOrder={filters.sortOrder} onSortChange={(order) => setFilter('sortOrder', order)} />
 

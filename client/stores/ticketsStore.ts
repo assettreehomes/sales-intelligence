@@ -67,6 +67,8 @@ interface TicketsState {
     setPage: (page: number) => void;
 }
 
+let ticketsFetchSeq = 0;
+
 const DEFAULT_FILTERS: Filters = {
     statusFilter: 'all',
     dateFilter: '30days',
@@ -93,6 +95,7 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
     employeesLoaded: false,
 
     fetchTickets: async () => {
+        const requestId = ++ticketsFetchSeq;
         set({ loading: true });
         try {
             const token = await getToken();
@@ -118,21 +121,31 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
 
             if (!response.ok) {
                 const payload = await response.json().catch(() => ({}));
-                throw new Error(payload?.error || 'Failed to fetch tickets');
+                const detail = typeof payload?.details === 'string' ? payload.details : '';
+                throw new Error(
+                    detail
+                        ? `${payload?.error || 'Failed to fetch tickets'}: ${detail}`
+                        : (payload?.error || 'Failed to fetch tickets')
+                );
             }
 
             const data = await response.json();
+            if (requestId !== ticketsFetchSeq) return;
+
             set({
                 tickets: data.tickets || [],
                 totalTickets: data.total || 0,
                 initialized: true,
             });
         } catch (error) {
+            if (requestId !== ticketsFetchSeq) return;
             const message = error instanceof Error ? error.message : 'Failed to fetch tickets. Please try again.';
             console.error('Failed to fetch tickets:', error);
             notifyError(message, { toastId: 'tickets-fetch-error' });
         } finally {
-            set({ loading: false });
+            if (requestId === ticketsFetchSeq) {
+                set({ loading: false });
+            }
         }
     },
 
@@ -183,10 +196,13 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
     },
 
     setFilter: (key, value) => {
-        set((state) => ({
-            filters: { ...state.filters, [key]: value },
-            currentPage: 1, // Reset to page 1 on filter change
-        }));
+        set((state) => {
+            if (state.filters[key] === value) return state;
+            return {
+                filters: { ...state.filters, [key]: value },
+                currentPage: 1,
+            };
+        });
     },
 
     clearFilters: () => {
