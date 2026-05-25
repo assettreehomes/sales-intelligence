@@ -1,56 +1,30 @@
-import { HTMLAttributes } from 'react';
+import * as React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
 
-type BadgeVariant = 'default' | 'success' | 'destructive' | 'warning' | 'secondary' | 'outline';
+const badgeVariants = cva(
+    'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-400)]/55 focus:ring-offset-2',
+    {
+        variants: {
+            variant: {
+                default: 'border-transparent bg-[color-mix(in_srgb,var(--color-primary-500),transparent_84%)] text-[var(--color-primary-500)]',
+                success: 'border-transparent bg-[color-mix(in_srgb,var(--color-success-500),transparent_84%)] text-[var(--color-success-strong)]',
+                destructive: 'border-transparent bg-[color-mix(in_srgb,var(--color-critical-500),transparent_84%)] text-[var(--color-critical-strong)]',
+                warning: 'border-transparent bg-[color-mix(in_srgb,var(--color-warning-500),transparent_84%)] text-[var(--color-warning-strong)]',
+                secondary: 'border-transparent bg-[var(--surface-hover)] text-[var(--color-text-secondary)]',
+                outline: 'border-[var(--color-border-strong)] text-[var(--color-text-primary)]'
+            }
+        },
+        defaultVariants: {
+            variant: 'default'
+        }
+    }
+);
 
-const variantStyles: Record<BadgeVariant, { bg: string; text: string; ring: string }> = {
-    default: {
-        bg: 'rgba(103,40,142,0.10)',
-        text: '#67288e',
-        ring: 'rgba(103,40,142,0.25)',
-    },
-    success: {
-        bg: 'rgba(5,150,105,0.10)',
-        text: '#059669',
-        ring: 'rgba(5,150,105,0.25)',
-    },
-    destructive: {
-        bg: 'rgba(220,38,38,0.10)',
-        text: '#dc2626',
-        ring: 'rgba(220,38,38,0.20)',
-    },
-    warning: {
-        bg: 'rgba(217,119,6,0.10)',
-        text: '#d97706',
-        ring: 'rgba(217,119,6,0.20)',
-    },
-    secondary: {
-        bg: 'var(--surface-hover)',
-        text: 'var(--color-text-secondary)',
-        ring: 'var(--color-border-subtle)',
-    },
-    outline: {
-        bg: 'transparent',
-        text: 'var(--color-text-primary)',
-        ring: 'var(--color-border-strong)',
-    },
-};
+export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
-interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-    variant?: BadgeVariant;
+function Badge({ className, variant, ...props }: BadgeProps) {
+    return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
-export function Badge({ variant = 'default', className = '', style, ...props }: BadgeProps) {
-    const vs = variantStyles[variant];
-    return (
-        <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${className}`}
-            style={{
-                background: vs.bg,
-                color: vs.text,
-                boxShadow: `inset 0 0 0 1px ${vs.ring}`,
-                ...style,
-            }}
-            {...props}
-        />
-    );
-}
+export { Badge, badgeVariants };

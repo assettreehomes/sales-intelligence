@@ -20,10 +20,10 @@ import {
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
-    PhoneCall,
     Radio,
     Shield,
     Sun,
+    TrendingUp,
     User,
     UserPlus,
     Users
@@ -44,6 +44,8 @@ type AdminSection =
     | 'sellDo'
     | 'antivirus';
 
+type AdminNavGroup = 'analytics' | 'operations' | 'people' | 'tools';
+
 interface AdminShellProps {
     activeSection: AdminSection;
     children: ReactNode;
@@ -53,6 +55,7 @@ type AdminNavItem = {
     id: AdminSection;
     label: string;
     icon: LucideIcon;
+    group: AdminNavGroup;
     href?: string;
     onClick?: () => void;
 };
@@ -69,6 +72,14 @@ const PS_REG_COMMAND =
     `reg add "HKCU\\Software\\Classes\\imoulauncher" /ve /d "URL:IMOU Launcher" /f` +
     ` ; reg add "HKCU\\Software\\Classes\\imoulauncher" /v "URL Protocol" /d "" /f` +
     ` ; reg add "HKCU\\Software\\Classes\\imoulauncher\\shell\\open\\command" /ve /d '"C:\\Program Files\\Imou_en\\bin\\Imou_en.exe"' /f`;
+
+const NAV_GROUP_ORDER: AdminNavGroup[] = ['analytics', 'operations', 'people', 'tools'];
+const NAV_GROUP_LABELS: Record<AdminNavGroup, string> = {
+    analytics: 'Analytics',
+    operations: 'Operations',
+    people: 'People',
+    tools: 'Tools'
+};
 
 type FloatingButtonPosition = {
     left: number;
@@ -241,24 +252,37 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
     const navItems = useMemo<AdminNavItem[]>(() => {
         if (profile?.role === 'intern' || profile?.role === 'employee') {
             return [
-                { id: 'training' as const, label: 'Training', icon: GraduationCap, href: '/intern' }
+                { id: 'training' as const, label: 'Training', icon: GraduationCap, group: 'analytics', href: '/intern' }
             ];
         }
 
         return [
-            { id: 'performance' as const, label: 'Performance', icon: BarChart3, href: '/admin/performance' },
-            { id: 'presalesPerformance' as const, label: 'Presales Performance', icon: BarChart3, href: '/admin/presales-performance' },
-            { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
-            { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, onClick: openSellDo },
-            { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, onClick: openAntivirusApp },
-            { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
-            { id: 'assign' as const, label: 'Assign', icon: Users, href: '/admin/assign' },
-            { id: 'employees' as const, label: 'Employees', icon: UserPlus, href: '/admin/employees' },
-            { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, href: '/admin/activity' },
-            { id: 'live' as const, label: 'Live Status', icon: Radio, href: '/admin/live' },
-            { id: 'imou' as const, label: 'CCTV Video', icon: Camera, onClick: openImou }
+            { id: 'performance' as const, label: 'Performance', icon: BarChart3, group: 'analytics', href: '/admin/performance' },
+            { id: 'presalesPerformance' as const, label: 'Presales Performance', icon: TrendingUp, group: 'analytics', href: '/admin/presales-performance' },
+            { id: 'tickets' as const, label: 'Tickets', icon: Radio, group: 'operations', href: '/admin/tickets' },
+            { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, group: 'operations', href: '/admin/excuses' },
+            { id: 'assign' as const, label: 'Assign', icon: Users, group: 'operations', href: '/admin/assign' },
+            { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, group: 'operations', href: '/admin/activity' },
+            { id: 'employees' as const, label: 'Employees', icon: UserPlus, group: 'people', href: '/admin/employees' },
+            { id: 'live' as const, label: 'Live Status', icon: Radio, group: 'people', href: '/admin/live' },
+            { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, group: 'tools', onClick: openSellDo },
+            { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, group: 'tools', onClick: openAntivirusApp },
+            { id: 'imou' as const, label: 'CCTV Video', icon: Camera, group: 'tools', onClick: openImou }
         ];
     }, [profile?.role, openAntivirusApp, openImou, openSellDo]);
+
+    const groupedNavItems = useMemo(() => {
+        const byGroup = new Map<AdminNavGroup, AdminNavItem[]>();
+        navItems.forEach((item) => {
+            const bucket = byGroup.get(item.group) ?? [];
+            bucket.push(item);
+            byGroup.set(item.group, bucket);
+        });
+
+        return NAV_GROUP_ORDER
+            .map((group) => ({ group, items: byGroup.get(group) ?? [] }))
+            .filter((entry) => entry.items.length > 0);
+    }, [navItems]);
 
     return (
         <div className={`admin-shell min-h-screen ${activeSection === 'performance' ? 'admin-shell--performance' : ''}`}>
@@ -354,7 +378,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                 className={`admin-shell-sidebar fixed inset-y-0 left-0 z-50 flex transition-all duration-300 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                     } ${collapsed ? 'w-20' : 'w-[240px]'}`}
             >
-                <div className="flex h-full w-full flex-col">
+                <div className="flex h-full min-h-0 w-full flex-col">
                     <div className={`admin-shell-brand relative flex items-center px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
                         <Link href={homeHref} className="flex items-center gap-2 overflow-hidden">
                             <Image
@@ -380,44 +404,49 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                         </button>
                     </div>
 
-                    <nav className="flex-1 space-y-1 px-3 py-4">
-                        {navItems.map((item) => {
-                            const active = item.id === activeSection;
-                            const baseClass = `admin-shell-nav-link group flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : 'gap-3'
-                                }`;
-                            const activeClass = active
-                                ? 'is-active'
-                                : 'is-inactive';
-                            const iconClass = active ? 'is-active' : 'is-inactive';
+                    <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
+                        {groupedNavItems.map(({ group, items }, groupIndex) => (
+                            <div key={group}>
+                                {!collapsed ? <p className="admin-shell-nav-group-label">{NAV_GROUP_LABELS[group]}</p> : null}
+                                <div className="space-y-1">
+                                    {items.map((item) => {
+                                        const active = item.id === activeSection;
+                                        const baseClass = `admin-shell-nav-link group flex w-full items-center px-3 py-2.5 text-sm font-medium transition-all ${
+                                            collapsed ? 'justify-center' : 'gap-3'
+                                        }`;
+                                        const activeClass = active ? 'is-active' : 'is-inactive';
+                                        const iconClass = active ? 'is-active' : 'is-inactive';
 
-                            return (
-                                item.onClick ? (
-                                    <button
-                                        key={item.id}
-                                        type="button"
-                                        className={`${baseClass} ${activeClass}`}
-                                        onClick={() => {
-                                            item.onClick?.();
-                                            setMobileOpen(false);
-                                        }}
-                                        onContextMenu={undefined}
-                                    >
-                                        <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
-                                        {!collapsed && <span>{item.label}</span>}
-                                    </button>
-                                ) : (
-                                    <Link
-                                        key={item.id}
-                                        href={item.href ?? homeHref}
-                                        className={`${baseClass} ${activeClass}`}
-                                        onClick={() => setMobileOpen(false)}
-                                    >
-                                        <item.icon className={`admin-shell-nav-icon h-5 w-5 ${iconClass}`} />
-                                        {!collapsed && <span>{item.label}</span>}
-                                    </Link>
-                                )
-                            );
-                        })}
+                                        return item.onClick ? (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                className={`${baseClass} ${activeClass}`}
+                                                onClick={() => {
+                                                    item.onClick?.();
+                                                    setMobileOpen(false);
+                                                }}
+                                                onContextMenu={undefined}
+                                            >
+                                                <item.icon className={`admin-shell-nav-icon h-[18px] w-[18px] ${iconClass}`} />
+                                                {!collapsed && <span>{item.label}</span>}
+                                            </button>
+                                        ) : (
+                                            <Link
+                                                key={item.id}
+                                                href={item.href ?? homeHref}
+                                                className={`${baseClass} ${activeClass}`}
+                                                onClick={() => setMobileOpen(false)}
+                                            >
+                                                <item.icon className={`admin-shell-nav-icon h-[18px] w-[18px] ${iconClass}`} />
+                                                {!collapsed && <span>{item.label}</span>}
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                                {groupIndex < groupedNavItems.length - 1 && !collapsed ? <div className="admin-shell-nav-separator" /> : null}
+                            </div>
+                        ))}
                     </nav>
 
                     <div className="admin-shell-footer px-3 py-4">
