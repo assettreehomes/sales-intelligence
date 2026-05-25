@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { OutcomeDonutChart, AuthenticityBarChart, DailyTrendChart } from '@/components/ui/charts';
+import { SegmentedToggle } from '@/components/SegmentedToggle';
 import {
     Clock, Loader2, PhoneCall, Search, ShieldAlert, ShieldCheck,
     Users, TrendingUp, CheckCircle2, XCircle, RefreshCw,
@@ -309,17 +310,13 @@ function PresalesPerformanceContent() {
                                 <p className="mt-1 text-sm" style={mutedText}>Outcome quality, agent rankings, and call authenticity for TeleCMI calls.</p>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: t.toggleBorder }}>
-                                    {PERIODS.map(p => (
-                                        <button key={p.key} onClick={() => setPeriod(p.key)}
-                                            className="px-4 py-2 text-sm font-semibold transition-colors"
-                                            style={period === p.key
-                                                ? { background: '#7c3aed', color: '#fff' }
-                                                : { background: 'transparent', color: t.toggleInactive }}>
-                                            {p.label}
-                                        </button>
-                                    ))}
-                                </div>
+                                <SegmentedToggle
+                                    value={period}
+                                    onChange={setPeriod}
+                                    shape="pill"
+                                    ariaLabel="Presales time period"
+                                    options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
+                                />
                                 <div className="flex flex-col items-end gap-0.5">
                                     <button onClick={() => load(period)} disabled={loading}
                                         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors"
@@ -490,18 +487,16 @@ function PresalesPerformanceContent() {
                                         <p className={sectionHead} style={{ color: t.textStrong }}>{view === 'agents' ? 'Agent Performance' : 'Team Performance'}</p>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        {/* Toggle */}
-                                        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: t.toggleBorder }}>
-                                            {(['agents', 'teams'] as const).map(v => (
-                                                <button key={v} onClick={() => setView(v)}
-                                                    className="px-4 py-1.5 text-sm font-semibold transition-colors"
-                                                    style={view === v
-                                                        ? { background: '#7c3aed', color: '#fff' }
-                                                        : { background: 'transparent', color: t.toggleInactive }}>
-                                                    {v === 'agents' ? 'Agents' : 'Teams'}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        <SegmentedToggle
+                                            value={view}
+                                            onChange={setView}
+                                            size="sm"
+                                            ariaLabel="Ranking view"
+                                            options={[
+                                                { value: 'agents', label: 'Agents' },
+                                                { value: 'teams', label: 'Teams' },
+                                            ]}
+                                        />
                                         {/* Search */}
                                         <div className="relative">
                                             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: t.searchIcon }} />

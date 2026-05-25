@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
+import { FilterDropdown } from '@/components/FilterDropdown';
 import { getToken, API_URL } from '@/stores/authStore';
 import { notifyError, notifySuccess } from '@/lib/toast';
 import {
@@ -171,24 +172,19 @@ function AssignPageContent() {
 
                     <form onSubmit={handleAssignDraft} className="bg-white rounded-2xl border border-gray-200 p-5 md:p-6 shadow-sm space-y-5">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Assign To Employee <span className="text-red-500">*</span>
-                            </label>
-                            <select
+                            <FilterDropdown
+                                variant="field"
+                                fieldLabel="Assign To Employee"
+                                required
                                 value={employeeId}
-                                onChange={(e) => setEmployeeId(e.target.value)}
+                                onChange={setEmployeeId}
                                 disabled={loadingEmployees || submitting}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
-                            >
-                                <option value="">
-                                    {loadingEmployees ? 'Loading employees...' : 'Select an employee'}
-                                </option>
-                                {employees.map((employee) => (
-                                    <option key={employee.id} value={employee.id}>
-                                        {employee.fullname} ({employee.email})
-                                    </option>
-                                ))}
-                            </select>
+                                placeholder={loadingEmployees ? 'Loading employees…' : 'Select an employee'}
+                                options={employees.map((employee) => ({
+                                    value: employee.id,
+                                    label: `${employee.fullname} (${employee.email})`,
+                                }))}
+                            />
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-4">
@@ -208,21 +204,14 @@ function AssignPageContent() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Visit Type
-                                </label>
-                                <select
+                                <FilterDropdown
+                                    variant="field"
+                                    fieldLabel="Visit Type"
                                     value={visitType}
-                                    onChange={(e) => setVisitType(e.target.value as VisitType)}
+                                    onChange={(v) => setVisitType(v as VisitType)}
                                     disabled={submitting}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100"
-                                >
-                                    {visitTypes.map((type) => (
-                                        <option key={type.value} value={type.value}>
-                                            {type.label}
-                                        </option>
-                                    ))}
-                                </select>
+                                    options={visitTypes}
+                                />
                             </div>
                         </div>
 

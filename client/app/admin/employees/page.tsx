@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
+import { FilterDropdown } from '@/components/FilterDropdown';
+import { SegmentedToggle } from '@/components/SegmentedToggle';
 import { getToken, API_URL } from '@/stores/authStore';
 import {
     UserPlus,
@@ -592,18 +594,19 @@ function EmployeesPageContent() {
 
                                 {/* Role selector */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
-                                    <select
+                                    <FilterDropdown
+                                        variant="field"
+                                        fieldLabel="Role"
                                         value={newRole}
-                                        onChange={e => setNewRole(e.target.value as typeof newRole)}
+                                        onChange={(v) => setNewRole(v as typeof newRole)}
                                         disabled={submitting}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    >
-                                        <option value="employee">Employee</option>
-                                        <option value="intern">Intern</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="superadmin">Superadmin</option>
-                                    </select>
+                                        options={[
+                                            { value: 'employee', label: 'Employee' },
+                                            { value: 'intern', label: 'Intern' },
+                                            { value: 'admin', label: 'Admin' },
+                                            { value: 'superadmin', label: 'Superadmin' },
+                                        ]}
+                                    />
                                 </div>
                                 <div className="flex gap-3 pt-1">
                                     <button
@@ -654,22 +657,16 @@ function EmployeesPageContent() {
                         </div>
                     </div>
 
-                    <div className="mb-5 inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('platform')}
-                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${activeTab === 'platform' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                        >
-                            Platform Users
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('presales')}
-                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${activeTab === 'presales' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                        >
-                            Presales Directory
-                        </button>
-                    </div>
+                    <SegmentedToggle
+                        className="mb-5"
+                        value={activeTab}
+                        onChange={setActiveTab}
+                        ariaLabel="Employee directory view"
+                        options={[
+                            { value: 'platform', label: 'Platform Users' },
+                            { value: 'presales', label: 'Presales Directory' },
+                        ]}
+                    />
 
                     {/* Search */}
                     {activeTab === 'platform' ? (
@@ -820,23 +817,25 @@ function EmployeesPageContent() {
                                             type="email"
                                             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
-                                        <select
+                                        <FilterDropdown
+                                            variant="field"
+                                            fieldLabel="Presales role"
                                             value={presalesRole}
-                                            onChange={e => setPresalesRole(e.target.value as 'agent' | 'team_leader')}
-                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                        >
-                                            <option value="agent">Presales Agent</option>
-                                            <option value="team_leader">Team Leader</option>
-                                        </select>
+                                            onChange={(v) => setPresalesRole(v as 'agent' | 'team_leader')}
+                                            options={[
+                                                { value: 'agent', label: 'Presales Agent' },
+                                                { value: 'team_leader', label: 'Team Leader' },
+                                            ]}
+                                        />
                                         {presalesRole === 'agent' && (
-                                            <select
+                                            <FilterDropdown
+                                                variant="field"
+                                                fieldLabel="Team"
                                                 value={presalesTeamId}
-                                                onChange={e => setPresalesTeamId(e.target.value)}
-                                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                            >
-                                                <option value="">No team yet</option>
-                                                {presalesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
-                                            </select>
+                                                onChange={setPresalesTeamId}
+                                                placeholder="No team yet"
+                                                options={presalesTeams.map((team) => ({ value: team.id, label: team.name }))}
+                                            />
                                         )}
                                         <button type="submit" className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">
                                             Add Presales Employee
@@ -853,16 +852,16 @@ function EmployeesPageContent() {
                                             placeholder="Team name"
                                             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
-                                        <select
+                                        <FilterDropdown
+                                            variant="field"
+                                            fieldLabel="Team leader"
                                             value={teamLeaderId}
-                                            onChange={e => setTeamLeaderId(e.target.value)}
-                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                        >
-                                            <option value="">No leader yet</option>
-                                            {presalesEmployees.filter(e => e.role === 'team_leader').map(leader => (
-                                                <option key={leader.id} value={leader.id}>{leader.full_name}</option>
-                                            ))}
-                                        </select>
+                                            onChange={setTeamLeaderId}
+                                            placeholder="No leader yet"
+                                            options={presalesEmployees
+                                                .filter((e) => e.role === 'team_leader')
+                                                .map((leader) => ({ value: leader.id, label: leader.full_name }))}
+                                        />
                                         <button type="submit" className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">
                                             Create Team
                                         </button>
@@ -898,14 +897,14 @@ function EmployeesPageContent() {
                                                 </td>
                                                 <td className="px-5 py-3.5">
                                                     {emp.role === 'agent' ? (
-                                                        <select
+                                                        <FilterDropdown
+                                                            variant="bare"
                                                             value={emp.team_id || ''}
-                                                            onChange={e => assignPresalesAgent(emp.id, e.target.value)}
-                                                            className="rounded-lg border border-gray-200 px-2 py-1 text-sm"
-                                                        >
-                                                            <option value="">No team</option>
-                                                            {presalesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
-                                                        </select>
+                                                            onChange={(v) => assignPresalesAgent(emp.id, v)}
+                                                            placeholder="No team"
+                                                            className="min-w-[10rem]"
+                                                            options={presalesTeams.map((team) => ({ value: team.id, label: team.name }))}
+                                                        />
                                                     ) : (
                                                         <span className="text-gray-400">Can lead teams</span>
                                                     )}

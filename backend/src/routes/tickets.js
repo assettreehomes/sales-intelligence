@@ -68,6 +68,51 @@ function isPresalesTicket(ticket) {
     return ticket?.source === 'telecmi' || ticket?.visittype === 'telecmi_call' || ticket?.visit_type === 'telecmi_call';
 }
 
+/** Resolve ticket IDs for outcome/authenticity.
+ *  Queries both the denormalized tickets table columns AND analysisresults,
+ *  then merges results so all ticket types (presales + site-visit) are covered.
+ *  Gracefully falls back if either table doesn't have the columns.
+ */
+async function getTicketIdsForAnalysisFilters(callOutcome, callAuthenticity) {
+    const needsOutcome = callOutcome && callOutcome !== 'all';
+    const needsAuth = callAuthenticity && callAuthenticity !== 'all';
+    if (!needsOutcome && !needsAuth) return null;
+
+    const idSet = new Set();
+
+    // ── 1. Query denormalized tickets table columns (fast, covers presales) ──
+    try {
+        let ticketsQuery = supabaseAdmin.from('tickets').select('id');
+        if (needsOutcome) ticketsQuery = ticketsQuery.eq('call_outcome', callOutcome);
+        if (needsAuth) ticketsQuery = ticketsQuery.eq('call_authenticity', callAuthenticity);
+        const { data: ticketsData, error: ticketsErr } = await ticketsQuery;
+        if (!ticketsErr && ticketsData) {
+            ticketsData.forEach((row) => { if (row.id) idSet.add(row.id); });
+        } else if (ticketsErr) {
+            console.warn('getTicketIdsForAnalysisFilters: tickets query skipped:', ticketsErr.message);
+        }
+    } catch (e) {
+        console.warn('getTicketIdsForAnalysisFilters: tickets query error:', e.message);
+    }
+
+    // ── 2. Query analysisresults table (covers site-visit tickets) ──
+    try {
+        let analysisQuery = supabaseAdmin.from('analysisresults').select('ticketid');
+        if (needsOutcome) analysisQuery = analysisQuery.eq('call_outcome', callOutcome);
+        if (needsAuth) analysisQuery = analysisQuery.eq('call_authenticity', callAuthenticity);
+        const { data: analysisData, error: analysisErr } = await analysisQuery;
+        if (!analysisErr && analysisData) {
+            analysisData.forEach((row) => { if (row.ticketid) idSet.add(row.ticketid); });
+        } else if (analysisErr) {
+            console.warn('getTicketIdsForAnalysisFilters: analysisresults query skipped:', analysisErr.message);
+        }
+    } catch (e) {
+        console.warn('getTicketIdsForAnalysisFilters: analysisresults query error:', e.message);
+    }
+
+    return [...idSet];
+}
+
 function escapePdfText(value) {
     return String(value ?? '')
         .replaceAll('\\', '\\\\')
@@ -1297,7 +1342,10 @@ async function triggerAnalysis(ticketId, ticket) {
                 summary: analysis.summary || null,
                 keymoments: analysis.key_moments ? analysis.key_moments.map(m => ({
                     ...m,
-                    time: m.timestamp || m.start_time_ms
+                    time: m.timestamp ||
+                        (typeof m.start_time_ms === 'number'
+                            ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
+                            : null)
                 })) : [],
                 improvementsuggestions: analysis.recommendations || analysis.improvement_suggestions || [],
                 actionitems: analysis.action_items || [],
@@ -1557,7 +1605,6 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             callOutcome,
             callAuthenticity,
             callStatus,
-            direction,
             page = 1,
             limit = 12
         } = req.query;
@@ -1629,30 +1676,12 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             query = query.eq('selldo_call_status', callStatus);
         }
 
-        if (direction && direction !== 'all') {
-            query = query.or(`selldo_direction.eq.${direction},telecmi_direction.eq.${direction}`);
-        }
-
-        if ((callOutcome && callOutcome !== 'all') || (callAuthenticity && callAuthenticity !== 'all')) {
-            let analysisFilter = supabaseAdmin
-                .from('analysisresults')
-                .select('ticketid');
-
-            if (callOutcome && callOutcome !== 'all') {
-                analysisFilter = analysisFilter.eq('call_outcome', callOutcome);
-            }
-            if (callAuthenticity && callAuthenticity !== 'all') {
-                analysisFilter = analysisFilter.eq('call_authenticity', callAuthenticity);
-            }
-
-            const { data: filteredAnalysis, error: filteredAnalysisError } = await analysisFilter;
-            if (filteredAnalysisError) throw filteredAnalysisError;
-
-            const matchingIds = (filteredAnalysis || []).map((row) => row.ticketid).filter(Boolean);
-            if (matchingIds.length === 0) {
+        const analysisTicketIds = await getTicketIdsForAnalysisFilters(callOutcome, callAuthenticity);
+        if (analysisTicketIds !== null) {
+            if (analysisTicketIds.length === 0) {
                 return res.json({ tickets: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
             }
-            query = query.in('id', matchingIds);
+            query = query.in('id', analysisTicketIds);
         }
 
         // Rating filter (DB rating is 0-10; UI works in 0-5 stars)
@@ -1774,7 +1803,10 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
 
         if (error) {
             console.error('List tickets error:', error);
-            return res.status(500).json({ error: 'Failed to fetch tickets' });
+            return res.status(500).json({
+                error: 'Failed to fetch tickets',
+                details: error.message || String(error)
+            });
         }
 
         let resultTickets = tickets || [];
@@ -1856,8 +1888,10 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 const analysisMap = new Map(analysisRows.map((row) => [row.ticketid, row]));
                 finalTickets.forEach((ticket) => {
                     const row = analysisMap.get(ticket.id);
-                    ticket.call_outcome = row?.call_outcome || null;
-                    ticket.call_authenticity = row?.call_authenticity || null;
+                    // Only overwrite if analysisresults has a value — preserve the ticket-table
+                    // denormalized columns as fallback (set by presalesAnalysis.js)
+                    if (row?.call_outcome) ticket.call_outcome = row.call_outcome;
+                    if (row?.call_authenticity) ticket.call_authenticity = row.call_authenticity;
                 });
             }
         }
@@ -2849,7 +2883,7 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                     ...m,
                     description: m.transcript_excerpt || m.coaching_note || m.description || null,
                     sentiment: m.category || m.sentiment || null,
-                    time: m.timestamp || (m.start_time_ms ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}` : null)
+                    time: m.timestamp || (typeof m.start_time_ms === 'number' ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}` : null)
                 })) : [],
                 improvementsuggestions: analysis.recommendations || analysis.improvement_suggestions || [],
                 actionitems: analysis.action_items || [],

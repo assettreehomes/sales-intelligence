@@ -68,7 +68,6 @@ interface Filters {
     outcomeFilter: string;
     authenticityFilter: string;
     callStatusFilter: string;
-    directionFilter: string;
     searchQuery: string;
 }
 
@@ -108,9 +107,10 @@ const DEFAULT_FILTERS: Filters = {
     outcomeFilter: 'all',
     authenticityFilter: 'all',
     callStatusFilter: 'all',
-    directionFilter: 'all',
     searchQuery:    '',
 };
+
+let presalesFetchSeq = 0;
 
 export const usePresalesStore = create<PresalesState>((set, get) => ({
     tickets: [],
@@ -126,6 +126,7 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
     employeesLoaded: false,
 
     fetchTickets: async () => {
+        const requestId = ++presalesFetchSeq;
         set({ loading: true });
         try {
             const token = await getToken();
@@ -146,7 +147,6 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
             if (filters.outcomeFilter !== 'all') params.append('callOutcome', filters.outcomeFilter);
             if (filters.authenticityFilter !== 'all') params.append('callAuthenticity', filters.authenticityFilter);
             if (filters.callStatusFilter !== 'all') params.append('callStatus', filters.callStatusFilter);
-            if (filters.directionFilter !== 'all') params.append('direction', filters.directionFilter);
             if (filters.searchQuery)            params.append('search', filters.searchQuery);
             params.append('page',  currentPage.toString());
             params.append('limit', ticketsPerPage.toString());
@@ -157,21 +157,29 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
 
             if (!response.ok) {
                 const payload = await response.json().catch(() => ({}));
-                throw new Error(payload?.error || 'Failed to fetch pre-sales calls');
+                const detail = typeof payload?.details === 'string' ? payload.details : '';
+                throw new Error(
+                    detail ? `${payload?.error || 'Failed to fetch pre-sales calls'}: ${detail}` : (payload?.error || 'Failed to fetch pre-sales calls')
+                );
             }
 
             const data = await response.json();
+            if (requestId !== presalesFetchSeq) return;
+
             set({
                 tickets:      data.tickets || [],
                 totalTickets: data.total   || 0,
                 initialized:  true,
             });
         } catch (error) {
+            if (requestId !== presalesFetchSeq) return;
             const message = error instanceof Error ? error.message : 'Failed to fetch pre-sales calls.';
             console.error('Failed to fetch presales tickets:', error);
             notifyError(message, { toastId: 'presales-fetch-error' });
         } finally {
-            set({ loading: false });
+            if (requestId === presalesFetchSeq) {
+                set({ loading: false });
+            }
         }
     },
 
@@ -229,7 +237,10 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
     },
 
     setFilter: (key, value) => {
-        set(state => ({ filters: { ...state.filters, [key]: value }, currentPage: 1 }));
+        set((state) => {
+            if (state.filters[key] === value) return state;
+            return { filters: { ...state.filters, [key]: value }, currentPage: 1 };
+        });
     },
 
     clearFilters: () => {

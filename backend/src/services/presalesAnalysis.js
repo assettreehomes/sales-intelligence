@@ -394,7 +394,7 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
                     ...m,
                     description: m.transcript_excerpt || m.coaching_note || null,
                     sentiment: m.category || null,
-                    time: m.start_time_ms
+                    time: typeof m.start_time_ms === 'number'
                         ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
                         : null
                 })),

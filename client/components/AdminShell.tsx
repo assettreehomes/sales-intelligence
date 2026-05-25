@@ -249,7 +249,6 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'performance' as const, label: 'Performance', icon: BarChart3, href: '/admin/performance' },
             { id: 'presalesPerformance' as const, label: 'Presales Performance', icon: BarChart3, href: '/admin/presales-performance' },
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, href: '/admin/tickets' },
-            { id: 'presales' as const, label: 'Pre-Sales Calls', icon: PhoneCall, href: '/admin/presales' },
             { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, onClick: openSellDo },
             { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, onClick: openAntivirusApp },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, href: '/admin/excuses' },
