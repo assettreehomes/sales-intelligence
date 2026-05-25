@@ -2,6 +2,7 @@
 
 import {
     Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart,
+    ComposedChart, Line,
     RadarChart, Radar, PolarGrid, PolarAngleAxis,
     ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid,
     Legend,
@@ -276,6 +277,120 @@ export function RatingDistChart({ data, height = 200 }: RatingDistProps) {
                         {formatted.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                     </Bar>
                 </BarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
+interface PresalesTrendPoint {
+    date: string;
+    calls: number;
+    fake_calls: number;
+    interested_calls: number;
+    conversion_rate: number;
+}
+
+interface PresalesMultiTrendChartProps {
+    data: PresalesTrendPoint[];
+    height?: number;
+}
+
+export function PresalesMultiTrendChart({ data, height = 220 }: PresalesMultiTrendChartProps) {
+    const formatted = data.slice(-30).map((point) => ({
+        date: new Date(point.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        Calls: point.calls,
+        Fake: point.fake_calls,
+        Interested: point.interested_calls,
+        Conversion: Number(point.conversion_rate.toFixed(1))
+    }));
+
+    if (!formatted.length) {
+        return (
+            <div className="flex items-center justify-center text-sm" style={{ height, color: CHART_COLORS.text }}>
+                No trend data yet
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ height }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={formatted} margin={{ top: 8, right: 12, bottom: 8, left: -10 }}>
+                    <defs>
+                        <linearGradient id="presalesCallsGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.95} />
+                            <stop offset="100%" stopColor="#7c3aed" stopOpacity={0.45} />
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
+                    <XAxis
+                        dataKey="date"
+                        tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={Math.floor(formatted.length / 6)}
+                    />
+                    <YAxis
+                        yAxisId="volume"
+                        tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                    />
+                    <YAxis
+                        yAxisId="rate"
+                        orientation="right"
+                        domain={[0, 100]}
+                        tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(value) => `${value}%`}
+                    />
+                    <Tooltip
+                        content={
+                            <ChartTooltip
+                                formatter={(value, name) => {
+                                    if (name === 'Conversion') return `${value.toFixed(1)}%`;
+                                    return String(value);
+                                }}
+                            />
+                        }
+                        cursor={{ fill: 'rgba(139,92,246,0.08)' }}
+                    />
+                    <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ paddingTop: 4 }}
+                        formatter={(value) => <span style={{ color: CHART_COLORS.textStrong, fontSize: 12 }}>{value}</span>}
+                    />
+                    <Bar yAxisId="volume" dataKey="Calls" fill="url(#presalesCallsGrad)" radius={[6, 6, 0, 0]} maxBarSize={34} />
+                    <Line
+                        yAxisId="volume"
+                        type="monotone"
+                        dataKey="Fake"
+                        stroke={CHART_COLORS.red}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3, fill: CHART_COLORS.red }}
+                    />
+                    <Line
+                        yAxisId="volume"
+                        type="monotone"
+                        dataKey="Interested"
+                        stroke={CHART_COLORS.emerald}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3, fill: CHART_COLORS.emerald }}
+                    />
+                    <Line
+                        yAxisId="rate"
+                        type="monotone"
+                        dataKey="Conversion"
+                        stroke={CHART_COLORS.amber}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3, fill: CHART_COLORS.amber }}
+                    />
+                </ComposedChart>
             </ResponsiveContainer>
         </div>
     );

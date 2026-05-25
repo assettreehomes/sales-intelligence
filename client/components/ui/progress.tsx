@@ -1,40 +1,27 @@
-import { HTMLAttributes } from 'react';
+import * as React from 'react';
+import * as ProgressPrimitive from '@radix-ui/react-progress';
 
-interface ProgressProps extends HTMLAttributes<HTMLDivElement> {
-    value: number;
-    max?: number;
-    color?: string;
-    trackColor?: string;
-    size?: 'sm' | 'md' | 'lg';
+import { cn } from '@/lib/utils';
+
+interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> {
+    value?: number;
+    indicatorClassName?: string;
 }
 
-const sizeMap = { sm: 'h-1.5', md: 'h-2', lg: 'h-3' };
-
-export function Progress({
-    value,
-    max = 100,
-    color = 'var(--color-primary-500)',
-    trackColor = 'var(--color-border-subtle)',
-    size = 'md',
-    className = '',
-    style,
-    ...props
-}: ProgressProps) {
-    const pct = Math.min(100, Math.max(0, (value / max) * 100));
-    return (
-        <div
-            role="progressbar"
-            aria-valuenow={value}
-            aria-valuemin={0}
-            aria-valuemax={max}
-            className={`w-full overflow-hidden rounded-full ${sizeMap[size]} ${className}`}
-            style={{ background: trackColor, ...style }}
+const Progress = React.forwardRef<React.ElementRef<typeof ProgressPrimitive.Root>, ProgressProps>(
+    ({ className, value, indicatorClassName, ...props }, ref) => (
+        <ProgressPrimitive.Root
+            ref={ref}
+            className={cn('relative h-2 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]', className)}
             {...props}
         >
-            <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${pct}%`, background: color }}
+            <ProgressPrimitive.Indicator
+                className={cn('h-full w-full flex-1 bg-[var(--color-primary-500)] transition-all', indicatorClassName)}
+                style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
             />
-        </div>
-    );
-}
+        </ProgressPrimitive.Root>
+    )
+);
+Progress.displayName = ProgressPrimitive.Root.displayName;
+
+export { Progress };
