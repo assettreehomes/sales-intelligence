@@ -5,20 +5,20 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-400)]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--semantic-primary),transparent_65%)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
     {
         variants: {
             variant: {
                 default:
-                    'bg-[var(--color-primary-600)] text-white shadow-[var(--elevation-1)] hover:bg-[var(--color-primary-500)]',
+                    'bg-[var(--semantic-primary)] text-white shadow-[var(--elevation-1)] hover:bg-[var(--semantic-primary-hover)]',
                 secondary:
-                    'border border-[var(--color-border-subtle)] bg-[var(--surface-elevated)] text-[var(--color-text-primary)] hover:bg-[var(--surface-hover)]',
+                    'border border-[var(--semantic-border)] bg-[var(--semantic-surface-elevated)] text-[var(--semantic-text-primary)] shadow-[var(--elevation-1)] hover:border-[var(--semantic-border-strong)] hover:bg-[var(--surface-hover)]',
                 outline:
-                    'border border-[var(--color-border-subtle)] bg-transparent text-[var(--color-text-primary)] hover:bg-[var(--surface-hover)]',
+                    'border border-[var(--semantic-border)] bg-transparent text-[var(--semantic-text-primary)] hover:border-[var(--semantic-border-strong)] hover:bg-[var(--surface-hover)]',
                 ghost:
-                    'text-[var(--color-text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--color-text-primary)]',
+                    'text-[var(--semantic-text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--semantic-text-primary)]',
                 destructive:
-                    'bg-[var(--color-critical-500)] text-white hover:bg-[var(--color-critical-strong)]'
+                    'bg-[var(--semantic-danger)] text-white hover:bg-[var(--color-critical-strong)]'
             },
             size: {
                 default: 'h-10 px-4 py-2',

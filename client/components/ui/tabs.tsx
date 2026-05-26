@@ -12,7 +12,7 @@ const TabsList = React.forwardRef<
     <TabsPrimitive.List
         ref={ref}
         className={cn(
-            'inline-flex h-10 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--surface-elevated)] p-1 text-[var(--color-text-muted)]',
+            'inline-flex h-10 items-center justify-center rounded-full border border-[var(--semantic-border)] bg-[var(--semantic-surface-elevated)] p-1 text-[var(--semantic-text-muted)] shadow-[var(--elevation-1)]',
             className
         )}
         {...props}
@@ -27,7 +27,7 @@ const TabsTrigger = React.forwardRef<
     <TabsPrimitive.Trigger
         ref={ref}
         className={cn(
-            'inline-flex items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium text-[var(--color-text-secondary)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-400)]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-[var(--color-primary-600)] data-[state=active]:text-white data-[state=active]:shadow-[var(--elevation-1)]',
+            'inline-flex items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold text-[var(--semantic-text-secondary)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--semantic-primary),transparent_65%)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-[var(--semantic-primary)] data-[state=active]:text-white data-[state=active]:shadow-[var(--elevation-1)]',
             className
         )}
         {...props}
@@ -41,7 +41,7 @@ const TabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
     <TabsPrimitive.Content
         ref={ref}
-        className={cn('mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-400)]/55', className)}
+        className={cn('mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--semantic-primary),transparent_65%)]', className)}
         {...props}
     />
 ));

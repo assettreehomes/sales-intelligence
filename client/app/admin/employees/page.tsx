@@ -1,27 +1,40 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
 import { FilterDropdown } from '@/components/FilterDropdown';
 import { SegmentedToggle } from '@/components/SegmentedToggle';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import { getToken, API_URL } from '@/stores/authStore';
 import {
-    UserPlus,
-    Loader2,
-    Trash2,
-    ToggleLeft,
-    ToggleRight,
+    AlertCircle,
+    CheckCircle2,
     Eye,
     EyeOff,
+    Loader2,
+    Pencil,
     RefreshCw,
     Search,
-    X,
     ShieldAlert,
-    CheckCircle2,
-    AlertCircle,
-    Pencil,
+    ToggleLeft,
+    ToggleRight,
+    Trash2,
+    UserPlus,
+    Users,
+    X,
 } from 'lucide-react';
 
 interface Employee {
@@ -67,6 +80,7 @@ function EmployeesPageContent() {
     const [loading, setLoading] = useState(true);
     const [presalesLoading, setPresalesLoading] = useState(false);
     const [search, setSearch] = useState('');
+    const [presalesSearch, setPresalesSearch] = useState('');
     const [presalesName, setPresalesName] = useState('');
     const [presalesEmail, setPresalesEmail] = useState('');
     const [presalesRole, setPresalesRole] = useState<'agent' | 'team_leader'>('agent');
@@ -74,7 +88,6 @@ function EmployeesPageContent() {
     const [teamName, setTeamName] = useState('');
     const [teamLeaderId, setTeamLeaderId] = useState('');
 
-    // Add modal state
     const [showModal, setShowModal] = useState(false);
     const [fullname, setFullname] = useState('');
     const [email, setEmail] = useState('');
@@ -84,12 +97,10 @@ function EmployeesPageContent() {
     const [submitting, setSubmitting] = useState(false);
     const [createdEmployee, setCreatedEmployee] = useState<{ name: string; email: string; password: string } | null>(null);
 
-    // Action states
     const [togglingId, setTogglingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-    // Edit modal state
     const [editEmp, setEditEmp] = useState<Employee | null>(null);
     const [editName, setEditName] = useState('');
     const [editEmail, setEditEmail] = useState('');
@@ -99,101 +110,42 @@ function EmployeesPageContent() {
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [passwordSaving, setPasswordSaving] = useState(false);
 
-    const openEdit = (emp: Employee) => {
-        setEditEmp(emp);
-        setEditName(emp.fullname);
-        setEditEmail(emp.email);
-        setEditAgentId(emp.telecmi_agent_id || '');
-        setNewPassword('');
-    };
-    const closeEdit = () => { setEditEmp(null); setNewPassword(''); };
-
-    const handleEdit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editEmp) return;
-        setEditSaving(true);
-        try {
-            const token = await getToken();
-            const res = await fetch(`${API_URL}/users/${editEmp.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({
-                    fullname: editName.trim(),
-                    email: editEmail.trim(),
-                    telecmi_agent_id: editAgentId.trim() || null
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                setEmployees(prev => prev.map(e => e.id === editEmp.id
-                    ? { ...e, fullname: data.user.fullname, email: data.user.email }
-                    : e));
-                showToast('success', 'Employee updated');
-                closeEdit();
-            } else {
-                showToast('error', data.error || 'Failed to update');
-            }
-        } catch { showToast('error', 'Network error'); }
-        finally { setEditSaving(false); }
-    };
-
-    const handleResetPassword = async () => {
-        if (!editEmp || newPassword.trim().length < 8) return;
-        setPasswordSaving(true);
-        try {
-            const token = await getToken();
-            const res = await fetch(`${API_URL}/users/${editEmp.id}/password`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ password: newPassword.trim() })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                showToast('success', 'Password reset successfully');
-                setNewPassword('');
-            } else {
-                showToast('error', data.error || 'Failed to reset password');
-            }
-        } catch { showToast('error', 'Network error'); }
-        finally { setPasswordSaving(false); }
-    };
-
-    // Toast
     const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-    const showToast = (type: 'success' | 'error', message: string) => {
+    const showToast = useCallback((type: 'success' | 'error', message: string) => {
         setToast({ type, message });
         setTimeout(() => setToast(null), 4000);
-    };
+    }, []);
 
     const fetchEmployees = useCallback(async () => {
         setLoading(true);
         try {
             const token = await getToken();
-            const res = await fetch(`${API_URL}/users`, {
-                headers: { Authorization: `Bearer ${token}` }
+            const response = await fetch(`${API_URL}/users`, {
+                headers: { Authorization: `Bearer ${token}` },
             });
-            const data = await res.json();
-            if (res.ok) setEmployees(data.users || []);
-            else showToast('error', data.error || 'Failed to load employees');
+            const data = await response.json();
+            if (response.ok) {
+                setEmployees(data.users || []);
+            } else {
+                showToast('error', data.error || 'Failed to load employees');
+            }
         } catch {
             showToast('error', 'Network error');
         } finally {
             setLoading(false);
         }
-    }, []);
-
-    useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
+    }, [showToast]);
 
     const fetchPresalesDirectory = useCallback(async () => {
         setPresalesLoading(true);
         try {
             const token = await getToken();
-            const res = await fetch(`${API_URL}/presales/directory`, {
-                headers: { Authorization: `Bearer ${token}` }
+            const response = await fetch(`${API_URL}/presales/directory`, {
+                headers: { Authorization: `Bearer ${token}` },
             });
-            const data = await res.json();
-            if (res.ok) {
+            const data = await response.json();
+            if (response.ok) {
                 setPresalesEmployees(data.employees || []);
                 setPresalesTeams(data.teams || []);
             } else {
@@ -204,29 +156,199 @@ function EmployeesPageContent() {
         } finally {
             setPresalesLoading(false);
         }
-    }, []);
+    }, [showToast]);
 
     useEffect(() => {
-        if (activeTab === 'presales') void fetchPresalesDirectory();
+        void fetchEmployees();
+    }, [fetchEmployees]);
+
+    useEffect(() => {
+        if (activeTab === 'presales') {
+            void fetchPresalesDirectory();
+        }
     }, [activeTab, fetchPresalesDirectory]);
 
-    const handleCreatePresalesEmployee = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!presalesName.trim()) return;
+    const openEdit = (employee: Employee) => {
+        setEditEmp(employee);
+        setEditName(employee.fullname);
+        setEditEmail(employee.email);
+        setEditAgentId(employee.telecmi_agent_id || '');
+        setNewPassword('');
+    };
+
+    const closeEdit = () => {
+        setEditEmp(null);
+        setNewPassword('');
+    };
+
+    const handleEdit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!editEmp) return;
+
+        setEditSaving(true);
         try {
             const token = await getToken();
-            const res = await fetch(`${API_URL}/presales/employees`, {
+            const response = await fetch(`${API_URL}/users/${editEmp.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    fullname: editName.trim(),
+                    email: editEmail.trim(),
+                    telecmi_agent_id: editAgentId.trim() || null,
+                }),
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                setEmployees((previous) =>
+                    previous.map((employee) =>
+                        employee.id === editEmp.id
+                            ? {
+                                  ...employee,
+                                  fullname: data.user.fullname,
+                                  email: data.user.email,
+                                  telecmi_agent_id: data.user.telecmi_agent_id || null,
+                              }
+                            : employee
+                    )
+                );
+                showToast('success', 'Employee updated');
+                closeEdit();
+            } else {
+                showToast('error', data.error || 'Failed to update employee');
+            }
+        } catch {
+            showToast('error', 'Network error');
+        } finally {
+            setEditSaving(false);
+        }
+    };
+
+    const handleResetPassword = async () => {
+        if (!editEmp || newPassword.trim().length < 8) return;
+
+        setPasswordSaving(true);
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/users/${editEmp.id}/password`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ password: newPassword.trim() }),
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast('success', 'Password reset successfully');
+                setNewPassword('');
+            } else {
+                showToast('error', data.error || 'Failed to reset password');
+            }
+        } catch {
+            showToast('error', 'Network error');
+        } finally {
+            setPasswordSaving(false);
+        }
+    };
+
+    const handleCreate = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!fullname.trim() || !email.trim() || !password.trim()) return;
+
+        setSubmitting(true);
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    fullname: fullname.trim(),
+                    email: email.trim(),
+                    password: password.trim(),
+                    role: newRole,
+                }),
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                setCreatedEmployee({ name: fullname.trim(), email: email.trim(), password: password.trim() });
+                setEmployees((previous) => [...previous, data.user].sort((left, right) => left.fullname.localeCompare(right.fullname)));
+                setFullname('');
+                setEmail('');
+                setPassword('');
+            } else {
+                showToast('error', data.error || 'Failed to create employee');
+            }
+        } catch {
+            showToast('error', 'Network error');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleToggleStatus = async (employee: Employee) => {
+        const newStatus: Employee['status'] = employee.status === 'active' ? 'inactive' : 'active';
+        setTogglingId(employee.id);
+
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/users/${employee.id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setEmployees((previous) => previous.map((row) => (row.id === employee.id ? { ...row, status: newStatus } : row)));
+                showToast('success', `${employee.fullname} is now ${newStatus}`);
+            } else {
+                showToast('error', data.error || 'Failed to update status');
+            }
+        } catch {
+            showToast('error', 'Network error');
+        } finally {
+            setTogglingId(null);
+        }
+    };
+
+    const handleDelete = async (employee: Employee) => {
+        setDeletingId(employee.id);
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/users/${employee.id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setEmployees((previous) => previous.filter((row) => row.id !== employee.id));
+                showToast('success', `${employee.fullname} has been removed`);
+            } else {
+                showToast('error', data.error || 'Failed to delete employee');
+            }
+        } catch {
+            showToast('error', 'Network error');
+        } finally {
+            setDeletingId(null);
+            setDeleteConfirmId(null);
+        }
+    };
+
+    const handleCreatePresalesEmployee = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!presalesName.trim()) return;
+
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/presales/employees`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({
                     full_name: presalesName.trim(),
                     email: presalesEmail.trim() || null,
                     role: presalesRole,
-                    team_id: presalesRole === 'agent' ? presalesTeamId || null : null
-                })
+                    team_id: presalesRole === 'agent' ? presalesTeamId || null : null,
+                }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to create presales employee');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to create presales employee');
+
             setPresalesName('');
             setPresalesEmail('');
             setPresalesRole('agent');
@@ -238,21 +360,23 @@ function EmployeesPageContent() {
         }
     };
 
-    const handleCreateTeam = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleCreateTeam = async (event: React.FormEvent) => {
+        event.preventDefault();
         if (!teamName.trim()) return;
+
         try {
             const token = await getToken();
-            const res = await fetch(`${API_URL}/presales/teams`, {
+            const response = await fetch(`${API_URL}/presales/teams`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({
                     name: teamName.trim(),
-                    team_leader_id: teamLeaderId || null
-                })
+                    team_leader_id: teamLeaderId || null,
+                }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to create presales team');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to create presales team');
+
             setTeamName('');
             setTeamLeaderId('');
             showToast('success', 'Presales team added');
@@ -265,340 +389,294 @@ function EmployeesPageContent() {
     const assignPresalesAgent = async (employeeId: string, teamId: string) => {
         try {
             const token = await getToken();
-            const res = await fetch(`${API_URL}/presales/employees/${employeeId}`, {
+            const response = await fetch(`${API_URL}/presales/employees/${employeeId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ team_id: teamId || null })
+                body: JSON.stringify({ team_id: teamId || null }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to update team');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to update team assignment');
             showToast('success', 'Agent team updated');
             await fetchPresalesDirectory();
         } catch (error) {
-            showToast('error', error instanceof Error ? error.message : 'Failed to update team');
+            showToast('error', error instanceof Error ? error.message : 'Failed to update team assignment');
         }
     };
-
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!fullname.trim() || !email.trim() || !password.trim()) return;
-        setSubmitting(true);
-        try {
-            const token = await getToken();
-            const res = await fetch(`${API_URL}/users`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({
-                    fullname: fullname.trim(),
-                    email: email.trim(),
-                    password: password.trim(),
-                    role: newRole
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                setCreatedEmployee({ name: fullname.trim(), email: email.trim(), password: password.trim() });
-                setEmployees(prev => [...prev, data.user].sort((a, b) => a.fullname.localeCompare(b.fullname)));
-                setFullname(''); setEmail(''); setPassword('');
-            } else {
-                showToast('error', data.error || 'Failed to create employee');
-            }
-        } catch {
-            showToast('error', 'Network error');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleToggleStatus = async (emp: Employee) => {
-        const newStatus = emp.status === 'active' ? 'inactive' : 'active';
-        setTogglingId(emp.id);
-        try {
-            const token = await getToken();
-            const res = await fetch(`${API_URL}/users/${emp.id}/status`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ status: newStatus })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status: newStatus } : e));
-                showToast('success', `${emp.fullname} is now ${newStatus}`);
-            } else {
-                showToast('error', data.error || 'Failed to update status');
-            }
-        } catch {
-            showToast('error', 'Network error');
-        } finally {
-            setTogglingId(null);
-        }
-    };
-
-    const handleDelete = async (emp: Employee) => {
-        setDeletingId(emp.id);
-        try {
-            const token = await getToken();
-            const res = await fetch(`${API_URL}/users/${emp.id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setEmployees(prev => prev.filter(e => e.id !== emp.id));
-                showToast('success', `${emp.fullname} has been removed`);
-            } else {
-                showToast('error', data.error || 'Failed to delete employee');
-            }
-        } catch {
-            showToast('error', 'Network error');
-        } finally {
-            setDeletingId(null);
-            setDeleteConfirmId(null);
-        }
-    };
-
-    const filtered = employees.filter(e =>
-        e.fullname.toLowerCase().includes(search.toLowerCase()) ||
-        e.email.toLowerCase().includes(search.toLowerCase())
-    );
-
-    const activeCount = employees.filter(e => e.status === 'active').length;
 
     const resetModal = () => {
         setShowModal(false);
         setCreatedEmployee(null);
-        setFullname(''); setEmail(''); setPassword('');
+        setFullname('');
+        setEmail('');
+        setPassword('');
         setNewRole('employee');
         setShowPassword(false);
     };
 
+    const filteredEmployees = useMemo(
+        () =>
+            employees.filter(
+                (employee) =>
+                    employee.fullname.toLowerCase().includes(search.toLowerCase()) ||
+                    employee.email.toLowerCase().includes(search.toLowerCase())
+            ),
+        [employees, search]
+    );
+
+    const teamNameById = useMemo(() => {
+        const map = new Map<string, string>();
+        presalesTeams.forEach((team) => {
+            map.set(team.id, team.name);
+        });
+        return map;
+    }, [presalesTeams]);
+
+    const filteredPresalesEmployees = useMemo(() => {
+        const needle = presalesSearch.trim().toLowerCase();
+        if (!needle) return presalesEmployees;
+
+        return presalesEmployees.filter((employee) => {
+            const teamName = employee.team_id ? teamNameById.get(employee.team_id) || '' : '';
+            return (
+                employee.full_name.toLowerCase().includes(needle) ||
+                (employee.email || '').toLowerCase().includes(needle) ||
+                teamName.toLowerCase().includes(needle)
+            );
+        });
+    }, [presalesEmployees, presalesSearch, teamNameById]);
+
+    const activeCount = employees.filter((employee) => employee.status === 'active').length;
+    const inactiveCount = employees.length - activeCount;
+    const adminCount = employees.filter((employee) => employee.role === 'admin' || employee.role === 'superadmin').length;
+    const internCount = employees.filter((employee) => employee.role === 'intern').length;
+    const presalesAgentCount = presalesEmployees.filter((employee) => employee.role === 'agent').length;
+    const presalesLeaderCount = presalesEmployees.filter((employee) => employee.role === 'team_leader').length;
+    const presalesUnassignedCount = presalesEmployees.filter((employee) => employee.role === 'agent' && !employee.team_id).length;
+
     return (
         <AdminShell activeSection="employees">
-            {/* Toast */}
-            {toast && (
-                <div className={`fixed top-4 right-4 z-[9999] flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition-all ${
-                    toast.type === 'success'
-                        ? 'bg-green-600 text-white'
-                        : 'bg-red-600 text-white'
-                }`}>
-                    {toast.type === 'success'
-                        ? <CheckCircle2 className="w-4 h-4 shrink-0" />
-                        : <AlertCircle className="w-4 h-4 shrink-0" />}
+            {toast ? (
+                <div
+                    className={`fixed right-4 top-4 z-[9999] flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-[var(--elevation-2)] ${
+                        toast.type === 'success'
+                            ? 'border-[var(--semantic-success)] bg-[var(--semantic-success-soft)] text-[var(--color-success-strong)]'
+                            : 'border-[var(--semantic-danger)] bg-[var(--semantic-danger-soft)] text-[var(--color-critical-strong)]'
+                    }`}
+                >
+                    {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
                     {toast.message}
                 </div>
-            )}
+            ) : null}
 
-            {/* ── Edit Employee Modal ── */}
-            {editEmp && (
+            {editEmp ? (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-                    onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+                    onClick={(event) => {
+                        if (event.target === event.currentTarget) closeEdit();
+                    }}
                 >
-                    <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-                        <div className="p-6 space-y-5">
+                    <Card className="w-full max-w-md border-[var(--semantic-border)] bg-[var(--semantic-surface-elevated)] shadow-[var(--elevation-3)]">
+                        <CardContent className="space-y-5 pt-5">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-gray-900">Edit Employee</h2>
-                                <button onClick={closeEdit} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-                            </div>
-
-                            {/* Profile form */}
-                            <form onSubmit={handleEdit} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
-                                    <input
-                                        type="text" value={editName}
-                                        onChange={e => setEditName(e.target.value)}
-                                        required disabled={editSaving}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Login Email</label>
-                                    <input
-                                        type="email" value={editEmail}
-                                        onChange={e => setEditEmail(e.target.value)}
-                                        required disabled={editSaving}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    />
-                                    {editEmail !== editEmp.email && (
-                                        <p className="mt-1 text-xs text-amber-600">⚠️ Changing email updates their login. Share the new email with them.</p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        TeleCMI Agent ID
-                                        <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editAgentId}
-                                        onChange={e => setEditAgentId(e.target.value)}
-                                        disabled={editSaving}
-                                        placeholder="e.g. 5088_33336999"
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm font-mono focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    />
-                                    <p className="mt-1 text-xs text-gray-400">TeleCMI dashboard → Users → Extension. Format: <code>5088_33336999</code></p>
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={editSaving || !editName.trim() || !editEmail.trim()}
-                                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {editSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    Save Changes
-                                </button>
-                            </form>
-
-                            {/* Divider */}
-                            <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div><div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400">Reset Password</span></div></div>
-
-                            {/* Password reset */}
-                            <div className="space-y-3">
-                                <div className="relative">
-                                    <input
-                                        type={showNewPassword ? 'text' : 'password'}
-                                        value={newPassword}
-                                        onChange={e => setNewPassword(e.target.value)}
-                                        placeholder="New password (min. 8 characters)"
-                                        disabled={passwordSaving}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 pr-20 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    />
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                        <button type="button" onClick={() => setNewPassword(generatePassword())} className="p-1 text-gray-400 hover:text-purple-600" title="Generate">
-                                            <RefreshCw className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button type="button" onClick={() => setShowNewPassword(p => !p)} className="p-1 text-gray-400 hover:text-gray-600">
-                                            {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                        </button>
-                                    </div>
-                                </div>
+                                <h2 className="text-lg font-semibold text-[var(--semantic-text-primary)]">Edit employee</h2>
                                 <button
                                     type="button"
-                                    onClick={handleResetPassword}
-                                    disabled={passwordSaving || newPassword.trim().length < 8}
-                                    className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={closeEdit}
+                                    className="rounded-lg p-1 text-[var(--semantic-text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--semantic-text-primary)]"
                                 >
-                                    {passwordSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    Reset Password
+                                    <X className="h-5 w-5" />
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
-            {/* Add Employee Modal */}
-            {showModal && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-                    onClick={(e) => { if (e.target === e.currentTarget) resetModal(); }}
-                >
-                    <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-                        {/* ── Success state ── */}
-                        {createdEmployee ? (
-                            <div className="p-6">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
-                                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                                    </div>
-                                    <h2 className="text-lg font-semibold text-gray-900">Account Created!</h2>
-                                </div>
-                                <p className="text-sm text-gray-600 mb-4">
-                                    Share these credentials with <strong>{createdEmployee.name}</strong>. The password will not be shown again.
-                                </p>
-                                <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2 text-sm font-mono mb-5">
-                                    <div><span className="text-gray-500">Email: </span><span className="font-semibold text-gray-900">{createdEmployee.email}</span></div>
-                                    <div><span className="text-gray-500">Password: </span><span className="font-semibold text-purple-700">{createdEmployee.password}</span></div>
-                                </div>
-                                <button
-                                    onClick={resetModal}
-                                    className="w-full rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
-                                >
-                                    Done
-                                </button>
-                            </div>
-                        ) : (
-                            /* ── Form state ── */
-                            <form onSubmit={handleCreate} className="p-6 space-y-4">
-                                <div className="flex items-center justify-between mb-1">
-                                    <h2 className="text-lg font-semibold text-gray-900">Add New Employee</h2>
-                                    <button type="button" onClick={resetModal} className="text-gray-400 hover:text-gray-600">
-                                        <X className="w-5 h-5" />
-                                    </button>
+                            <form onSubmit={handleEdit} className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">Full name</label>
+                                    <Input type="text" value={editName} onChange={(event) => setEditName(event.target.value)} required disabled={editSaving} />
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        Full Name <span className="text-red-500">*</span>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">Login email</label>
+                                    <Input type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} required disabled={editSaving} />
+                                    {editEmail !== editEmp.email ? (
+                                        <p className="text-xs text-[var(--color-warning-strong)]">Changing email updates their login credentials.</p>
+                                    ) : null}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">
+                                        TeleCMI agent id <span className="text-[var(--semantic-text-muted)]">(optional)</span>
                                     </label>
-                                    <input
+                                    <Input
                                         type="text"
-                                        value={fullname}
-                                        onChange={e => setFullname(e.target.value)}
-                                        placeholder="e.g. Arun Kumar"
-                                        required
-                                        disabled={submitting}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
+                                        value={editAgentId}
+                                        onChange={(event) => setEditAgentId(event.target.value)}
+                                        disabled={editSaving}
+                                        placeholder="e.g. 5088_33336999"
+                                        className="font-mono"
                                     />
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        Login Email <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="email"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
-                                        placeholder="arun@assettreehomes.com"
-                                        required
-                                        disabled={submitting}
-                                        className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
-                                    />
-                                </div>
+                                <Button type="submit" disabled={editSaving || !editName.trim() || !editEmail.trim()} className="w-full">
+                                    {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                    Save changes
+                                </Button>
+                            </form>
 
-                                <div>
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <label className="text-sm font-medium text-gray-700">
-                                            Password <span className="text-red-500">*</span>
-                                        </label>
+                            <div className="space-y-3 rounded-xl border border-[var(--semantic-border)] bg-[var(--semantic-surface-muted)] p-3.5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Reset password</p>
+                                <div className="relative">
+                                    <Input
+                                        type={showNewPassword ? 'text' : 'password'}
+                                        value={newPassword}
+                                        onChange={(event) => setNewPassword(event.target.value)}
+                                        placeholder="New password (min. 8 chars)"
+                                        disabled={passwordSaving}
+                                        className="pr-20"
+                                    />
+                                    <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
                                         <button
                                             type="button"
-                                            onClick={() => setPassword(generatePassword())}
-                                            className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium"
+                                            onClick={() => setNewPassword(generatePassword())}
+                                            className="rounded p-1 text-[var(--semantic-text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--semantic-primary)]"
+                                            title="Generate password"
                                         >
-                                            <RefreshCw className="w-3 h-3" /> Auto-generate
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewPassword((previous) => !previous)}
+                                            className="rounded p-1 text-[var(--semantic-text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--semantic-text-primary)]"
+                                            title={showNewPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showNewPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                         </button>
                                     </div>
-                                    <div className="relative">
-                                        <input
-                                            type={showPassword ? 'text' : 'password'}
-                                            value={password}
-                                            onChange={e => setPassword(e.target.value)}
-                                            placeholder="Min. 8 characters"
+                                </div>
+
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="w-full"
+                                    onClick={() => void handleResetPassword()}
+                                    disabled={passwordSaving || newPassword.trim().length < 8}
+                                >
+                                    {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                    Reset password
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            ) : null}
+
+            {showModal ? (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+                    onClick={(event) => {
+                        if (event.target === event.currentTarget) resetModal();
+                    }}
+                >
+                    <Card className="w-full max-w-md border-[var(--semantic-border)] bg-[var(--semantic-surface-elevated)] shadow-[var(--elevation-3)]">
+                        {createdEmployee ? (
+                            <CardContent className="space-y-4 pt-5">
+                                <div className="flex items-center gap-3">
+                                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--semantic-success-soft)] text-[var(--semantic-success)]">
+                                        <CheckCircle2 className="h-5 w-5" />
+                                    </span>
+                                    <div>
+                                        <p className="text-lg font-semibold text-[var(--semantic-text-primary)]">Account created</p>
+                                        <p className="text-sm text-[var(--semantic-text-muted)]">Share this one time with the employee.</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 rounded-xl border border-[var(--semantic-border)] bg-[var(--semantic-surface-muted)] p-3 text-sm">
+                                    <p className="text-[var(--semantic-text-secondary)]">
+                                        <span className="font-semibold">Email:</span> {createdEmployee.email}
+                                    </p>
+                                    <p className="text-[var(--semantic-text-secondary)]">
+                                        <span className="font-semibold">Password:</span>{' '}
+                                        <span className="font-mono text-[var(--semantic-primary)]">{createdEmployee.password}</span>
+                                    </p>
+                                </div>
+
+                                <Button onClick={resetModal} className="w-full">Done</Button>
+                            </CardContent>
+                        ) : (
+                            <form onSubmit={handleCreate}>
+                                <CardContent className="space-y-4 pt-5">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-lg font-semibold text-[var(--semantic-text-primary)]">Add employee</h2>
+                                        <button
+                                            type="button"
+                                            onClick={resetModal}
+                                            className="rounded-lg p-1 text-[var(--semantic-text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--semantic-text-primary)]"
+                                        >
+                                            <X className="h-5 w-5" />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">Full name *</label>
+                                        <Input
+                                            type="text"
+                                            value={fullname}
+                                            onChange={(event) => setFullname(event.target.value)}
+                                            placeholder="e.g. Arun Kumar"
                                             required
-                                            minLength={8}
                                             disabled={submitting}
-                                            className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 pr-10 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50"
                                         />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(p => !p)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                        >
-                                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                        </button>
                                     </div>
-                                    <p className="mt-1 text-xs text-gray-500">Share this with the employee — they can&apos;t change it themselves yet.</p>
-                                </div>
 
-                                {/* Role selector */}
-                                <div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">Login email *</label>
+                                        <Input
+                                            type="email"
+                                            value={email}
+                                            onChange={(event) => setEmail(event.target.value)}
+                                            placeholder="name@company.com"
+                                            required
+                                            disabled={submitting}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">Password *</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPassword(generatePassword())}
+                                                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--semantic-primary)] hover:text-[var(--semantic-primary-hover)]"
+                                            >
+                                                <RefreshCw className="h-3 w-3" />
+                                                Generate
+                                            </button>
+                                        </div>
+                                        <div className="relative">
+                                            <Input
+                                                type={showPassword ? 'text' : 'password'}
+                                                value={password}
+                                                onChange={(event) => setPassword(event.target.value)}
+                                                placeholder="Min. 8 characters"
+                                                required
+                                                minLength={8}
+                                                disabled={submitting}
+                                                className="pr-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword((previous) => !previous)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--semantic-text-muted)] hover:text-[var(--semantic-text-secondary)]"
+                                            >
+                                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     <FilterDropdown
                                         variant="field"
                                         fieldLabel="Role"
                                         value={newRole}
-                                        onChange={(v) => setNewRole(v as typeof newRole)}
+                                        onChange={(value) => setNewRole(value as typeof newRole)}
                                         disabled={submitting}
                                         options={[
                                             { value: 'employee', label: 'Employee' },
@@ -607,318 +685,305 @@ function EmployeesPageContent() {
                                             { value: 'superadmin', label: 'Superadmin' },
                                         ]}
                                     />
-                                </div>
-                                <div className="flex gap-3 pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={resetModal}
-                                        disabled={submitting}
-                                        className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={submitting || !fullname.trim() || !email.trim() || !password.trim()}
-                                        className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                                        Create Account
-                                    </button>
-                                </div>
+
+                                    <div className="flex gap-3 pt-1">
+                                        <Button type="button" variant="secondary" className="flex-1" disabled={submitting} onClick={resetModal}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            className="flex-1"
+                                            disabled={submitting || !fullname.trim() || !email.trim() || !password.trim()}
+                                        >
+                                            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                            Create account
+                                        </Button>
+                                    </div>
+                                </CardContent>
                             </form>
                         )}
-                    </div>
+                    </Card>
                 </div>
-            )}
+            ) : null}
 
-            <main className="p-5 md:p-8">
-                <div className="max-w-4xl mx-auto">
-                    {/* Header */}
-                    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <h1 className="text-2xl font-semibold text-gray-900">Manage Employees</h1>
-                            <p className="text-sm text-gray-500 mt-0.5">
-                                {loading ? '...' : `${activeCount} active · ${employees.length} total`}
+            <main className="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+                <div className="mx-auto w-full max-w-[1260px] space-y-6">
+                    <header className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                            <h1 className="text-3xl font-semibold tracking-tight text-[var(--semantic-text-primary)]">Manage Employees</h1>
+                            <p className="text-sm text-[var(--semantic-text-muted)]">
+                                {activeTab === 'platform'
+                                    ? loading
+                                        ? 'Loading platform users...'
+                                        : `${activeCount} active | ${employees.length} total users`
+                                    : presalesLoading
+                                      ? 'Loading presales directory...'
+                                      : `${presalesEmployees.length} people | ${presalesTeams.length} teams`}
                             </p>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {activeTab === 'platform' && (
-                                <button
-                                    id="add-employee-btn"
-                                    onClick={() => setShowModal(true)}
-                                    className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
-                                >
-                                    <UserPlus className="w-4 h-4" />
-                                    Add Employee
-                                </button>
-                            )}
+                        <div className="flex items-center gap-2">
+                            {activeTab === 'platform' ? (
+                                <Button type="button" onClick={() => setShowModal(true)} className="h-10 px-4">
+                                    <UserPlus className="h-4 w-4" />
+                                    Add employee
+                                </Button>
+                            ) : null}
                             <NotificationBell />
                         </div>
-                    </div>
+                    </header>
+
+                    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {activeTab === 'platform' ? (
+                            <>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Active users</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{activeCount}</p></CardContent></Card>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Total users</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{employees.length}</p></CardContent></Card>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Admin roles</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{adminCount}</p></CardContent></Card>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Interns</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{internCount}</p></CardContent></Card>
+                            </>
+                        ) : (
+                            <>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Agents</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{presalesAgentCount}</p></CardContent></Card>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Team leaders</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{presalesLeaderCount}</p></CardContent></Card>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Teams</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{presalesTeams.length}</p></CardContent></Card>
+                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Unassigned agents</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{presalesUnassignedCount}</p></CardContent></Card>
+                            </>
+                        )}
+                    </section>
 
                     <SegmentedToggle
-                        className="mb-5"
                         value={activeTab}
                         onChange={setActiveTab}
                         ariaLabel="Employee directory view"
+                        className="w-fit"
                         options={[
                             { value: 'platform', label: 'Platform Users' },
                             { value: 'presales', label: 'Presales Directory' },
                         ]}
                     />
 
-                    {/* Search */}
                     {activeTab === 'platform' ? (
-                    <>
-                    <div className="relative mb-5">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search by name or email…"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
-                    </div>
+                        <section className="space-y-4">
+                            <Card>
+                                <CardContent className="pt-5">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                        <div className="relative flex-1">
+                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--semantic-text-muted)]" />
+                                            <Input type="text" placeholder="Search by name or email" value={search} onChange={(event) => setSearch(event.target.value)} className="h-11 pl-10" />
+                                        </div>
+                                        <Button type="button" variant="secondary" onClick={() => void fetchEmployees()} disabled={loading} className="h-11">
+                                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                            Refresh
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
 
-                    {/* Table */}
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                        {loading ? (
-                            <div className="flex items-center justify-center py-16">
-                                <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
-                            </div>
-                        ) : filtered.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                                <ShieldAlert className="w-10 h-10 mb-3 opacity-40" />
-                                <p className="font-medium">No employees found</p>
-                                <p className="text-sm mt-1">
-                                    {search ? 'Try a different search term' : 'Click "Add Employee" to get started'}
-                                </p>
-                            </div>
-                        ) : (
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                        <th className="px-5 py-3 text-left">Name</th>
-                                        <th className="px-5 py-3 text-left hidden sm:table-cell">Email</th>
-                                        <th className="px-5 py-3 text-left">Status</th>
-                                        <th className="px-5 py-3 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {filtered.map((emp) => (
-                                        <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-5 py-3.5 font-medium text-gray-900">
-                                                <div className="flex items-center gap-2">
-                                                    {emp.fullname}
-                                                    {emp.role !== 'employee' && (
-                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                                            emp.role === 'superadmin' ? 'bg-purple-100 text-purple-700' :
-                                                            emp.role === 'admin' ? 'bg-blue-100 text-blue-700' :
-                                                            'bg-gray-100 text-gray-600'
-                                                        }`}>{emp.role}</span>
-                                                    )}
-                                                </div>
-                                                <p className="text-xs text-gray-500 font-normal sm:hidden">{emp.email}</p>
-                                            </td>
-                                            <td className="px-5 py-3.5 text-gray-600 hidden sm:table-cell">{emp.email}</td>
-                                            <td className="px-5 py-3.5">
-                                                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                                    emp.status === 'active'
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : 'bg-gray-100 text-gray-500'
-                                                }`}>
-                                                    {emp.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-3.5">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {/* Toggle active/inactive */}
-                                                    <button
-                                                        onClick={() => handleToggleStatus(emp)}
-                                                        disabled={togglingId === emp.id}
-                                                        title={emp.status === 'active' ? 'Deactivate' : 'Activate'}
-                                                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                                                            emp.status === 'active'
-                                                                ? 'bg-orange-50 text-orange-600 hover:bg-orange-100'
-                                                                : 'bg-green-50 text-green-600 hover:bg-green-100'
-                                                        } disabled:opacity-50`}
-                                                    >
-                                                        {togglingId === emp.id
-                                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                            : emp.status === 'active'
-                                                                ? <ToggleRight className="w-3.5 h-3.5" />
-                                                                : <ToggleLeft className="w-3.5 h-3.5" />}
-                                                        {emp.status === 'active' ? 'Deactivate' : 'Activate'}
-                                                    </button>
-
-                                                    {/* Edit */}
-                                                    <button
-                                                        onClick={() => openEdit(emp)}
-                                                        title="Edit employee"
-                                                        className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                                                    >
-                                                        <Pencil className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Delete */}
-                                                    {deleteConfirmId === emp.id ? (
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                onClick={() => handleDelete(emp)}
-                                                                disabled={deletingId === emp.id}
-                                                                className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 flex items-center gap-1"
+                            <Card className="overflow-hidden">
+                                {loading ? (
+                                    <CardContent className="flex h-56 items-center justify-center gap-2 pt-5 text-[var(--semantic-text-secondary)]">
+                                        <Loader2 className="h-5 w-5 animate-spin text-[var(--semantic-primary)]" />
+                                        Loading employees...
+                                    </CardContent>
+                                ) : filteredEmployees.length === 0 ? (
+                                    <CardContent className="flex h-56 flex-col items-center justify-center gap-2 pt-5 text-center">
+                                        <ShieldAlert className="h-8 w-8 text-[var(--semantic-text-muted)]" />
+                                        <p className="font-semibold text-[var(--semantic-text-primary)]">No employees found</p>
+                                        <p className="text-sm text-[var(--semantic-text-muted)]">
+                                            {search ? 'Try a different search term.' : 'Add an employee to get started.'}
+                                        </p>
+                                    </CardContent>
+                                ) : (
+                                    <Table className="min-w-[820px]">
+                                        <TableHeader className="bg-[var(--semantic-surface-muted)]">
+                                            <TableRow>
+                                                <TableHead>Name</TableHead>
+                                                <TableHead>Email</TableHead>
+                                                <TableHead>Status</TableHead>
+                                                <TableHead>Role</TableHead>
+                                                <TableHead className="text-right">Actions</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredEmployees.map((employee) => (
+                                                <TableRow key={employee.id}>
+                                                    <TableCell><p className="font-semibold text-[var(--semantic-text-primary)]">{employee.fullname}</p></TableCell>
+                                                    <TableCell className="text-[var(--semantic-text-secondary)]">{employee.email}</TableCell>
+                                                    <TableCell><Badge variant={employee.status === 'active' ? 'success' : 'secondary'} className="capitalize">{employee.status}</Badge></TableCell>
+                                                    <TableCell>
+                                                        {employee.role !== 'employee' ? (
+                                                            <Badge variant={employee.role === 'superadmin' ? 'default' : employee.role === 'admin' ? 'outline' : 'secondary'}>
+                                                                {employee.role}
+                                                            </Badge>
+                                                        ) : (
+                                                            <span className="text-sm text-[var(--semantic-text-muted)]">Employee</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="secondary"
+                                                                onClick={() => void handleToggleStatus(employee)}
+                                                                disabled={togglingId === employee.id}
+                                                                className={employee.status === 'active' ? 'text-[var(--color-warning-strong)]' : 'text-[var(--color-success-strong)]'}
                                                             >
-                                                                {deletingId === emp.id && <Loader2 className="w-3 h-3 animate-spin" />}
-                                                                Confirm
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setDeleteConfirmId(null)}
-                                                                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                                                            >
-                                                                Cancel
-                                                            </button>
+                                                                {togglingId === employee.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : employee.status === 'active' ? <ToggleRight className="h-3.5 w-3.5" /> : <ToggleLeft className="h-3.5 w-3.5" />}
+                                                                {employee.status === 'active' ? 'Deactivate' : 'Activate'}
+                                                            </Button>
+                                                            <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(employee)} title="Edit employee"><Pencil className="h-4 w-4" /></Button>
+                                                            {deleteConfirmId === employee.id ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <Button type="button" size="sm" variant="destructive" onClick={() => void handleDelete(employee)} disabled={deletingId === employee.id}>
+                                                                        {deletingId === employee.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                                                                        Confirm
+                                                                    </Button>
+                                                                    <Button type="button" size="sm" variant="secondary" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+                                                                </div>
+                                                            ) : (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => setDeleteConfirmId(employee.id)}
+                                                                    title="Delete employee"
+                                                                    className="text-[var(--semantic-text-muted)] hover:text-[var(--semantic-danger)]"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
                                                         </div>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => setDeleteConfirmId(emp.id)}
-                                                            title="Delete employee"
-                                                            className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                    </>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                )}
+                            </Card>
+
+                            <p className="text-sm text-[var(--semantic-text-muted)]">
+                                {inactiveCount > 0 ? `${inactiveCount} users are currently inactive.` : 'All platform users are active.'}
+                            </p>
+                        </section>
                     ) : (
-                        <div className="space-y-5">
-                            <div className="grid gap-5 lg:grid-cols-2">
-                                <form onSubmit={handleCreatePresalesEmployee} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                                    <h2 className="mb-4 text-base font-semibold text-gray-900">Add Presales Employee</h2>
-                                    <div className="grid gap-3">
-                                        <input
-                                            value={presalesName}
-                                            onChange={e => setPresalesName(e.target.value)}
-                                            placeholder="Full name"
-                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                        <input
-                                            value={presalesEmail}
-                                            onChange={e => setPresalesEmail(e.target.value)}
-                                            placeholder="Sell.Do email"
-                                            type="email"
-                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                        <FilterDropdown
-                                            variant="field"
-                                            fieldLabel="Presales role"
-                                            value={presalesRole}
-                                            onChange={(v) => setPresalesRole(v as 'agent' | 'team_leader')}
-                                            options={[
-                                                { value: 'agent', label: 'Presales Agent' },
-                                                { value: 'team_leader', label: 'Team Leader' },
-                                            ]}
-                                        />
-                                        {presalesRole === 'agent' && (
+                        <section className="space-y-5">
+                            <div className="grid gap-5 xl:grid-cols-2">
+                                <Card>
+                                    <CardHeader className="pb-2"><CardTitle className="text-base">Add Presales Employee</CardTitle></CardHeader>
+                                    <CardContent className="pt-2">
+                                        <form onSubmit={handleCreatePresalesEmployee} className="space-y-3">
+                                            <Input value={presalesName} onChange={(event) => setPresalesName(event.target.value)} placeholder="Full name" className="h-10" />
+                                            <Input value={presalesEmail} onChange={(event) => setPresalesEmail(event.target.value)} placeholder="Sell.Do email" type="email" className="h-10" />
                                             <FilterDropdown
                                                 variant="field"
-                                                fieldLabel="Team"
-                                                value={presalesTeamId}
-                                                onChange={setPresalesTeamId}
-                                                placeholder="No team yet"
-                                                options={presalesTeams.map((team) => ({ value: team.id, label: team.name }))}
+                                                fieldLabel="Presales role"
+                                                value={presalesRole}
+                                                onChange={(value) => setPresalesRole(value as 'agent' | 'team_leader')}
+                                                options={[
+                                                    { value: 'agent', label: 'Presales Agent' },
+                                                    { value: 'team_leader', label: 'Team Leader' },
+                                                ]}
                                             />
-                                        )}
-                                        <button type="submit" className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">
-                                            Add Presales Employee
-                                        </button>
-                                    </div>
-                                </form>
+                                            {presalesRole === 'agent' ? (
+                                                <FilterDropdown
+                                                    variant="field"
+                                                    fieldLabel="Team"
+                                                    value={presalesTeamId}
+                                                    onChange={setPresalesTeamId}
+                                                    placeholder="No team yet"
+                                                    options={presalesTeams.map((team) => ({ value: team.id, label: team.name }))}
+                                                />
+                                            ) : null}
+                                            <Button type="submit" className="w-full">Add presales employee</Button>
+                                        </form>
+                                    </CardContent>
+                                </Card>
 
-                                <form onSubmit={handleCreateTeam} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                                    <h2 className="mb-4 text-base font-semibold text-gray-900">Create Presales Team</h2>
-                                    <div className="grid gap-3">
-                                        <input
-                                            value={teamName}
-                                            onChange={e => setTeamName(e.target.value)}
-                                            placeholder="Team name"
-                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                        <FilterDropdown
-                                            variant="field"
-                                            fieldLabel="Team leader"
-                                            value={teamLeaderId}
-                                            onChange={setTeamLeaderId}
-                                            placeholder="No leader yet"
-                                            options={presalesEmployees
-                                                .filter((e) => e.role === 'team_leader')
-                                                .map((leader) => ({ value: leader.id, label: leader.full_name }))}
-                                        />
-                                        <button type="submit" className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">
-                                            Create Team
-                                        </button>
-                                    </div>
-                                </form>
+                                <Card>
+                                    <CardHeader className="pb-2"><CardTitle className="text-base">Create Presales Team</CardTitle></CardHeader>
+                                    <CardContent className="pt-2">
+                                        <form onSubmit={handleCreateTeam} className="space-y-3">
+                                            <Input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="Team name" className="h-10" />
+                                            <FilterDropdown
+                                                variant="field"
+                                                fieldLabel="Team leader"
+                                                value={teamLeaderId}
+                                                onChange={setTeamLeaderId}
+                                                placeholder="No leader yet"
+                                                options={presalesEmployees.filter((employee) => employee.role === 'team_leader').map((leader) => ({ value: leader.id, label: leader.full_name }))}
+                                            />
+                                            <Button type="submit" className="w-full">Create team</Button>
+                                        </form>
+                                    </CardContent>
+                                </Card>
                             </div>
 
-                            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-                                    <div>
-                                        <h2 className="font-semibold text-gray-900">Presales Agents & Team Leaders</h2>
-                                        <p className="text-sm text-gray-500">{presalesEmployees.length} people · {presalesTeams.length} teams</p>
+                            <Card>
+                                <CardContent className="space-y-4 pt-5">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-[var(--semantic-text-primary)]">Presales Agents and Team Leaders</h2>
+                                            <p className="text-sm text-[var(--semantic-text-muted)]">
+                                                {filteredPresalesEmployees.length} visible | {presalesTeams.length} teams
+                                            </p>
+                                        </div>
+                                        <div className="flex w-full items-center gap-2 md:w-auto">
+                                            <div className="relative flex-1 md:w-72">
+                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--semantic-text-muted)]" />
+                                                <Input value={presalesSearch} onChange={(event) => setPresalesSearch(event.target.value)} placeholder="Search name, email, or team" className="h-10 pl-10" />
+                                            </div>
+                                            <Button type="button" variant="secondary" onClick={() => void fetchPresalesDirectory()} disabled={presalesLoading}>
+                                                {presalesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                            </Button>
+                                        </div>
                                     </div>
-                                    {presalesLoading && <Loader2 className="h-5 w-5 animate-spin text-purple-500" />}
-                                </div>
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            <th className="px-5 py-3 text-left">Name</th>
-                                            <th className="px-5 py-3 text-left">Role</th>
-                                            <th className="px-5 py-3 text-left">Team</th>
-                                            <th className="px-5 py-3 text-left">Email</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {presalesEmployees.map(emp => (
-                                            <tr key={emp.id}>
-                                                <td className="px-5 py-3.5 font-medium text-gray-900">{emp.full_name}</td>
-                                                <td className="px-5 py-3.5">
-                                                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">
-                                                        {emp.role === 'team_leader' ? 'Team Leader' : 'Agent'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-5 py-3.5">
-                                                    {emp.role === 'agent' ? (
-                                                        <FilterDropdown
-                                                            variant="bare"
-                                                            value={emp.team_id || ''}
-                                                            onChange={(v) => assignPresalesAgent(emp.id, v)}
-                                                            placeholder="No team"
-                                                            className="min-w-[10rem]"
-                                                            options={presalesTeams.map((team) => ({ value: team.id, label: team.name }))}
-                                                        />
-                                                    ) : (
-                                                        <span className="text-gray-400">Can lead teams</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-5 py-3.5 text-gray-600">{emp.email || '—'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {presalesEmployees.length === 0 && (
-                                    <p className="py-10 text-center text-sm text-gray-500">No presales employees yet.</p>
-                                )}
-                            </div>
-                        </div>
+
+                                    <div className="max-h-[68vh] overflow-auto rounded-xl border border-[var(--semantic-border)]">
+                                        <Table className="min-w-[920px]">
+                                            <TableHeader className="sticky top-0 z-10 bg-[var(--semantic-surface-muted)]">
+                                                <TableRow>
+                                                    <TableHead>Name</TableHead>
+                                                    <TableHead>Role</TableHead>
+                                                    <TableHead>Team</TableHead>
+                                                    <TableHead>Email</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {filteredPresalesEmployees.map((employee) => (
+                                                    <TableRow key={employee.id}>
+                                                        <TableCell className="font-semibold text-[var(--semantic-text-primary)]">{employee.full_name}</TableCell>
+                                                        <TableCell><Badge variant={employee.role === 'team_leader' ? 'default' : 'secondary'}>{employee.role === 'team_leader' ? 'Team Leader' : 'Agent'}</Badge></TableCell>
+                                                        <TableCell>
+                                                            {employee.role === 'agent' ? (
+                                                                <FilterDropdown
+                                                                    variant="bare"
+                                                                    value={employee.team_id || ''}
+                                                                    onChange={(value) => { void assignPresalesAgent(employee.id, value); }}
+                                                                    placeholder="No team"
+                                                                    className="min-w-[11rem]"
+                                                                    options={presalesTeams.map((team) => ({ value: team.id, label: team.name }))}
+                                                                />
+                                                            ) : (
+                                                                <span className="text-sm text-[var(--semantic-text-muted)]">Can lead teams</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-[var(--semantic-text-secondary)]">{employee.email || '-'}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+
+                                    {filteredPresalesEmployees.length === 0 ? (
+                                        <div className="rounded-xl border border-dashed border-[var(--semantic-border)] px-4 py-8 text-center">
+                                            <Users className="mx-auto mb-2 h-8 w-8 text-[var(--semantic-text-muted)]" />
+                                            <p className="font-semibold text-[var(--semantic-text-primary)]">No presales people found</p>
+                                            <p className="text-sm text-[var(--semantic-text-muted)]">Try another search or add a new presales employee.</p>
+                                        </div>
+                                    ) : null}
+                                </CardContent>
+                            </Card>
+                        </section>
                     )}
                 </div>
             </main>

@@ -11,7 +11,7 @@ Table.displayName = 'Table';
 
 const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
     ({ className, ...props }, ref) => (
-        <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-[var(--color-border-subtle)]', className)} {...props} />
+        <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-[var(--semantic-border)]', className)} {...props} />
     )
 );
 TableHeader.displayName = 'TableHeader';
@@ -27,7 +27,7 @@ const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttribut
     ({ className, ...props }, ref) => (
         <tfoot
             ref={ref}
-            className={cn('border-t border-[var(--color-border-subtle)] bg-[var(--surface-section)] font-medium [&>tr]:last:border-b-0', className)}
+            className={cn('border-t border-[var(--semantic-border)] bg-[var(--semantic-surface-muted)] font-medium [&>tr]:last:border-b-0', className)}
             {...props}
         />
     )
@@ -38,7 +38,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
     <tr
         ref={ref}
         className={cn(
-            'border-b border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--surface-hover)] data-[state=selected]:bg-[var(--surface-active)]',
+            'border-b border-[var(--semantic-border)] text-[var(--semantic-text-secondary)] transition-colors hover:bg-[var(--surface-hover)] data-[state=selected]:bg-[var(--semantic-selected)]',
             className
         )}
         {...props}
@@ -50,7 +50,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
     <th
         ref={ref}
         className={cn(
-            'h-11 px-4 text-left align-middle text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)] [&:has([role=checkbox])]:pr-0',
+            'h-11 px-4 text-left align-middle text-xs font-semibold uppercase tracking-[0.08em] text-[var(--semantic-text-muted)] [&:has([role=checkbox])]:pr-0',
             className
         )}
         {...props}
@@ -59,13 +59,13 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
 TableHead.displayName = 'TableHead';
 
 const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(({ className, ...props }, ref) => (
-    <td ref={ref} className={cn('p-4 align-middle text-[var(--color-text-secondary)] [&:has([role=checkbox])]:pr-0', className)} {...props} />
+    <td ref={ref} className={cn('p-4 align-middle text-[var(--semantic-text-secondary)] [&:has([role=checkbox])]:pr-0', className)} {...props} />
 ));
 TableCell.displayName = 'TableCell';
 
 const TableCaption = React.forwardRef<HTMLTableCaptionElement, React.HTMLAttributes<HTMLTableCaptionElement>>(
     ({ className, ...props }, ref) => (
-        <caption ref={ref} className={cn('mt-4 text-sm text-[var(--color-text-muted)]', className)} {...props} />
+        <caption ref={ref} className={cn('mt-4 text-sm text-[var(--semantic-text-muted)]', className)} {...props} />
     )
 );
 TableCaption.displayName = 'TableCaption';

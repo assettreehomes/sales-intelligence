@@ -6,12 +6,13 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminShell } from '@/components/AdminShell';
 import { NotificationBell } from '@/components/NotificationBell';
 import { FilterDropdown } from '@/components/FilterDropdown';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { getToken, API_URL } from '@/stores/authStore';
 import { notifyError, notifySuccess } from '@/lib/toast';
-import {
-    Loader2,
-    CheckCircle2
-} from 'lucide-react';
+import { CalendarClock, CheckCircle2, Loader2, MessageSquareText, UserRoundPlus } from 'lucide-react';
 
 type VisitType = 'site_visit' | 'follow_up' | 'closing' | 'inquiry' | 'other';
 
@@ -29,12 +30,12 @@ interface CreatedDraft {
     assigned_to: string;
 }
 
-const visitTypes: { value: VisitType; label: string; }[] = [
+const visitTypes: { value: VisitType; label: string }[] = [
     { value: 'site_visit', label: 'Site Visit' },
     { value: 'follow_up', label: 'Follow Up' },
     { value: 'closing', label: 'Closing' },
     { value: 'inquiry', label: 'Inquiry' },
-    { value: 'other', label: 'Other' }
+    { value: 'other', label: 'Other' },
 ];
 
 function AssignPageContent() {
@@ -55,6 +56,7 @@ function AssignPageContent() {
         const fetchEmployees = async () => {
             setLoadingEmployees(true);
             setError('');
+
             try {
                 const token = await getToken();
                 if (!token) {
@@ -62,7 +64,7 @@ function AssignPageContent() {
                 }
 
                 const response = await fetch(`${API_URL}/users?role=employee`, {
-                    headers: { Authorization: `Bearer ${token}` }
+                    headers: { Authorization: `Bearer ${token}` },
                 });
 
                 if (!response.ok) {
@@ -81,11 +83,11 @@ function AssignPageContent() {
             }
         };
 
-        fetchEmployees();
+        void fetchEmployees();
     }, []);
 
-    const handleAssignDraft = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleAssignDraft = async (event: React.FormEvent) => {
+        event.preventDefault();
         setError('');
         setSuccessDraft(null);
 
@@ -107,7 +109,7 @@ function AssignPageContent() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                     employee_id: employeeId,
@@ -115,8 +117,8 @@ function AssignPageContent() {
                     client_name: clientName.trim(),
                     visit_type: visitType,
                     expected_recording_time: expectedRecordingTime || undefined,
-                    notes: notes.trim() || undefined
-                })
+                    notes: notes.trim() || undefined,
+                }),
             });
 
             const payload = await response.json().catch(() => ({}));
@@ -142,136 +144,158 @@ function AssignPageContent() {
 
     return (
         <AdminShell activeSection="assign">
-            <main className="p-5 md:p-8">
-                <div className="max-w-3xl mx-auto">
-                    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-                        <h1 className="text-2xl font-semibold text-gray-900">Assign Ticket Draft</h1>
-                        <NotificationBell />
-                        <p className="w-full text-sm text-gray-500">Create a draft ticket for an employee. It appears in their dashboard for later audio upload.</p>
-                    </div>
-
-                    {error && (
-                        <div className="mb-4 p-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
-                            {error}
+            <main className="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+                <div className="mx-auto w-full max-w-[980px] space-y-6">
+                    <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-2">
+                            <h1 className="text-3xl font-semibold tracking-tight text-[var(--semantic-text-primary)]">Assign Ticket Draft</h1>
+                            <p className="max-w-2xl text-sm text-[var(--semantic-text-muted)]">
+                                Create a guided draft for an employee. This ticket appears in their queue so they can start recording with context.
+                            </p>
                         </div>
-                    )}
+                        <NotificationBell />
+                    </header>
 
-                    {successDraft && (
-                        <div className="mb-4 p-4 rounded-lg border border-green-200 bg-green-50 text-green-800">
-                            <div className="flex items-start gap-2">
-                                <CheckCircle2 className="w-5 h-5 mt-0.5" />
-                                <div>
-                                    <p className="font-semibold">Draft assigned successfully.</p>
-                                    <p className="text-sm mt-1">
-                                        Draft #{successDraft.id.slice(0, 8)} - {successDraft.client_name} - Visit #{successDraft.visit_number} - {successDraft.assigned_to}
+                    {error ? (
+                        <Card className="border-[var(--semantic-danger)] bg-[var(--semantic-danger-soft)]">
+                            <CardContent className="pt-5 text-sm text-[var(--color-critical-strong)]">{error}</CardContent>
+                        </Card>
+                    ) : null}
+
+                    {successDraft ? (
+                        <Card className="border-[color-mix(in_srgb,var(--semantic-success),transparent_58%)] bg-[var(--semantic-success-soft)]">
+                            <CardContent className="flex gap-3 pt-5">
+                                <CheckCircle2 className="mt-0.5 h-5 w-5 text-[var(--semantic-success)]" />
+                                <div className="space-y-1">
+                                    <p className="font-semibold text-[var(--semantic-text-primary)]">Draft assigned successfully</p>
+                                    <p className="text-sm text-[var(--semantic-text-secondary)]">
+                                        Draft #{successDraft.id.slice(0, 8)} · {successDraft.client_name} · Visit #{successDraft.visit_number} · {successDraft.assigned_to}
                                     </p>
                                 </div>
-                            </div>
-                        </div>
-                    )}
+                            </CardContent>
+                        </Card>
+                    ) : null}
 
-                    <form onSubmit={handleAssignDraft} className="bg-white rounded-2xl border border-gray-200 p-5 md:p-6 shadow-sm space-y-5">
-                        <div>
-                            <FilterDropdown
-                                variant="field"
-                                fieldLabel="Assign To Employee"
-                                required
-                                value={employeeId}
-                                onChange={setEmployeeId}
-                                disabled={loadingEmployees || submitting}
-                                placeholder={loadingEmployees ? 'Loading employees…' : 'Select an employee'}
-                                options={employees.map((employee) => ({
-                                    value: employee.id,
-                                    label: `${employee.fullname} (${employee.email})`,
-                                }))}
-                            />
-                        </div>
+                    <form onSubmit={handleAssignDraft}>
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-lg">Draft Details</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-6 pt-2">
+                                <section className="space-y-3">
+                                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">
+                                        <UserRoundPlus className="h-3.5 w-3.5" />
+                                        Step 1 · Assignment
+                                    </div>
+                                    <FilterDropdown
+                                        variant="field"
+                                        fieldLabel="Assign to employee"
+                                        required
+                                        value={employeeId}
+                                        onChange={setEmployeeId}
+                                        disabled={loadingEmployees || submitting}
+                                        placeholder={loadingEmployees ? 'Loading employees...' : 'Select an employee'}
+                                        options={employees.map((employee) => ({
+                                            value: employee.id,
+                                            label: `${employee.fullname} (${employee.email})`,
+                                        }))}
+                                    />
+                                </section>
 
-                        <div className="grid md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Client ID <span className="text-gray-400">(optional)</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={clientId}
-                                    onChange={(e) => setClientId(e.target.value)}
-                                    placeholder="e.g., CLT-001"
-                                    disabled={submitting}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Recommended for visit sequencing across repeat visits.</p>
-                            </div>
+                                <section className="space-y-4">
+                                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">
+                                        <Badge variant="secondary" className="px-2 py-0.5 text-[10px]">2</Badge>
+                                        Client context
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">
+                                                Client ID <span className="text-[var(--semantic-text-muted)]">(optional)</span>
+                                            </label>
+                                            <Input
+                                                value={clientId}
+                                                onChange={(event) => setClientId(event.target.value)}
+                                                placeholder="e.g. CLT-001"
+                                                disabled={submitting}
+                                                className="h-11"
+                                            />
+                                            <p className="text-xs text-[var(--semantic-text-muted)]">Useful for repeat-visit sequencing across the same client.</p>
+                                        </div>
 
-                            <div>
-                                <FilterDropdown
-                                    variant="field"
-                                    fieldLabel="Visit Type"
-                                    value={visitType}
-                                    onChange={(v) => setVisitType(v as VisitType)}
-                                    disabled={submitting}
-                                    options={visitTypes}
-                                />
-                            </div>
-                        </div>
+                                        <FilterDropdown
+                                            variant="field"
+                                            fieldLabel="Visit type"
+                                            value={visitType}
+                                            onChange={(value) => setVisitType(value as VisitType)}
+                                            disabled={submitting}
+                                            options={visitTypes}
+                                        />
+                                    </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Client Name <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={clientName}
-                                onChange={(e) => setClientName(e.target.value)}
-                                placeholder="Enter client name"
-                                disabled={submitting}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100"
-                            />
-                        </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">
+                                            Client name <span className="text-[var(--semantic-danger)]">*</span>
+                                        </label>
+                                        <Input
+                                            value={clientName}
+                                            onChange={(event) => setClientName(event.target.value)}
+                                            placeholder="Enter client name"
+                                            disabled={submitting}
+                                            className="h-11"
+                                        />
+                                    </div>
+                                </section>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Expected Recording Time <span className="text-gray-400">(optional)</span>
-                            </label>
-                            <input
-                                type="datetime-local"
-                                value={expectedRecordingTime}
-                                onChange={(e) => setExpectedRecordingTime(e.target.value)}
-                                disabled={submitting}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100"
-                            />
-                        </div>
+                                <section className="space-y-4">
+                                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">
+                                        <CalendarClock className="h-3.5 w-3.5" />
+                                        Step 3 · Timing
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">
+                                            Expected recording time <span className="text-[var(--semantic-text-muted)]">(optional)</span>
+                                        </label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={expectedRecordingTime}
+                                            onChange={(event) => setExpectedRecordingTime(event.target.value)}
+                                            disabled={submitting}
+                                            className="h-11"
+                                        />
+                                    </div>
+                                </section>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Notes <span className="text-gray-400">(optional)</span>
-                            </label>
-                            <textarea
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                rows={4}
-                                placeholder="Add assignment context or instructions for the employee"
-                                disabled={submitting}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100"
-                            />
-                        </div>
+                                <section className="space-y-4">
+                                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">
+                                        <MessageSquareText className="h-3.5 w-3.5" />
+                                        Step 4 · Notes
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-[var(--semantic-text-secondary)]">
+                                            Notes <span className="text-[var(--semantic-text-muted)]">(optional)</span>
+                                        </label>
+                                        <textarea
+                                            value={notes}
+                                            onChange={(event) => setNotes(event.target.value)}
+                                            rows={4}
+                                            placeholder="Add assignment context or instructions for the employee"
+                                            disabled={submitting}
+                                            className="min-h-28 w-full resize-y rounded-xl border border-[var(--semantic-border)] bg-[var(--semantic-surface-elevated)] px-3 py-2.5 text-sm text-[var(--semantic-text-primary)] shadow-[var(--elevation-1)] transition-colors placeholder:text-[var(--semantic-text-muted)] hover:border-[var(--semantic-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--semantic-primary),transparent_65%)]"
+                                        />
+                                    </div>
+                                </section>
 
-                        <div className="flex items-center gap-3">
-                            <button
-                                type="submit"
-                                disabled={submitting || loadingEmployees}
-                                className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                            >
-                                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                                Assign Draft
-                            </button>
-                            <Link
-                                href="/admin/tickets"
-                                className="px-5 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-100 transition-colors"
-                            >
-                                Back to Tickets
-                            </Link>
-                        </div>
+                                <div className="flex flex-wrap items-center gap-3 pt-2">
+                                    <Button type="submit" disabled={submitting || loadingEmployees} className="h-11 px-6">
+                                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                        Assign draft
+                                    </Button>
+                                    <Button asChild type="button" variant="secondary" className="h-11 px-6">
+                                        <Link href="/admin/tickets">Back to tickets</Link>
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </form>
                 </div>
             </main>
@@ -286,3 +310,4 @@ export default function AssignPage() {
         </ProtectedRoute>
     );
 }
+
