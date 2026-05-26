@@ -43,6 +43,28 @@
     --color-text-primary: #152238;
     --color-text-secondary: #334a66;
     --color-text-muted: #6e84a3;
+    --semantic-bg-app: var(--surface-page);
+    --semantic-surface: var(--surface-card);
+    --semantic-surface-muted: var(--surface-section);
+    --semantic-surface-elevated: var(--surface-elevated);
+    --semantic-border: var(--color-border-subtle);
+    --semantic-border-strong: var(--color-border-strong);
+    --semantic-text-primary: var(--color-text-primary);
+    --semantic-text-secondary: var(--color-text-secondary);
+    --semantic-text-muted: var(--color-text-muted);
+    --semantic-primary: var(--color-primary-600);
+    --semantic-primary-hover: var(--color-primary-500);
+    --semantic-primary-soft: color-mix(in srgb, var(--color-primary-500), transparent 86%);
+    --semantic-success: var(--color-success-500);
+    --semantic-success-soft: var(--color-success-soft);
+    --semantic-warning: var(--color-warning-500);
+    --semantic-warning-soft: var(--color-warning-soft);
+    --semantic-danger: var(--color-critical-500);
+    --semantic-danger-soft: var(--color-critical-soft);
+    --semantic-info: var(--color-info-500);
+    --semantic-info-soft: var(--color-info-soft);
+    --semantic-selected: var(--surface-active);
+    --semantic-selected-strong: color-mix(in srgb, var(--color-primary-500), transparent 70%);
 
     --elevation-1:
         0 1px 2px rgba(15, 23, 42, 0.06),
@@ -180,6 +202,28 @@ html.space-dark {
     --color-text-primary: #e7eef9;
     --color-text-secondary: #c2d0e5;
     --color-text-muted: #93a9c9;
+    --semantic-bg-app: var(--surface-page);
+    --semantic-surface: var(--surface-card);
+    --semantic-surface-muted: var(--surface-section);
+    --semantic-surface-elevated: var(--surface-elevated);
+    --semantic-border: var(--color-border-subtle);
+    --semantic-border-strong: var(--color-border-strong);
+    --semantic-text-primary: var(--color-text-primary);
+    --semantic-text-secondary: var(--color-text-secondary);
+    --semantic-text-muted: var(--color-text-muted);
+    --semantic-primary: var(--color-primary-500);
+    --semantic-primary-hover: var(--color-primary-400);
+    --semantic-primary-soft: color-mix(in srgb, var(--color-primary-400), transparent 82%);
+    --semantic-success: var(--color-success-500);
+    --semantic-success-soft: var(--color-success-soft);
+    --semantic-warning: var(--color-warning-500);
+    --semantic-warning-soft: var(--color-warning-soft);
+    --semantic-danger: var(--color-critical-500);
+    --semantic-danger-soft: var(--color-critical-soft);
+    --semantic-info: var(--color-info-500);
+    --semantic-info-soft: var(--color-info-soft);
+    --semantic-selected: var(--surface-active);
+    --semantic-selected-strong: color-mix(in srgb, var(--color-primary-400), transparent 64%);
 
     --elevation-1:
         0 1px 2px rgba(2, 6, 23, 0.52),

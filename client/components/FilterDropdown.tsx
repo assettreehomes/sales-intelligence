@@ -48,7 +48,7 @@ export function FilterDropdown({
     onChange,
     options,
     label,
-    placeholder = 'Select…',
+    placeholder = 'Select...',
     disabled = false,
     className = '',
     variant = 'inline',
@@ -58,7 +58,6 @@ export function FilterDropdown({
     menuMinWidth,
 }: FilterDropdownProps) {
     const [open, setOpen] = useState(false);
-    const [mounted, setMounted] = useState(false);
     const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -85,10 +84,6 @@ export function FilterDropdown({
             minWidth,
         });
     }, [align, menuMinWidth]);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
 
     useLayoutEffect(() => {
         if (!open) return;
@@ -146,7 +141,7 @@ export function FilterDropdown({
             {variant === 'inline' && label ? (
                 <span className={filterLabelClass}>{label}</span>
             ) : null}
-            <span className={`${filterValueClass} ${!selected ? 'text-gray-400 dark:text-slate-500' : ''}`}>
+            <span className={`${filterValueClass} ${!selected ? 'text-[var(--semantic-text-muted)]' : ''}`}>
                 {displayValue}
             </span>
             <ChevronDown className={`${filterChevronClass} ${open ? 'rotate-180' : ''}`} aria-hidden />
@@ -154,7 +149,7 @@ export function FilterDropdown({
     );
 
     const menu =
-        open && menuPosition && mounted ? (
+        open && menuPosition ? (
             <div
                 ref={menuRef}
                 role="listbox"
@@ -185,7 +180,7 @@ export function FilterDropdown({
                         >
                             <span className="truncate">{opt.label}</span>
                             {isSelected ? (
-                                <Check className="h-4 w-4 shrink-0 text-purple-600 dark:text-violet-400" />
+                                <Check className="h-4 w-4 shrink-0 text-[var(--semantic-primary)]" />
                             ) : null}
                         </button>
                     );
@@ -201,7 +196,7 @@ export function FilterDropdown({
                 {fieldLabel ? (
                     <label className={filterFieldLabelClass}>
                         {fieldLabel}
-                        {required ? <span className="text-red-500"> *</span> : null}
+                        {required ? <span className="text-[var(--semantic-danger)]"> *</span> : null}
                     </label>
                 ) : null}
                 <div ref={rootRef} className="relative">
