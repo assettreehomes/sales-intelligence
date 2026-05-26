@@ -55,14 +55,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { TicketDetailWorkspace } from './TicketDetailWorkspace';
 import { TicketStickyPlayer } from './TicketStickyPlayer';
 import { TicketCoachingCards } from './TicketCoachingCards';
-
-type HoveredChartPoint = {
-    x: number;
-    y: number;
-    label: string;
-    current: number;
-    previous: number;
-};
+import { ConversationComparisonChart } from '@/components/ui/charts';
 
 type ParsedScoreChange = {
     key: string;
@@ -81,8 +74,6 @@ type ComparisonInsights = {
     unchanged: string[];
     scoreChanges: ParsedScoreChange[];
 };
-
-type ComparisonChartMode = 'line' | 'radar';
 
 const AUDIO_VOLUME_STORAGE_KEY = 'ticketintel-audio-volume';
 const AUDIO_MUTE_STORAGE_KEY = 'ticketintel-audio-muted';
@@ -679,8 +670,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const [isHeroVisible, setIsHeroVisible] = useState(true);
     const previousReanalyzeStatusRef = useRef(reanalyzeStatus);
     const [audioError, setAudioError] = useState<string | null>(null);
-    const [hoveredChartPoint, setHoveredChartPoint] = useState<HoveredChartPoint | null>(null);
-    const [comparisonChartMode, setComparisonChartMode] = useState<ComparisonChartMode>('line');
     const [bufferedPercent, setBufferedPercent] = useState(0);
     const [, setIsScrubbing] = useState(false);
     const [scrubTime, setScrubTime] = useState<number | null>(null);
@@ -1623,161 +1612,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
     const hasAnyActionItems = aiActionItems.length > 0 || trackedActionItems.length > 0;
 
-    const comparisonChart = (() => {
-        if (!comparison || !comparison.labels?.length) return null;
-
-        const labels = comparison.labels;
-        const currentValues = labels.map((_, index) => comparison.current[index] ?? 0);
-        const previousValues = labels.map((_, index) => comparison.previous[index] ?? 0);
-        const maxValue = Math.max(...currentValues, ...previousValues, 1);
-
-        const width = 680;
-        const height = 280;
-        const padding = { top: 22, right: 16, bottom: 62, left: 46 };
-        const chartWidth = width - padding.left - padding.right;
-        const chartHeight = height - padding.top - padding.bottom;
-        const yTicks = 5;
-
-        const getX = (index: number) => (
-            labels.length === 1
-                ? padding.left + chartWidth / 2
-                : padding.left + (index / (labels.length - 1)) * chartWidth
-        );
-
-        const getY = (value: number) => (
-            padding.top + chartHeight - (Math.max(value, 0) / maxValue) * chartHeight
-        );
-
-        const buildPoints = (values: number[]) => values.map((value, index) => ({
-            x: getX(index),
-            y: getY(value),
-            value,
-            label: labels[index]
-        }));
-
-        const buildPath = (points: Array<{ x: number; y: number }>) => {
-            if (!points.length) return '';
-            if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-
-            let path = `M ${points[0].x} ${points[0].y}`;
-            for (let index = 1; index < points.length; index += 1) {
-                const prev = points[index - 1];
-                const point = points[index];
-                const deltaX = point.x - prev.x;
-                const cp1x = prev.x + deltaX / 3;
-                const cp2x = prev.x + (deltaX * 2) / 3;
-                path += ` C ${cp1x} ${prev.y}, ${cp2x} ${point.y}, ${point.x} ${point.y}`;
-            }
-            return path;
-        };
-
-        const buildAreaPath = (points: Array<{ x: number; y: number }>, baselineY: number) => {
-            if (!points.length) return '';
-            const line = buildPath(points);
-            const first = points[0];
-            const last = points[points.length - 1];
-            return `${line} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`;
-        };
-
-        const currentPoints = buildPoints(currentValues);
-        const previousPoints = buildPoints(previousValues);
-
-        return {
-            width,
-            height,
-            padding,
-            chartWidth,
-            chartHeight,
-            labels,
-            maxValue,
-            yTicks,
-            currentPoints,
-            previousPoints,
-            currentPath: buildPath(currentPoints),
-            previousPath: buildPath(previousPoints),
-            currentAreaPath: buildAreaPath(currentPoints, padding.top + chartHeight),
-            deltaScore: comparison.delta_score
-        };
-    })();
-
-    const comparisonRadarChart = (() => {
-        if (!comparison || !comparison.labels?.length) return null;
-
-        const labels = comparison.labels;
-        const currentValues = labels.map((_, index) => comparison.current[index] ?? 0);
-        const previousValues = labels.map((_, index) => comparison.previous[index] ?? 0);
-        const maxValue = Math.max(...currentValues, ...previousValues, 1);
-
-        const width = 520;
-        const height = 380;
-        const centerX = width / 2;
-        const centerY = height / 2 + 8;
-        const radius = 128;
-        const levels = 5;
-        const angleStep = (Math.PI * 2) / labels.length;
-        const startAngle = -Math.PI / 2;
-
-        const pointFor = (value: number, index: number, ratioOverride?: number) => {
-            const ratio = ratioOverride ?? (Math.max(value, 0) / maxValue);
-            const boundedRatio = clamp(ratio, 0, 1);
-            const angle = startAngle + index * angleStep;
-            const pointRadius = boundedRatio * radius;
-            return {
-                x: centerX + Math.cos(angle) * pointRadius,
-                y: centerY + Math.sin(angle) * pointRadius
-            };
-        };
-
-        const buildPolygonPath = (points: Array<{ x: number; y: number }>) => {
-            if (!points.length) return '';
-            return `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
-        };
-
-        const axes = labels.map((label, index) => {
-            const edge = pointFor(maxValue, index, 1);
-            const labelPoint = pointFor(maxValue, index, 1.18);
-            return { label, edge, labelPoint };
-        });
-
-        const gridPolygons = Array.from({ length: levels }, (_, levelIndex) => {
-            const ratio = (levelIndex + 1) / levels;
-            const points = labels.map((_, index) => pointFor(maxValue, index, ratio));
-            return {
-                ratio,
-                points,
-                path: buildPolygonPath(points)
-            };
-        });
-
-        const currentPoints = currentValues.map((value, index) => ({
-            ...pointFor(value, index),
-            value,
-            label: labels[index]
-        }));
-
-        const previousPoints = previousValues.map((value, index) => ({
-            ...pointFor(value, index),
-            value,
-            label: labels[index]
-        }));
-
-        return {
-            width,
-            height,
-            centerX,
-            centerY,
-            radius,
-            levels,
-            labels,
-            maxValue,
-            axes,
-            gridPolygons,
-            currentPoints,
-            previousPoints,
-            currentPath: buildPolygonPath(currentPoints),
-            previousPath: buildPolygonPath(previousPoints)
-        };
-    })();
+    const comparisonChartData = useMemo(
+        () =>
+            comparison?.labels?.map((label, i) => ({
+                label,
+                Current: comparison.current[i] ?? 0,
+                Previous: comparison.previous[i] ?? 0
+            })) ?? [],
+        [comparison]
+    );
 
     const formatScoreLabel = (key: string) =>
         key
@@ -2116,7 +1959,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <div className="ci-panel">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                                         <div className="flex items-center gap-3">
-                                            <h3 className="ci-panel__title">Current vs Previous Conversation</h3>
+                                            <h3 className="ci-panel__title">Current Conversation</h3>
                                             {comparisonInsights?.deltaScore !== null && comparisonInsights?.deltaScore !== undefined && (
                                                 <span className={`ci-trend-chip ci-trend-chip--${comparisonInsights.deltaScore > 0 ? 'up' : comparisonInsights.deltaScore < 0 ? 'down' : 'flat'}`}>
                                                     {comparisonInsights.deltaScore > 0 ? <TrendingUp className="h-3 w-3" /> : comparisonInsights.deltaScore < 0 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
@@ -2124,276 +1967,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                                            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setComparisonChartMode('line')}
-                                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${comparisonChartMode === 'line'
-                                                        ? 'bg-white text-gray-900 shadow-sm'
-                                                        : 'text-gray-500 hover:text-gray-700'
-                                                        }`}
-                                                >
-                                                    Line
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setComparisonChartMode('radar')}
-                                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${comparisonChartMode === 'radar'
-                                                        ? 'bg-white text-gray-900 shadow-sm'
-                                                        : 'text-gray-500 hover:text-gray-700'
-                                                        }`}
-                                                >
-                                                    Radar
-                                                </button>
-                                            </div>
-                                            <div className="flex items-center gap-4 text-xs font-medium">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: 'var(--chart-previous)' }} />
-                                                    <span className="text-gray-500">Previous</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: 'var(--chart-current)' }} />
-                                                    <span className="text-gray-700">Current</span>
-                                                </div>
-                                            </div>
-                                        </div>
                                     </div>
 
-                                    {comparisonChart ? (
-                                        <div className="ticket-advanced-chart overflow-x-auto border border-gray-200/70 p-3 md:p-4">
-                                            {comparisonChartMode === 'line' || !comparisonRadarChart ? (
-                                                <svg
-                                                    viewBox={`0 0 ${comparisonChart.width} ${comparisonChart.height}`}
-                                                    className="w-full min-w-[520px]"
-                                                    onMouseLeave={() => setHoveredChartPoint(null)}
-                                                >
-                                                    <defs>
-                                                        <linearGradient id="chart-current-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                                                            <stop offset="0%" stopColor="var(--accent)" />
-                                                            <stop offset="100%" stopColor="var(--accent-strong)" />
-                                                        </linearGradient>
-                                                        <linearGradient id="chart-current-area" x1="0%" y1="0%" x2="0%" y2="100%">
-                                                            <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.45" />
-                                                            <stop offset="100%" stopColor="var(--chart-current)" stopOpacity="0.03" />
-                                                        </linearGradient>
-                                                        <filter id="chart-current-glow" x="-20%" y="-20%" width="140%" height="140%">
-                                                            <feGaussianBlur stdDeviation="3" result="blur" />
-                                                            <feMerge>
-                                                                <feMergeNode in="blur" />
-                                                                <feMergeNode in="SourceGraphic" />
-                                                            </feMerge>
-                                                        </filter>
-                                                    </defs>
-
-                                                    <text
-                                                        x={14}
-                                                        y={comparisonChart.padding.top + comparisonChart.chartHeight / 2}
-                                                        textAnchor="middle"
-                                                        fontSize="10"
-                                                        fill="var(--chart-grid-label)"
-                                                        fontWeight="600"
-                                                        letterSpacing="0.08em"
-                                                        transform={`rotate(-90 14 ${comparisonChart.padding.top + comparisonChart.chartHeight / 2})`}
-                                                    >
-                                                        SCORE (0-100)
-                                                    </text>
-
-                                                    {[...Array(comparisonChart.yTicks)].map((_, tickIndex) => {
-                                                        const ratio = tickIndex / (comparisonChart.yTicks - 1);
-                                                        const y = comparisonChart.padding.top + ratio * comparisonChart.chartHeight;
-                                                        const value = Math.round((1 - ratio) * comparisonChart.maxValue);
-                                                        return (
-                                                            <g key={`y-grid-compact-${tickIndex}`}>
-                                                                <line
-                                                                    x1={comparisonChart.padding.left}
-                                                                    y1={y}
-                                                                    x2={comparisonChart.padding.left + comparisonChart.chartWidth}
-                                                                    y2={y}
-                                                                    stroke="var(--chart-grid)"
-                                                                    strokeOpacity="0.45"
-                                                                    strokeWidth="1"
-                                                                />
-                                                                <text x={comparisonChart.padding.left - 8} y={y + 4} textAnchor="end" fontSize="11" fill="var(--chart-grid-label)">
-                                                                    {value}
-                                                                </text>
-                                                            </g>
-                                                        );
-                                                    })}
-
-                                                    {comparisonChart.labels.map((label, index) => {
-                                                        const point = comparisonChart.currentPoints[index];
-                                                        return (
-                                                            <g key={`compact-x-${label}-${index}`}>
-                                                                <line
-                                                                    x1={point.x}
-                                                                    y1={comparisonChart.padding.top}
-                                                                    x2={point.x}
-                                                                    y2={comparisonChart.padding.top + comparisonChart.chartHeight}
-                                                                    stroke="var(--chart-grid)"
-                                                                    strokeOpacity="0.16"
-                                                                    strokeWidth="1"
-                                                                />
-                                                                <text
-                                                                    x={point.x}
-                                                                    y={comparisonChart.padding.top + comparisonChart.chartHeight + 26}
-                                                                    textAnchor="middle"
-                                                                    dominantBaseline="middle"
-                                                                    fontSize="11"
-                                                                    fill="var(--chart-grid-label)"
-                                                                    className="font-medium"
-                                                                >
-                                                                    {label}
-                                                                </text>
-                                                            </g>
-                                                        );
-                                                    })}
-
-                                                    <path d={comparisonChart.currentAreaPath} fill="url(#chart-current-area)" />
-                                                    <path d={comparisonChart.previousPath} fill="none" stroke="var(--chart-previous)" strokeDasharray="7 6" strokeWidth="2.5" />
-                                                    <path d={comparisonChart.currentPath} fill="none" stroke="url(#chart-current-stroke)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#chart-current-glow)" />
-
-                                                    {comparisonChart.currentPoints.map((point, index) => (
-                                                        <g
-                                                            key={`compact-current-${index}`}
-                                                            onMouseEnter={() => setHoveredChartPoint({
-                                                                x: point.x,
-                                                                y: point.y,
-                                                                label: comparisonChart.labels[index],
-                                                                current: point.value,
-                                                                previous: comparisonChart.previousPoints[index]?.value ?? 0
-                                                            })}
-                                                        >
-                                                            <title>{`${comparisonChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
-                                                            <circle cx={point.x} cy={point.y} r="7.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                            <circle cx={point.x} cy={point.y} r="4.8" fill="var(--chart-current)" stroke="var(--surface)" strokeWidth="1.4" />
-                                                        </g>
-                                                    ))}
-
-                                                    {comparisonChart.previousPoints.map((point, index) => (
-                                                        <g
-                                                            key={`compact-prev-${index}`}
-                                                            onMouseEnter={() => setHoveredChartPoint({
-                                                                x: point.x,
-                                                                y: point.y,
-                                                                label: comparisonChart.labels[index],
-                                                                current: comparisonChart.currentPoints[index]?.value ?? 0,
-                                                                previous: point.value
-                                                            })}
-                                                        >
-                                                            <title>{`${comparisonChart.labels[index]}: previous ${Math.round(point.value)}/100`}</title>
-                                                            <circle cx={point.x} cy={point.y} r="4.1" fill="var(--chart-previous)" />
-                                                        </g>
-                                                    ))}
-
-                                                    {hoveredChartPoint && (
-                                                        <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
-                                                            <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="var(--accent)">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
-                                                        </g>
-                                                    )}
-                                                </svg>
-                                            ) : (
-                                                <svg
-                                                    viewBox={`0 0 ${comparisonRadarChart.width} ${comparisonRadarChart.height}`}
-                                                    className="w-full min-w-[420px]"
-                                                    onMouseLeave={() => setHoveredChartPoint(null)}
-                                                >
-                                                    <defs>
-                                                        <linearGradient id="radar-current-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                            <stop offset="0%" stopColor="var(--accent)" />
-                                                            <stop offset="100%" stopColor="var(--accent-strong)" />
-                                                        </linearGradient>
-                                                        <linearGradient id="radar-current-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-                                                            <stop offset="0%" stopColor="var(--chart-current)" stopOpacity="0.35" />
-                                                            <stop offset="100%" stopColor="var(--chart-current)" stopOpacity="0.08" />
-                                                        </linearGradient>
-                                                    </defs>
-
-                                                    {comparisonRadarChart.gridPolygons.map((grid) => (
-                                                        <path
-                                                            key={`radar-grid-${grid.ratio}`}
-                                                            d={grid.path}
-                                                            fill="none"
-                                                            stroke="var(--chart-grid)"
-                                                            strokeOpacity={grid.ratio === 1 ? 0.55 : 0.3}
-                                                            strokeWidth="1"
-                                                        />
-                                                    ))}
-
-                                                    {comparisonRadarChart.axes.map((axis, index) => (
-                                                        <g key={`radar-axis-${axis.label}-${index}`}>
-                                                            <line
-                                                                x1={comparisonRadarChart.centerX}
-                                                                y1={comparisonRadarChart.centerY}
-                                                                x2={axis.edge.x}
-                                                                y2={axis.edge.y}
-                                                                stroke="var(--chart-grid)"
-                                                                strokeOpacity="0.24"
-                                                                strokeWidth="1"
-                                                            />
-                                                            <text
-                                                                x={axis.labelPoint.x}
-                                                                y={axis.labelPoint.y}
-                                                                textAnchor="middle"
-                                                                dominantBaseline="middle"
-                                                                fontSize="11"
-                                                                fill="var(--chart-grid-label)"
-                                                                className="font-medium"
-                                                            >
-                                                                {axis.label}
-                                                            </text>
-                                                        </g>
-                                                    ))}
-
-                                                    <path d={comparisonRadarChart.previousPath} fill="rgba(100,116,139,0.09)" stroke="var(--chart-previous)" strokeDasharray="6 5" strokeWidth="2.2" />
-                                                    <path d={comparisonRadarChart.currentPath} fill="url(#radar-current-fill)" stroke="url(#radar-current-stroke)" strokeWidth="3" />
-
-                                                    {comparisonRadarChart.currentPoints.map((point, index) => (
-                                                        <g
-                                                            key={`radar-current-${index}`}
-                                                            onMouseEnter={() => setHoveredChartPoint({
-                                                                x: point.x,
-                                                                y: point.y,
-                                                                label: comparisonRadarChart.labels[index],
-                                                                current: point.value,
-                                                                previous: comparisonRadarChart.previousPoints[index]?.value ?? 0
-                                                            })}
-                                                        >
-                                                            <title>{`${comparisonRadarChart.labels[index]}: ${Math.round(point.value)}/100`}</title>
-                                                            <circle cx={point.x} cy={point.y} r="6.8" fill="var(--chart-current)" fillOpacity="0.16" />
-                                                            <circle cx={point.x} cy={point.y} r="4.4" fill="var(--chart-current)" stroke="var(--surface)" strokeWidth="1.2" />
-                                                        </g>
-                                                    ))}
-
-                                                    {comparisonRadarChart.previousPoints.map((point, index) => (
-                                                        <g
-                                                            key={`radar-prev-${index}`}
-                                                            onMouseEnter={() => setHoveredChartPoint({
-                                                                x: point.x,
-                                                                y: point.y,
-                                                                label: comparisonRadarChart.labels[index],
-                                                                current: comparisonRadarChart.currentPoints[index]?.value ?? 0,
-                                                                previous: point.value
-                                                            })}
-                                                        >
-                                                            <title>{`${comparisonRadarChart.labels[index]}: previous ${Math.round(point.value)}/100`}</title>
-                                                            <circle cx={point.x} cy={point.y} r="3.6" fill="var(--chart-previous)" />
-                                                        </g>
-                                                    ))}
-
-                                                    {hoveredChartPoint && (
-                                                        <g pointerEvents="none" transform={`translate(${Math.max(110, Math.min(comparisonRadarChart.width - 110, hoveredChartPoint.x))},${Math.max(42, hoveredChartPoint.y - 52)})`}>
-                                                            <rect x="-96" y="-38" width="192" height="56" rx="10" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.15)" />
-                                                            <text x="0" y="-20" textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">{hoveredChartPoint.label}</text>
-                                                            <text x="0" y="-5" textAnchor="middle" fontSize="10.5" fill="var(--accent)">{`Current: ${Math.round(hoveredChartPoint.current)} / 100`}</text>
-                                                            <text x="0" y="10" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)">{`Previous: ${Math.round(hoveredChartPoint.previous)} / 100`}</text>
-                                                        </g>
-                                                    )}
-                                                </svg>
-                                            )}
+                                    {comparisonChartData.length > 0 ? (
+                                        <div className="ticket-advanced-chart border border-gray-200/70 p-3 md:p-4">
+                                            <ConversationComparisonChart data={comparisonChartData} height={236} />
                                         </div>
                                     ) : (
                                         <p className="text-sm text-gray-500 italic">No comparable previous analysis available.</p>

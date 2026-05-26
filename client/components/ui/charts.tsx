@@ -282,6 +282,87 @@ export function RatingDistChart({ data, height = 200 }: RatingDistProps) {
     );
 }
 
+// ─── Conversation Comparison Chart ───────────────────────────────────
+interface ConversationComparisonPoint {
+    label: string;
+    Current: number;
+    Previous: number;
+}
+
+interface ConversationComparisonChartProps {
+    data: ConversationComparisonPoint[];
+    height?: number;
+}
+
+export function ConversationComparisonChart({ data, height = 236 }: ConversationComparisonChartProps) {
+    if (!data.length) {
+        return (
+            <div className="flex items-center justify-center text-sm" style={{ height, color: CHART_COLORS.text }}>
+                No comparison data available
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ height }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 8, left: -10 }}>
+                    <defs>
+                        <linearGradient id="convCurrentGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.95} />
+                            <stop offset="100%" stopColor="#7c3aed" stopOpacity={0.45} />
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
+                    <XAxis
+                        dataKey="label"
+                        tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={0}
+                        angle={data.length > 6 ? -35 : 0}
+                        textAnchor={data.length > 6 ? 'end' : 'middle'}
+                        height={data.length > 6 ? 56 : 30}
+                    />
+                    <YAxis
+                        domain={[0, 100]}
+                        tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => `${v}`}
+                    />
+                    <Tooltip
+                        content={
+                            <ChartTooltip
+                                formatter={(value) => `${Math.round(value)} / 100`}
+                            />
+                        }
+                        cursor={{ fill: 'rgba(139,92,246,0.08)' }}
+                    />
+                    <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ paddingTop: 4 }}
+                        formatter={(value) => (
+                            <span style={{ color: CHART_COLORS.textStrong, fontSize: 12 }}>{value}</span>
+                        )}
+                    />
+                    <Bar dataKey="Current" fill="url(#convCurrentGrad)" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                    <Line
+                        type="monotone"
+                        dataKey="Previous"
+                        stroke={CHART_COLORS.muted.toString().includes('var') ? 'rgba(139,92,246,0.55)' : CHART_COLORS.muted}
+                        strokeDasharray="6 4"
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: 'rgba(139,92,246,0.55)', stroke: 'none' }}
+                        activeDot={{ r: 4, fill: 'rgba(139,92,246,0.8)' }}
+                    />
+                </ComposedChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
 interface PresalesTrendPoint {
     date: string;
     calls: number;
