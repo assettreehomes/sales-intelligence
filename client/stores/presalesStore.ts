@@ -67,7 +67,6 @@ interface Filters {
     teamLeaderFilter: string;
     outcomeFilter: string;
     authenticityFilter: string;
-    callStatusFilter: string;
     searchQuery: string;
 }
 
@@ -106,7 +105,6 @@ const DEFAULT_FILTERS: Filters = {
     teamLeaderFilter: 'all',
     outcomeFilter: 'all',
     authenticityFilter: 'all',
-    callStatusFilter: 'all',
     searchQuery:    '',
 };
 
@@ -146,7 +144,6 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
             if (filters.teamLeaderFilter !== 'all') params.append('presalesTeamLeaderId', filters.teamLeaderFilter);
             if (filters.outcomeFilter !== 'all') params.append('callOutcome', filters.outcomeFilter);
             if (filters.authenticityFilter !== 'all') params.append('callAuthenticity', filters.authenticityFilter);
-            if (filters.callStatusFilter !== 'all') params.append('callStatus', filters.callStatusFilter);
             if (filters.searchQuery)            params.append('search', filters.searchQuery);
             params.append('page',  currentPage.toString());
             params.append('limit', ticketsPerPage.toString());

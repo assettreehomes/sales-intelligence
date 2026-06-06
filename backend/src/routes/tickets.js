@@ -1672,16 +1672,23 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             query = query.in('presales_team_id', teamIds);
         }
 
-        if (callStatus && callStatus !== 'all') {
-            query = query.eq('selldo_call_status', callStatus);
-        }
-
-        const analysisTicketIds = await getTicketIdsForAnalysisFilters(callOutcome, callAuthenticity);
-        if (analysisTicketIds !== null) {
-            if (analysisTicketIds.length === 0) {
-                return res.json({ tickets: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
+        // For presales (telecmi) tickets, call_outcome and call_authenticity are denormalized
+        // directly on the tickets table — filter inline to avoid the expensive ID-set join.
+        if (source === 'telecmi') {
+            if (callOutcome && callOutcome !== 'all') {
+                query = query.eq('call_outcome', callOutcome);
             }
-            query = query.in('id', analysisTicketIds);
+            if (callAuthenticity && callAuthenticity !== 'all') {
+                query = query.eq('call_authenticity', callAuthenticity);
+            }
+        } else {
+            const analysisTicketIds = await getTicketIdsForAnalysisFilters(callOutcome, callAuthenticity);
+            if (analysisTicketIds !== null) {
+                if (analysisTicketIds.length === 0) {
+                    return res.json({ tickets: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
+                }
+                query = query.in('id', analysisTicketIds);
+            }
         }
 
         // Rating filter (DB rating is 0-10; UI works in 0-5 stars)

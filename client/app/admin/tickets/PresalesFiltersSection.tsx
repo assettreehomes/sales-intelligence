@@ -53,13 +53,6 @@ const AUTH_OPTIONS = [
     { value: 'fake', label: 'Fake Calls' },
 ];
 
-const CALL_OPTIONS = [
-    { value: 'all', label: 'All Call Status' },
-    { value: 'completed', label: 'Completed' },
-    { value: 'missed', label: 'Missed' },
-    { value: 'failed', label: 'Failed' },
-];
-
 function getPersonName(person?: { full_name?: string; fullname?: string } | null) {
     return person?.full_name || person?.fullname || 'Unknown';
 }
@@ -163,7 +156,6 @@ export function PresalesFiltersSection({ setSearchInput }: PresalesFiltersSectio
                 />
                 <TicketsFilterSelect label="Outcome" value={filters.outcomeFilter} onChange={(v) => setFilter('outcomeFilter', v)} options={OUTCOME_OPTIONS} />
                 <TicketsFilterSelect label="Auth" value={filters.authenticityFilter} onChange={(v) => setFilter('authenticityFilter', v)} options={AUTH_OPTIONS} />
-                <TicketsFilterSelect label="Call" value={filters.callStatusFilter} onChange={(v) => setFilter('callStatusFilter', v)} options={CALL_OPTIONS} />
 
                 <TicketsSortButtons sortOrder={filters.sortOrder} onSortChange={(order) => setFilter('sortOrder', order)} />
 
