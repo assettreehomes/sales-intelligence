@@ -96,16 +96,14 @@ interface PresalesPerformance {
 }
 
 type TableView = 'agents' | 'teams';
-type TableSort = 'health' | 'calls' | 'fake' | 'interested' | 'rating';
+type TableSort = 'calls' | 'fake' | 'interested' | 'rating';
 type RiskLevel = 'low' | 'medium' | 'high';
 type Momentum = 'up' | 'flat' | 'down';
 
 interface IntelligenceRow extends PerformanceBucket {
-    health_score: number;
     risk_level: RiskLevel;
     risk_reason: string;
     momentum: Momentum;
-    coaching_recommendation: string;
     fake_rate: number;
     interested_rate: number;
     follow_up_rate: number;
@@ -127,7 +125,6 @@ const PERIODS = [
 ];
 
 const SORT_LABELS: Record<TableSort, string> = {
-    health: 'health',
     calls: 'calls',
     fake: 'fake risk',
     interested: 'interested',
@@ -176,22 +173,6 @@ function deriveIntelligenceRow(row: PerformanceBucket): IntelligenceRow {
     const followUpRate = ratio(followUp, outcomeTotal);
     const analyzedRate = ratio(row.analyzed_calls, row.total_calls);
 
-    const ratingScore = clamp(row.avg_rating_10 * 10, 0, 100);
-    const authenticityScore = clamp(100 - fakeRate * 120, 0, 100);
-    const conversionScore = clamp(interestedRate * 100, 0, 100);
-    const coverageScore = clamp(analyzedRate * 100, 0, 100);
-    const durationScore = row.avg_duration_seconds
-        ? clamp(100 - Math.abs(row.avg_duration_seconds - 48) * 1.35, 20, 100)
-        : 55;
-
-    const healthScore = Math.round(
-        ratingScore * 0.3 +
-            authenticityScore * 0.25 +
-            conversionScore * 0.2 +
-            coverageScore * 0.15 +
-            durationScore * 0.1
-    );
-
     let riskLevel: RiskLevel = 'low';
     let riskReason = 'Stable call quality and authenticity.';
 
@@ -210,24 +191,11 @@ function deriveIntelligenceRow(row: PerformanceBucket): IntelligenceRow {
         momentum = 'down';
     }
 
-    let coachingRecommendation = 'Maintain cadence and share winning scripts with peers.';
-    if (fakeRate >= 0.3) {
-        coachingRecommendation = 'Run authenticity audit and tighten caller verification.';
-    } else if (followUpRate >= 0.4) {
-        coachingRecommendation = 'Coach objection handling to convert pending leads faster.';
-    } else if (interestedRate < 0.06) {
-        coachingRecommendation = 'Improve opening hook and discovery qualification flow.';
-    } else if (row.avg_rating_10 < 4) {
-        coachingRecommendation = 'Schedule QA shadow sessions for tone and clarity.';
-    }
-
     return {
         ...row,
-        health_score: healthScore,
         risk_level: riskLevel,
         risk_reason: riskReason,
         momentum,
-        coaching_recommendation: coachingRecommendation,
         fake_rate: fakeRate,
         interested_rate: interestedRate,
         follow_up_rate: followUpRate,
@@ -308,7 +276,7 @@ function PresalesPerformanceContent() {
     const [period, setPeriod] = useState('30d');
     const [view, setView] = useState<TableView>('agents');
     const [query, setQuery] = useState('');
-    const [sortBy, setSortBy] = useState<TableSort>('health');
+    const [sortBy, setSortBy] = useState<TableSort>('calls');
     const [showAllRows, setShowAllRows] = useState(false);
 
     const [data, setData] = useState<PresalesPerformance | null>(null);
@@ -452,12 +420,6 @@ function PresalesPerformanceContent() {
                 value: interested,
                 toneClass: 'bg-[var(--color-success-500)]'
             },
-            {
-                key: 'qualified',
-                label: 'Authentic Interested',
-                value: qualifiedLeadsEstimate,
-                toneClass: 'bg-[var(--color-success-strong)]'
-            }
         ],
         [followUp, interested, outcomeTotal, qualifiedLeadsEstimate, totalCalls]
     );
@@ -508,8 +470,7 @@ function PresalesPerformanceContent() {
             if (sortBy === 'calls') return right.total_calls - left.total_calls;
             if (sortBy === 'fake') return right.fake_rate - left.fake_rate;
             if (sortBy === 'interested') return right.interested_rate - left.interested_rate;
-            if (sortBy === 'rating') return right.avg_rating_10 - left.avg_rating_10;
-            return right.health_score - left.health_score;
+            return right.avg_rating_10 - left.avg_rating_10;
         });
     }, [activeRows, query, sortBy]);
 
@@ -846,7 +807,6 @@ function PresalesPerformanceContent() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuRadioGroup value={sortBy} onValueChange={(value) => setSortBy(value as TableSort)}>
-                                                        <DropdownMenuRadioItem value="health">Health score</DropdownMenuRadioItem>
                                                         <DropdownMenuRadioItem value="calls">Call volume</DropdownMenuRadioItem>
                                                         <DropdownMenuRadioItem value="fake">Fake risk</DropdownMenuRadioItem>
                                                         <DropdownMenuRadioItem value="interested">Interested rate</DropdownMenuRadioItem>
@@ -888,10 +848,8 @@ function PresalesPerformanceContent() {
                                                         <TableRow>
                                                             <TableHead>{view === 'agents' ? 'Agent' : 'Team'}</TableHead>
                                                             <TableHead className="text-center">Calls</TableHead>
-                                                            <TableHead className="text-center">Health</TableHead>
                                                             <TableHead className="text-center">Risk</TableHead>
                                                             <TableHead className="text-center">Momentum</TableHead>
-                                                            <TableHead>Coaching recommendation</TableHead>
                                                             <TableHead className="text-right">Interested</TableHead>
                                                             <TableHead className="text-right">Fake</TableHead>
                                                         </TableRow>
@@ -919,19 +877,12 @@ function PresalesPerformanceContent() {
                                                                     <p className="text-xs text-[var(--color-text-muted)]">{Math.round(row.analyzed_rate * 100)}% analyzed</p>
                                                                 </TableCell>
                                                                 <TableCell className="text-center">
-                                                                    <p className="text-lg font-bold text-[var(--color-text-primary)]">{row.health_score}</p>
-                                                                    <p className="text-xs text-[var(--color-text-muted)]">/100</p>
-                                                                </TableCell>
-                                                                <TableCell className="text-center">
                                                                     <div className="space-y-1">
                                                                         <div className="flex justify-center">{riskBadge(row.risk_level)}</div>
                                                                         <p className="text-[11px] text-[var(--color-text-muted)]">{row.risk_reason}</p>
                                                                     </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-center">{momentumNode(row.momentum)}</TableCell>
-                                                                <TableCell>
-                                                                    <p className="max-w-[22rem] text-sm text-[var(--color-text-secondary)]">{row.coaching_recommendation}</p>
-                                                                </TableCell>
                                                                 <TableCell className="text-right">
                                                                     <span className="font-semibold text-[var(--color-text-primary)]">{formatPercent(row.interested_rate * 100)}</span>
                                                                 </TableCell>
@@ -943,7 +894,7 @@ function PresalesPerformanceContent() {
 
                                                         {!visibleRows.length ? (
                                                             <TableRow>
-                                                                <TableCell colSpan={8} className="py-10 text-center text-sm text-[var(--color-text-muted)]">
+                                                                <TableCell colSpan={6} className="py-10 text-center text-sm text-[var(--color-text-muted)]">
                                                                     No matching {view} found for the current query.
                                                                 </TableCell>
                                                             </TableRow>
