@@ -6,8 +6,7 @@ import { dirname, join } from 'path';
 
 // Queue + retry imports
 import { getQueueStats } from './services/vertexQueue.js';
-import { triggerPresalesAnalysis } from './services/presalesAnalysis.js';
-import { supabaseAdmin } from './config/supabase.js';
+import { startAutoRetry } from './services/autoRetry.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -107,48 +106,6 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
-// ── Auto-retry for analysis_failed presales tickets ──────────────────────────
-// Runs every 10 minutes. Picks up to 3 recently-failed presales tickets and
-// re-queues them through triggerPresalesAnalysis (which re-downloads from
-// TeleCMI and re-runs the full analysis pipeline via the vertex queue).
-async function runAnalysisRetry() {
-    try {
-        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-
-        const { data: failedTickets, error } = await supabaseAdmin
-            .from('tickets')
-            .select('id, telecmi_filename, client_id, clientname, createdby, durationseconds, selldo_agent_name, selldo_agent_email, telecmi_lead_id, selldo_team_name')
-            .eq('status', 'analysis_failed')
-            .eq('source', 'telecmi')
-            .gte('createdat', sixHoursAgo)
-            .not('telecmi_filename', 'is', null)
-            .limit(3);
-
-        if (error) {
-            console.warn('⚠️ Auto-retry: Supabase query failed:', error.message);
-            return;
-        }
-
-        if (!failedTickets || failedTickets.length === 0) return;
-
-        console.log(`🔁 Auto-retry: found ${failedTickets.length} failed presales ticket(s) — re-queuing`);
-
-        for (const ticket of failedTickets) {
-            // Mark as pending so this run doesn't re-pick it if the interval fires again quickly
-            await supabaseAdmin
-                .from('tickets')
-                .update({ status: 'pending', analysiserror: null })
-                .eq('id', ticket.id);
-
-            triggerPresalesAnalysis(ticket.id, ticket).catch(err => {
-                console.error(`❌ Auto-retry: failed to re-queue ticket ${ticket.id}:`, err.message);
-            });
-        }
-    } catch (err) {
-        console.warn('⚠️ Auto-retry: unexpected error:', err.message);
-    }
-}
-
 // Start server
 app.listen(PORT, () => {
     console.log(`
@@ -164,11 +121,7 @@ app.listen(PORT, () => {
 ╚═══════════════════════════════════════════════════╝
     `);
 
-    // Start auto-retry loop — first run after 2 minutes, then every 10 minutes
-    setTimeout(() => {
-        runAnalysisRetry();
-        setInterval(runAnalysisRetry, 10 * 60 * 1000);
-    }, 2 * 60 * 1000);
+    startAutoRetry();
 });
 
 export default app;

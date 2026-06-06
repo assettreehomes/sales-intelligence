@@ -9,7 +9,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
 import { getVisitSequence, getPreviousAnalysis, getVisitChain } from '../services/visitSequencing.js';
 import { analyzeAudio, runComparisonAnalysis } from '../services/vertexai.js';
-import { analyzePresalesAudio } from '../services/presalesAnalysis.js';
+import { analyzePresalesAudio, triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 
 const router = Router();
@@ -2806,6 +2806,42 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             }
         }
 
+        // ── Presales: re-download from TeleCMI, fire async, respond 202 immediately ──
+        // Analysis takes 2-4 minutes — responding synchronously causes request timeouts.
+        // triggerPresalesAnalysis handles all status updates, GCS cleanup, and error handling.
+        if (presalesTicket) {
+            try {
+                await storeTelecmiRecordingForAnalysis(ticket.telecmi_filename, id, true);
+            } catch (downloadErr) {
+                const isTelecmiUnavailable = downloadErr.message?.includes('TeleCMI recording unavailable');
+                return res.status(isTelecmiUnavailable ? 422 : 400).json({
+                    error: isTelecmiUnavailable
+                        ? 'Recording no longer available on TeleCMI.'
+                        : `Download failed: ${downloadErr.message}`
+                });
+            }
+
+            await supabaseAdmin
+                .from('tickets')
+                .update({ status: 'pending', analysiserror: null, analysis_started_at: new Date().toISOString() })
+                .eq('id', id);
+
+            triggerPresalesAnalysis(id, {
+                caller_number:    ticket.client_id,
+                caller_name:      ticket.clientname,
+                agent_name:       ticket.selldo_agent_name || ticket.agent_name || null,
+                agent_email:      ticket.selldo_agent_email || null,
+                duration_seconds: ticket.durationseconds || null,
+                lead_id:          ticket.telecmi_lead_id || null,
+                team_name:        ticket.selldo_team_name || null
+            }).catch(err => {
+                console.error(`Re-analyze: presales analysis failed for ${id}:`, err.message);
+            });
+
+            return res.status(202).json({ message: 'Re-analysis started', ticketId: id });
+        }
+
+        // ── Site visit (non-presales): synchronous path ───────────────────────────
         await supabaseAdmin
             .from('tickets')
             .update({
