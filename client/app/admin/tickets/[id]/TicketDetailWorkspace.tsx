@@ -141,6 +141,18 @@ export function TicketDetailWorkspace({
 
     const coachingTip = analysis?.improvementsuggestions?.[0] || null;
 
+    type MobileNumberAlert = {
+        detected: boolean;
+        time?: string | null;
+        description?: string | null;
+        start_time_ms?: number | null;
+        end_time_ms?: number | null;
+        transcript_excerpt?: string | null;
+    };
+    const mobileAlert = isPresales
+        ? (analysis?.scores?.mobile_number_alert as MobileNumberAlert | null | undefined) ?? null
+        : null;
+
     const clientLabel = isPresales
         ? ticket.telecmi_lead_id
             ? `Lead #${ticket.telecmi_lead_id}`
@@ -191,6 +203,35 @@ export function TicketDetailWorkspace({
                     </div>
                 </div>
             </header>
+
+            {mobileAlert?.detected && (
+                <div className="mx-4 mt-3 rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-500/40 dark:bg-red-500/10">
+                    <div className="flex items-start gap-3">
+                        <span className="text-2xl leading-none">🚨</span>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                                EMERGENCY — Lead Theft Risk
+                            </p>
+                            <p className="mt-0.5 text-xs text-red-600 dark:text-red-300">
+                                {mobileAlert.description || 'Agent asked client for personal mobile number'}
+                            </p>
+                            {mobileAlert.transcript_excerpt && (
+                                <p className="mt-1 text-xs italic text-red-500 dark:text-red-400 truncate">
+                                    &ldquo;{mobileAlert.transcript_excerpt}&rdquo;
+                                </p>
+                            )}
+                            {mobileAlert.time && (
+                                <button
+                                    onClick={() => { void seekToMoment(mobileAlert.time); }}
+                                    className="mt-2 text-[11px] font-semibold text-red-600 underline hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                >
+                                    Jump to {mobileAlert.time} →
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <TicketAudioHero
                 {...audio}

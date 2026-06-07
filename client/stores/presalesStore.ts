@@ -31,6 +31,7 @@ export interface PresalesTicket {
     presales_team_id?: string | null;
     call_outcome?: 'interested' | 'not_interested' | 'follow_up_required' | string | null;
     call_authenticity?: 'real' | 'fake' | string | null;
+    asked_mobile_number?: boolean | null;
     is_flagged?: boolean;
     creator_details?: {
         fullname: string;

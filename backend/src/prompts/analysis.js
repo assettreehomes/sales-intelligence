@@ -264,8 +264,30 @@ Use these minimum values for fake or unanalysable calls:
   "call_duration_seconds": <integer, your estimate of actual speaking duration>,
   "speakers_detected": <integer>,
   "language_detected": "<Hindi|English|Tamil|Telugu|Mixed|Other>",
-  "comparison_with_previous": null
+  "comparison_with_previous": null,
+
+  "mobile_number_alert": {
+    "detected": <true|false>,
+    "time": "<M:SS format e.g. '2:15', or null if not detected>",
+    "description": "<one sentence describing what the agent said, or null>",
+    "start_time_ms": <milliseconds from audio start, or null>,
+    "end_time_ms": <milliseconds from audio start, or null>,
+    "transcript_excerpt": "<exact quote from the call, or null>"
+  }
 }
+
+## MOBILE NUMBER THEFT DETECTION
+Watch for any moment where the agent explicitly asks the prospect for a personal
+mobile number beyond what TeleCMI already captured. This is a serious red flag —
+it may indicate the agent is stealing the lead to sell to a competitor.
+
+Flag ONLY explicit personal number requests. Do NOT flag standard call-backs:
+- OK (no flag): "I'll call you back on this number", "Is this the best number for you?"
+- FLAG: "Can you give me your personal number?", "WhatsApp me on your other number",
+  "Give me your direct number so I can stay in touch personally"
+
+If detected: fill all fields with the exact moment details.
+If NOT detected: { "detected": false } with all other fields null.
 
 ## STRICT RULES
 1. Return ONLY the JSON object — no markdown fences, no prose before or after.
@@ -294,5 +316,7 @@ Use these minimum values for fake or unanalysable calls:
     real prospect engagement.
 13. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate.
 14. language_detected must always be one of: Hindi, English, Tamil, Telugu, Mixed, Other.
-    Never return null for this field — use "Other" if the language is unrecognisable.`;
+    Never return null for this field — use "Other" if the language is unrecognisable.
+15. mobile_number_alert is MANDATORY at the top level. Always return it. If no theft
+    attempt detected: { "detected": false } with all other fields null.`;
 }

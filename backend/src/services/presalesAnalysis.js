@@ -12,7 +12,7 @@ dotenv.config({ path: join(__dirname, '../../.env') });
 
 const projectId = process.env.VERTEX_PROJECT || process.env.GCS_PROJECT_ID || 'mystical-melody-486113-p0';
 const location  = process.env.VERTEX_LOCATION || 'us-central1';
-const modelName = process.env.VERTEX_MODEL    || 'gemini-2.5-pro';
+const modelName = process.env.VERTEX_MODEL_PRESALES || process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 
 const vertexAI = new VertexAI({ project: projectId, location });
 const model    = vertexAI.getGenerativeModel({ model: modelName });
@@ -66,7 +66,8 @@ const presalesResponseSchema = {
         'call_duration_seconds',
         'speakers_detected',
         'language_detected',
-        'comparison_with_previous'
+        'comparison_with_previous',
+        'mobile_number_alert'
     ],
     properties: {
         summary: { type: SchemaType.STRING },
@@ -145,7 +146,19 @@ const presalesResponseSchema = {
         call_duration_seconds: { type: SchemaType.INTEGER },
         speakers_detected: { type: SchemaType.INTEGER },
         language_detected: { type: SchemaType.STRING },
-        comparison_with_previous: { type: SchemaType.OBJECT, nullable: true }
+        comparison_with_previous: { type: SchemaType.OBJECT, nullable: true },
+        mobile_number_alert: {
+            type: SchemaType.OBJECT,
+            required: ['detected'],
+            properties: {
+                detected: { type: SchemaType.BOOLEAN },
+                time: { type: SchemaType.STRING, nullable: true },
+                description: { type: SchemaType.STRING, nullable: true },
+                start_time_ms: { type: SchemaType.INTEGER, nullable: true },
+                end_time_ms: { type: SchemaType.INTEGER, nullable: true },
+                transcript_excerpt: { type: SchemaType.STRING, nullable: true }
+            }
+        }
     }
 };
 
@@ -233,6 +246,12 @@ function validatePresalesAnalysis(analysis) {
     validateNumber(analysis?.speakers_detected, 'speakers_detected', 1, 20, missing);
     if (!hasMeaningfulText(analysis?.language_detected)) missing.push('language_detected');
 
+    if (!isObject(analysis?.mobile_number_alert)) {
+        missing.push('mobile_number_alert');
+    } else if (typeof analysis.mobile_number_alert.detected !== 'boolean') {
+        missing.push('mobile_number_alert.detected');
+    }
+
     if (missing.length > 0) {
         throw new Error(`Gemini returned invalid presales JSON: missing/invalid ${missing.join(', ')}`);
     }
@@ -319,6 +338,7 @@ MANDATORY TOP-LEVEL ENUM FIELDS (never null, never inside scores):
 - call_authenticity: exactly one of: real, fake
 
 comparison_with_previous must be null.
+- mobile_number_alert: must always be present. Minimum: { "detected": false } with all other fields null.
 
 If this was a fake or silent call, follow the FAKE / INVALID CALL HANDLING section above
 and return minimum valid values — do not return null for any required field.`);
@@ -379,7 +399,8 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             interest:   analysis.scores?.interest   ?? null,
             speakers:   analysis.scores?.speakers   ?? null,
             lead_qualification: analysis.lead_qualification || null,
-            language_detected: analysis.language_detected || null
+            language_detected: analysis.language_detected || null,
+            mobile_number_alert: analysis.mobile_number_alert || null
         };
 
         // Upsert into analysisresults — same table, same columns as site visit analysis
@@ -420,7 +441,8 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
                 analysiscompletedat: new Date().toISOString(),
                 istrainingcall:      (analysis.overall_score || 0) >= 8.0,
                 call_outcome:        analysis.call_outcome || null,
-                call_authenticity:   analysis.call_authenticity || null
+                call_authenticity:   analysis.call_authenticity || null,
+                asked_mobile_number: analysis.mobile_number_alert?.detected === true
             })
             .eq('id', ticketId);
 

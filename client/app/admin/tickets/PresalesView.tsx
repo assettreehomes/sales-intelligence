@@ -304,6 +304,11 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                                 Authenticity: {ticket.call_authenticity === 'fake' ? 'Fake' : 'Real'}
                                             </span>
                                         )}
+                                        {ticket.asked_mobile_number && (
+                                            <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white dark:bg-red-500">
+                                                🚨 Lead Theft Risk
+                                            </span>
+                                        )}
                                     </div>
 
                                     {/* TeleCMI badge */}
