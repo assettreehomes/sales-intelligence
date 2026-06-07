@@ -304,15 +304,29 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
 
             const data = await res.json();
 
-            // Update ticket and analysis directly from response — no page reload needed
-            set({
-                ticket: data.ticket || get().ticket,
-                analysis: data.analysis || get().analysis,
-                reanalyzeStatus: 'analyzed',
-            });
+            // Synchronous path (site visits) — response includes ticket + analysis directly
+            if (data.ticket && data.analysis) {
+                set({ ticket: data.ticket, analysis: data.analysis, reanalyzeStatus: 'analyzed' });
+                setTimeout(() => set({ reanalyzeStatus: 'idle' }), 3000);
+                return;
+            }
 
-            // Reset status after a brief display of success
-            setTimeout(() => set({ reanalyzeStatus: 'idle' }), 3000);
+            // Async path (presales 202) — poll until status flips to analyzed or failed
+            const MAX_POLLS = 24; // 24 × 5s = 2 minutes max
+            for (let i = 0; i < MAX_POLLS; i++) {
+                await new Promise(r => setTimeout(r, 5000));
+                await get().fetchTicket(id);
+                const status = get().ticket?.status;
+                if (status === 'analyzed') {
+                    set({ reanalyzeStatus: 'analyzed' });
+                    setTimeout(() => set({ reanalyzeStatus: 'idle' }), 3000);
+                    return;
+                }
+                if (status === 'analysis_failed') {
+                    throw new Error('Analysis failed on server');
+                }
+            }
+            throw new Error('Re-analysis timed out — check back shortly');
 
         } catch (e: unknown) {
             console.error('Re-analysis error:', e);
