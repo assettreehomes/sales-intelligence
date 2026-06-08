@@ -153,3 +153,21 @@ export function getQueueStats() {
         maxRpm:        MAX_RPM
     };
 }
+
+/**
+ * clearQueue()
+ * Drains all waiting jobs from the semaphore queue by resolving their promises
+ * immediately (they will acquire a slot and then be released on the next tick).
+ * Active in-flight Vertex AI calls are not affected — they finish normally.
+ * Returns the number of jobs cleared.
+ */
+export function clearQueue() {
+    const count = waitQueue.length;
+    // Resolve every waiting promise so callers unblock and can handle cancellation
+    while (waitQueue.length > 0) {
+        const resolve = waitQueue.shift();
+        activeSlots++;   // grant the slot so releaseSlot() can decrement it
+        resolve();       // unblock the caller — it will call releaseSlot() after its (now-cancelled) work
+    }
+    return count;
+}

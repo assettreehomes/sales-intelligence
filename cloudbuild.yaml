@@ -27,6 +27,7 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--min-instances=1'
+      - '--max-instances=1'
       # HCAPTCHA_SECRET_KEY and TOTP_ENCRYPTION_KEY are already set in Cloud Run.
       # Do NOT pass them here — the ! in the TOTP key gets shell-escaped incorrectly.
 

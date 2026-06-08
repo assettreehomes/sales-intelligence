@@ -14,6 +14,7 @@ import {
     Building2,
     Camera,
     ClipboardList,
+    Layers,
     GraduationCap,
     LogOut,
     Menu,
@@ -40,6 +41,7 @@ type AdminSection =
     | 'performance'
     | 'presalesPerformance'
     | 'live'
+    | 'queue'
     | 'imou'
     | 'sellDo'
     | 'antivirus';
@@ -260,6 +262,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'performance' as const, label: 'Performance', icon: BarChart3, group: 'analytics', href: '/admin/performance' },
             { id: 'presalesPerformance' as const, label: 'Presales Performance', icon: TrendingUp, group: 'analytics', href: '/admin/presales-performance' },
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, group: 'operations', href: '/admin/tickets' },
+            { id: 'queue' as const, label: 'Analysis Queue', icon: Layers, group: 'operations', href: '/admin/queue' },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, group: 'operations', href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, group: 'operations', href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, group: 'operations', href: '/admin/activity' },

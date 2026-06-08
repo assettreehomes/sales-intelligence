@@ -2,11 +2,14 @@
  * autoRetry.js
  *
  * Background service that automatically retries presales tickets that failed
- * analysis due to Vertex AI 429 RESOURCE_EXHAUSTED errors or a broken prior
- * retry attempt that left the ticket with "Audio not found in GCS".
+ * analysis. Uses a blacklist approach — retries everything except tickets
+ * explicitly marked "permanent_failed:..." which are unrecoverable.
  *
- * The GCS audio file is deleted on every failure, so each retry re-downloads
- * the recording from TeleCMI before re-triggering analysis.
+ * On each retry:
+ *   1. Re-downloads the recording from TeleCMI (GCS file deleted after failure)
+ *   2. If TeleCMI says the recording is gone → marks permanent_failed, never retries again
+ *   3. If download succeeds → re-triggers analysis
+ *   4. After MAX_ATTEMPTS failures → marks permanent_failed: max retries exceeded
  *
  * Env vars:
  *   RETRY_BATCH_SIZE    Tickets processed per cycle         (default: 3)
@@ -30,15 +33,34 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // a new deploy means quota may have been increased or code was fixed)
 const retryAttempts = new Map();
 
+// Returns true if the download error means TeleCMI permanently lost the recording
+function isTelecmiPermanentFailure(err) {
+    const msg = err?.message || '';
+    return (
+        msg.includes('TeleCMI error:') ||          // TeleCMI returned a JSON error payload
+        msg.includes('TeleCMI download failed (404)') || // 404 from TeleCMI
+        msg.includes('TeleCMI recording unavailable')    // catch-all from downloadTelecmiRecording
+    );
+}
+
+async function markPermanentFailed(ticketId, reason) {
+    await supabaseAdmin
+        .from('tickets')
+        .update({ status: 'analysis_failed', analysiserror: `permanent_failed: ${reason}` })
+        .eq('id', ticketId);
+    console.warn(`Auto-retry: permanently failed ${ticketId} — ${reason}`);
+}
+
 async function runRetryBatch() {
     try {
+        // Blacklist approach: retry everything that isn't permanently failed
         const { data: tickets, error } = await supabaseAdmin
             .from('tickets')
             .select('id, telecmi_filename, client_id, clientname, createdby, durationseconds, selldo_agent_name, selldo_agent_email, telecmi_lead_id, selldo_team_name')
             .eq('status', 'analysis_failed')
             .eq('source', 'telecmi')
             .not('telecmi_filename', 'is', null)
-            .or('analysiserror.ilike.%429%,analysiserror.ilike.%Audio not found%')
+            .not('analysiserror', 'ilike', 'permanent_failed%')
             .order('createdat', { ascending: true })
             .limit(BATCH_SIZE);
 
@@ -55,7 +77,8 @@ async function runRetryBatch() {
             const attempts = retryAttempts.get(ticket.id) || 0;
 
             if (attempts >= MAX_ATTEMPTS) {
-                console.warn(`Auto-retry: max attempts (${MAX_ATTEMPTS}) reached for ${ticket.id} — skipping`);
+                await markPermanentFailed(ticket.id, 'max retries exceeded');
+                retryAttempts.delete(ticket.id);
                 continue;
             }
 
@@ -63,9 +86,14 @@ async function runRetryBatch() {
             try {
                 await storeTelecmiRecordingForAnalysis(ticket.telecmi_filename, ticket.id, true);
             } catch (downloadErr) {
-                // Download failure is a separate problem — leave as analysis_failed,
-                // do not burn retry budget on a download issue
-                console.warn(`Auto-retry: re-download failed for ${ticket.id}:`, downloadErr.message);
+                if (isTelecmiPermanentFailure(downloadErr)) {
+                    // TeleCMI no longer has this recording — mark permanent, never retry again
+                    await markPermanentFailed(ticket.id, 'TeleCMI recording unavailable');
+                    retryAttempts.delete(ticket.id);
+                } else {
+                    // Transient network/timeout error — skip this cycle, try next time
+                    console.warn(`Auto-retry: re-download failed for ${ticket.id} (transient):`, downloadErr.message);
+                }
                 continue;
             }
 
