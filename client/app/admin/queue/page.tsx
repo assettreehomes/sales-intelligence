@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, RefreshCw, RotateCcw, ServerCrash, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Layers, RefreshCw, RotateCcw, Trash2, XCircle } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { SectionCard } from '@/components/dashboard/section-card';
@@ -42,7 +42,9 @@ interface QueueStatus {
 }
 
 export default function QueuePage() {
-    const { token } = useAuth();
+    const { session } = useAuth();
+    const token = session?.access_token;
+
     const [status, setStatus] = useState<QueueStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [resetting, setResetting] = useState(false);
@@ -50,6 +52,7 @@ export default function QueuePage() {
     const [resettingTicket, setResettingTicket] = useState<string | null>(null);
 
     const fetchStatus = useCallback(async () => {
+        if (!token) return;
         try {
             const res = await fetch(`${API_URL}/admin/queue/status`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -67,6 +70,7 @@ export default function QueuePage() {
     }, [fetchStatus]);
 
     const handleReset = async () => {
+        if (!token) return;
         if (!confirm('This will drain the waiting queue and reset all stuck processing tickets. Continue?')) return;
         setResetting(true);
         setResetResult(null);
@@ -86,6 +90,7 @@ export default function QueuePage() {
     };
 
     const handleResetTicket = async (id: string) => {
+        if (!token) return;
         setResettingTicket(id);
         try {
             await fetch(`${API_URL}/admin/queue/ticket/${id}/reset`, {
@@ -136,18 +141,14 @@ export default function QueuePage() {
             )}
 
             <div className="grid gap-4 md:grid-cols-3 mb-4">
-                {/* Waiting */}
-                <SectionCard>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Waiting</p>
+                <SectionCard title="Waiting">
                     <p className={`text-3xl font-bold ${(status?.queue.waiting ?? 0) > 50 ? 'text-red-600' : (status?.queue.waiting ?? 0) > 10 ? 'text-amber-600' : 'text-gray-900'}`}>
                         {loading ? '—' : (status?.queue.waiting ?? 0)}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">jobs in queue</p>
                 </SectionCard>
 
-                {/* Active */}
-                <SectionCard>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Active</p>
+                <SectionCard title="Active">
                     <p className="text-3xl font-bold text-gray-900">
                         {loading ? '—' : `${status?.queue.active ?? 0} / ${status?.queue.maxConcurrent ?? 3}`}
                     </p>
@@ -155,9 +156,7 @@ export default function QueuePage() {
                     <p className="text-xs text-gray-400 mt-1">concurrent slots</p>
                 </SectionCard>
 
-                {/* RPM */}
-                <SectionCard>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">RPM</p>
+                <SectionCard title="RPM">
                     <p className={`text-3xl font-bold ${rpmPct >= 100 ? 'text-amber-600' : 'text-gray-900'}`}>
                         {loading ? '—' : `${status?.queue.rpm ?? 0} / ${status?.queue.maxRpm ?? 5}`}
                     </p>
@@ -167,7 +166,6 @@ export default function QueuePage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 mb-4">
-                {/* Ticket breakdown */}
                 <SectionCard title="Ticket Status">
                     <div className="space-y-3 mt-1">
                         <div className="flex items-center justify-between">
@@ -183,7 +181,7 @@ export default function QueuePage() {
                                 <RotateCcw className="h-3.5 w-3.5 text-amber-500" />
                                 Retryable failures
                             </span>
-                            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{status?.tickets.retryable ?? 0}</Badge>
+                            <Badge variant="warning">{status?.tickets.retryable ?? 0}</Badge>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-sm text-gray-600 flex items-center gap-1.5">
@@ -195,7 +193,6 @@ export default function QueuePage() {
                     </div>
                 </SectionCard>
 
-                {/* Auto-retry config */}
                 <SectionCard title="Auto-Retry Config">
                     <div className="space-y-3 mt-1">
                         <div className="flex items-center justify-between">
@@ -218,15 +215,7 @@ export default function QueuePage() {
                 </SectionCard>
             </div>
 
-            {/* Stuck tickets */}
-            <SectionCard
-                title={
-                    <span className="flex items-center gap-2">
-                        <ServerCrash className="h-4 w-4 text-amber-500" />
-                        Stuck in Processing (&gt; 10 min)
-                    </span>
-                }
-            >
+            <SectionCard title="Stuck in Processing (> 10 min)">
                 {!status || status.stuck.length === 0 ? (
                     <div className="flex items-center gap-2 py-6 justify-center text-sm text-gray-400">
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
