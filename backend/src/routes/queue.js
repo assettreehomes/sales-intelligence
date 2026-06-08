@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticateToken } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { getQueueStats, clearQueue } from '../services/vertexQueue.js';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -7,7 +7,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 const router = express.Router();
 
 // All queue routes require admin
-router.use(authenticateToken, requireRole('admin', 'superadmin'));
+router.use(authMiddleware, requireRole('admin', 'superadmin'));
 
 /**
  * GET /admin/queue/status
