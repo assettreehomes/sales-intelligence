@@ -50,6 +50,8 @@ export default function QueuePage() {
     const [resetting, setResetting] = useState(false);
     const [resetResult, setResetResult] = useState<{ queueCleared: number; ticketsReset: number } | null>(null);
     const [resettingTicket, setResettingTicket] = useState<string | null>(null);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [secondsAgo, setSecondsAgo] = useState(0);
 
     const fetchStatus = useCallback(async () => {
         if (!token) return;
@@ -57,11 +59,21 @@ export default function QueuePage() {
             const res = await fetch(`${API_URL}/admin/queue/status`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (res.ok) setStatus(await res.json());
+            if (res.ok) {
+                setStatus(await res.json());
+                setLastUpdated(new Date());
+                setSecondsAgo(0);
+            }
         } catch { /* silent */ } finally {
             setLoading(false);
         }
     }, [token]);
+
+    // Tick seconds-ago counter every second
+    useEffect(() => {
+        const tick = setInterval(() => setSecondsAgo(s => s + 1), 1000);
+        return () => clearInterval(tick);
+    }, []);
 
     useEffect(() => {
         fetchStatus();
@@ -113,6 +125,15 @@ export default function QueuePage() {
                 subtitle="Monitor and control the Vertex AI analysis pipeline"
                 actions={
                     <div className="flex items-center gap-2">
+                        {lastUpdated && (
+                            <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                                </span>
+                                {secondsAgo < 5 ? 'just now' : `${secondsAgo}s ago`}
+                            </span>
+                        )}
                         <Button variant="outline" size="sm" onClick={fetchStatus}>
                             <RefreshCw className="h-4 w-4 mr-1.5" />
                             Refresh
