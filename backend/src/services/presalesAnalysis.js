@@ -67,7 +67,7 @@ const presalesResponseSchema = {
         'speakers_detected',
         'language_detected',
         'comparison_with_previous',
-        'mobile_number_alert'
+        'number_requests'
     ],
     properties: {
         summary: { type: SchemaType.STRING },
@@ -147,16 +147,25 @@ const presalesResponseSchema = {
         speakers_detected: { type: SchemaType.INTEGER },
         language_detected: { type: SchemaType.STRING },
         comparison_with_previous: { type: SchemaType.OBJECT, nullable: true },
-        mobile_number_alert: {
+        number_requests: {
             type: SchemaType.OBJECT,
-            required: ['detected'],
+            required: ['detected', 'instances'],
             properties: {
                 detected: { type: SchemaType.BOOLEAN },
-                time: { type: SchemaType.STRING, nullable: true },
-                description: { type: SchemaType.STRING, nullable: true },
-                start_time_ms: { type: SchemaType.INTEGER, nullable: true },
-                end_time_ms: { type: SchemaType.INTEGER, nullable: true },
-                transcript_excerpt: { type: SchemaType.STRING, nullable: true }
+                instances: {
+                    type: SchemaType.ARRAY,
+                    items: {
+                        type: SchemaType.OBJECT,
+                        required: ['reason', 'time', 'transcript_excerpt', 'start_time_ms', 'end_time_ms'],
+                        properties: {
+                            reason: { type: SchemaType.STRING },
+                            time: { type: SchemaType.STRING },
+                            transcript_excerpt: { type: SchemaType.STRING },
+                            start_time_ms: { type: SchemaType.INTEGER },
+                            end_time_ms: { type: SchemaType.INTEGER }
+                        }
+                    }
+                }
             }
         }
     }
@@ -191,7 +200,7 @@ function validateNumber(value, label, min, max, missing) {
     }
 }
 
-function validatePresalesAnalysis(analysis) {
+export function validatePresalesAnalysis(analysis) {
     const callOutcome = normalizeCallOutcome(analysis?.call_outcome ?? analysis?.scores?.call_outcome);
     const callAuthenticity = normalizeCallAuthenticity(analysis?.call_authenticity ?? analysis?.scores?.call_authenticity);
     const missing = [];
@@ -246,10 +255,22 @@ function validatePresalesAnalysis(analysis) {
     validateNumber(analysis?.speakers_detected, 'speakers_detected', 1, 20, missing);
     if (!hasMeaningfulText(analysis?.language_detected)) missing.push('language_detected');
 
-    if (!isObject(analysis?.mobile_number_alert)) {
-        missing.push('mobile_number_alert');
-    } else if (typeof analysis.mobile_number_alert.detected !== 'boolean') {
-        missing.push('mobile_number_alert.detected');
+    if (!isObject(analysis?.number_requests)) {
+        missing.push('number_requests');
+    } else {
+        if (typeof analysis.number_requests.detected !== 'boolean') {
+            missing.push('number_requests.detected');
+        }
+        if (!Array.isArray(analysis.number_requests.instances)) {
+            missing.push('number_requests.instances');
+        } else {
+            analysis.number_requests.instances.forEach((inst, idx) => {
+                if (!hasMeaningfulText(inst?.reason)) missing.push(`number_requests.instances[${idx}].reason`);
+                if (!hasMeaningfulText(inst?.transcript_excerpt)) missing.push(`number_requests.instances[${idx}].transcript_excerpt`);
+                validateNumber(inst?.start_time_ms, `number_requests.instances[${idx}].start_time_ms`, 0, 86400000, missing);
+                validateNumber(inst?.end_time_ms, `number_requests.instances[${idx}].end_time_ms`, 0, 86400000, missing);
+            });
+        }
     }
 
     if (missing.length > 0) {
@@ -338,7 +359,7 @@ MANDATORY TOP-LEVEL ENUM FIELDS (never null, never inside scores):
 - call_authenticity: exactly one of: real, fake
 
 comparison_with_previous must be null.
-- mobile_number_alert: must always be present. Minimum: { "detected": false } with all other fields null.
+- number_requests: must always be present. Minimum: { "detected": false, "instances": [] }. Never omit.
 
 If this was a fake or silent call, follow the FAKE / INVALID CALL HANDLING section above
 and return minimum valid values — do not return null for any required field.`);
@@ -392,6 +413,7 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
         const analysis = await analyzePresalesAudio(ticketId, ticketInfo);
 
         // Normalize scores — matches the existing analysisresults schema
+        const numberRequests = analysis.number_requests || { detected: false, instances: [] };
         const normalizedScores = {
             ...(analysis.scores || {}),
             politeness: analysis.scores?.politeness ?? null,
@@ -400,7 +422,7 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             speakers:   analysis.scores?.speakers   ?? null,
             lead_qualification: analysis.lead_qualification || null,
             language_detected: analysis.language_detected || null,
-            mobile_number_alert: analysis.mobile_number_alert || null
+            number_requests: numberRequests
         };
 
         // Upsert into analysisresults — same table, same columns as site visit analysis
@@ -436,13 +458,15 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
         await supabaseAdmin
             .from('tickets')
             .update({
-                status:              'analyzed',
-                rating:              analysis.overall_score ?? null,
-                analysiscompletedat: new Date().toISOString(),
-                istrainingcall:      (analysis.overall_score || 0) >= 8.0,
-                call_outcome:        analysis.call_outcome || null,
-                call_authenticity:   analysis.call_authenticity || null,
-                asked_mobile_number: analysis.mobile_number_alert?.detected === true
+                status:               'analyzed',
+                rating:               analysis.overall_score ?? null,
+                analysiscompletedat:  new Date().toISOString(),
+                istrainingcall:       (analysis.overall_score || 0) >= 8.0,
+                call_outcome:         analysis.call_outcome || null,
+                call_authenticity:    analysis.call_authenticity || null,
+                asked_mobile_number:  numberRequests.instances.length > 0,
+                mobile_number_count:  numberRequests.instances.length,
+                mobile_number_reason: numberRequests.instances[0]?.reason ?? null
             })
             .eq('id', ticketId);
 

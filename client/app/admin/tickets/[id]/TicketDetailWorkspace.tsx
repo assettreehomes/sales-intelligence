@@ -116,9 +116,25 @@ export function TicketDetailWorkspace({
 
     const starRating = Math.round((analysis?.rating || 0) / 2);
 
+    type NumberRequestInstance = {
+        reason: string;
+        time?: string | null;
+        transcript_excerpt?: string | null;
+        start_time_ms?: number | null;
+        end_time_ms?: number | null;
+    };
+    type NumberRequests = {
+        detected: boolean;
+        instances: NumberRequestInstance[];
+    };
+    const numberRequests = isPresales
+        ? (analysis?.scores?.number_requests as NumberRequests | null | undefined) ?? null
+        : null;
+    const numberInstances: NumberRequestInstance[] = numberRequests?.instances ?? [];
+
     const timelineMarkers = useMemo(() => {
         const totalSec = Math.max(callDuration || 0, 1);
-        return sortedMoments.map((m) => {
+        const momentMarkers = sortedMoments.map((m) => {
             const time = momentClock(m);
             const startMs = typeof m.start_time_ms === 'number' ? m.start_time_ms : null;
             const positionPct = startMs !== null && totalSec > 0
@@ -133,25 +149,29 @@ export function TicketDetailWorkspace({
                 confidence: confidenceFromImportance(m.importance),
             };
         });
-    }, [sortedMoments, callDuration]);
+        // Inject number request instances as high-priority markers
+        const alertMarkers = numberInstances.map((inst) => {
+            const startMs = typeof inst.start_time_ms === 'number' ? inst.start_time_ms : null;
+            const positionPct = startMs !== null && totalSec > 0
+                ? Math.max(0, Math.min(100, (startMs / 1000 / totalSec) * 100))
+                : undefined;
+            return {
+                time: inst.time ?? (startMs !== null ? `${Math.floor(startMs / 60000)}:${String(Math.floor((startMs % 60000) / 1000)).padStart(2, '0')}` : '0:00'),
+                label: '🚨 Number Request',
+                sentiment: 'negative',
+                category: 'negative',
+                positionPct,
+                confidence: 100,
+            };
+        });
+        return [...alertMarkers, ...momentMarkers];
+    }, [sortedMoments, callDuration, numberInstances]);
 
     const actionItems = (analysis?.actionitems || [])
         .map(normalizeActionItem)
         .filter((item): item is string => Boolean(item));
 
     const coachingTip = analysis?.improvementsuggestions?.[0] || null;
-
-    type MobileNumberAlert = {
-        detected: boolean;
-        time?: string | null;
-        description?: string | null;
-        start_time_ms?: number | null;
-        end_time_ms?: number | null;
-        transcript_excerpt?: string | null;
-    };
-    const mobileAlert = isPresales
-        ? (analysis?.scores?.mobile_number_alert as MobileNumberAlert | null | undefined) ?? null
-        : null;
 
     const clientLabel = isPresales
         ? ticket.telecmi_lead_id
@@ -204,30 +224,39 @@ export function TicketDetailWorkspace({
                 </div>
             </header>
 
-            {mobileAlert?.detected && (
+            {numberInstances.length > 0 && (
                 <div className="mx-4 mt-3 rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-500/40 dark:bg-red-500/10">
                     <div className="flex items-start gap-3">
                         <span className="text-2xl leading-none">🚨</span>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-red-700 dark:text-red-400">
-                                EMERGENCY — Lead Theft Risk
+                                Number Request Detected
                             </p>
                             <p className="mt-0.5 text-xs text-red-600 dark:text-red-300">
-                                {mobileAlert.description || 'Agent asked client for personal mobile number'}
+                                {numberInstances.length === 1
+                                    ? '1 number request detected on this call'
+                                    : `${numberInstances.length} number requests detected on this call`}
                             </p>
-                            {mobileAlert.transcript_excerpt && (
-                                <p className="mt-1 text-xs italic text-red-500 dark:text-red-400 truncate">
-                                    &ldquo;{mobileAlert.transcript_excerpt}&rdquo;
-                                </p>
-                            )}
-                            {mobileAlert.time && (
-                                <button
-                                    onClick={() => { void seekToMoment(mobileAlert.time); }}
-                                    className="mt-2 text-[11px] font-semibold text-red-600 underline hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                                >
-                                    Jump to {mobileAlert.time} →
-                                </button>
-                            )}
+                            <div className="mt-3 flex flex-col gap-3">
+                                {numberInstances.map((inst, i) => (
+                                    <div key={i} className="rounded-lg border border-red-200 bg-white/60 dark:bg-red-900/20 dark:border-red-500/30 px-3 py-2">
+                                        <p className="text-xs font-semibold text-red-700 dark:text-red-300">{inst.reason}</p>
+                                        {inst.transcript_excerpt && (
+                                            <p className="mt-1 text-xs italic text-red-500 dark:text-red-400 line-clamp-2">
+                                                &ldquo;{inst.transcript_excerpt}&rdquo;
+                                            </p>
+                                        )}
+                                        {(inst.time ?? inst.start_time_ms != null) && (
+                                            <button
+                                                onClick={() => { void seekToMoment(inst.time ?? inst.start_time_ms); }}
+                                                className="mt-1.5 text-[11px] font-semibold text-red-600 underline hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                            >
+                                                Jump to {inst.time ?? `${Math.floor((inst.start_time_ms ?? 0) / 60000)}:${String(Math.floor(((inst.start_time_ms ?? 0) % 60000) / 1000)).padStart(2, '0')}`} →
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -420,6 +449,30 @@ export function TicketDetailWorkspace({
                             <div className="ci-tab-content">
                                 <h3 className="ci-tab-content__title">Key moments</h3>
                                 <div className="ci-moments">
+                                    {numberInstances.map((inst, i) => {
+                                        const time = inst.time ?? (inst.start_time_ms != null
+                                            ? `${Math.floor(inst.start_time_ms / 60000)}:${String(Math.floor((inst.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
+                                            : '0:00');
+                                        return (
+                                            <button
+                                                key={`nr-${i}`}
+                                                type="button"
+                                                className="ci-moment"
+                                                onClick={() => { void seekToMoment(inst.time ?? inst.start_time_ms); }}
+                                            >
+                                                <span className="ci-moment__row">
+                                                    <span className="ci-moment__dot ci-moment__dot--negative" />
+                                                    <span className="ci-moment__time">{time}</span>
+                                                    <span className="ci-severity ci-severity--strong">Alert</span>
+                                                </span>
+                                                <span className="ci-moment__label">🚨 {inst.reason}</span>
+                                                <span className="ci-conf">
+                                                    <span className="ci-conf__dot ci-conf__dot--high" />
+                                                    100% confidence
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                     {sortedMoments.length ? (
                                         sortedMoments.map((moment, i) => {
                                             const time = momentClock(moment);
@@ -449,9 +502,9 @@ export function TicketDetailWorkspace({
                                                 </button>
                                             );
                                         })
-                                    ) : (
+                                    ) : numberInstances.length === 0 ? (
                                         <p className="ci-empty">No key moments yet.</p>
-                                    )}
+                                    ) : null}
                                 </div>
                                 {aiInsights.length > 0 && (
                                     <>

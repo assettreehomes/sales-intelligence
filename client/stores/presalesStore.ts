@@ -32,6 +32,8 @@ export interface PresalesTicket {
     call_outcome?: 'interested' | 'not_interested' | 'follow_up_required' | string | null;
     call_authenticity?: 'real' | 'fake' | string | null;
     asked_mobile_number?: boolean | null;
+    mobile_number_count?: number | null;
+    mobile_number_reason?: string | null;
     is_flagged?: boolean;
     creator_details?: {
         fullname: string;
@@ -68,6 +70,7 @@ interface Filters {
     teamLeaderFilter: string;
     outcomeFilter: string;
     authenticityFilter: string;
+    numberRequestsFilter: 'all' | 'true';
     searchQuery: string;
 }
 
@@ -106,6 +109,7 @@ const DEFAULT_FILTERS: Filters = {
     teamLeaderFilter: 'all',
     outcomeFilter: 'all',
     authenticityFilter: 'all',
+    numberRequestsFilter: 'all',
     searchQuery:    '',
 };
 
@@ -145,6 +149,7 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
             if (filters.teamLeaderFilter !== 'all') params.append('presalesTeamLeaderId', filters.teamLeaderFilter);
             if (filters.outcomeFilter !== 'all') params.append('callOutcome', filters.outcomeFilter);
             if (filters.authenticityFilter !== 'all') params.append('callAuthenticity', filters.authenticityFilter);
+            if (filters.numberRequestsFilter === 'true') params.append('askedMobileNumber', 'true');
             if (filters.searchQuery)            params.append('search', filters.searchQuery);
             params.append('page',  currentPage.toString());
             params.append('limit', ticketsPerPage.toString());

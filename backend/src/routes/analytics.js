@@ -18,6 +18,7 @@ const SKILL_KEYS = [
 ];
 
 const PERIOD_DAYS = { '7d': 7, '30d': 30, '90d': 90, 'all': 365 * 5 };
+const TODAY_KEY = 'today';
 
 function toNumber(v) {
     if (v === null || v === undefined) return null;
@@ -281,10 +282,15 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
 
 router.get('/presales-performance', authMiddleware, requireAdmin, async (req, res) => {
     try {
-        const periodKey = PERIOD_DAYS[req.query.period] ? req.query.period : '30d';
-        const days = PERIOD_DAYS[periodKey];
+        const periodKey = (req.query.period === TODAY_KEY || PERIOD_DAYS[req.query.period]) ? req.query.period : '30d';
         const now = new Date();
-        const fromDate = new Date(now.getTime() - days * 86400000);
+        let fromDate;
+        if (periodKey === TODAY_KEY) {
+            // Start of current calendar day in local server time
+            fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        } else {
+            fromDate = new Date(now.getTime() - PERIOD_DAYS[periodKey] * 86400000);
+        }
 
         const [
             { data: employees, error: employeesError },
@@ -309,7 +315,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             while (true) {
                 const { data: page, error: pageError } = await supabaseAdmin
                     .from('tickets')
-                    .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name, call_outcome, call_authenticity')
+                    .select('id, status, rating, createdat, durationseconds, presales_agent_id, presales_team_id, selldo_agent_name, selldo_agent_email, selldo_team_name, call_outcome, call_authenticity, asked_mobile_number')
                     .eq('source', 'telecmi')
                     .is('deletedat', null)
                     .gte('createdat', fromDate.toISOString())
@@ -391,6 +397,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             avg_rating_10: 0,
             outcome_counts: emptyOutcomeCounts(),
             authenticity_counts: { real: 0, fake: 0 },
+            number_requests: 0,
             daily: {},
             weekly: {},
             _ticketIds: new Set(),
@@ -408,7 +415,8 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             avg_duration_seconds: 0,
             avg_rating_10: 0,
             outcome_counts: emptyOutcomeCounts(),
-            authenticity_counts: { real: 0, fake: 0 }
+            authenticity_counts: { real: 0, fake: 0 },
+            number_requests: 0
         };
 
         function addToBucket(bucket, ticket, analysis) {
@@ -422,6 +430,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             if (authenticity === 'real' || authenticity === 'fake') {
                 bucket.authenticity_counts[authenticity] += 1;
             }
+            if (ticket.asked_mobile_number) bucket.number_requests += 1;
 
             const date = ticket.createdat?.slice(0, 10) || 'unknown';
             bucket.daily[date] = (bucket.daily[date] || 0) + 1;
@@ -446,6 +455,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             if (authenticity === 'real' || authenticity === 'fake') {
                 summary.authenticity_counts[authenticity] += 1;
             }
+            if (ticket.asked_mobile_number) summary.number_requests += 1;
 
             const agentId = ticket.presales_agent_id || `raw:${ticket.selldo_agent_email || ticket.selldo_agent_name || 'unknown'}`;
             const employee = employeeMap.get(ticket.presales_agent_id);
@@ -468,7 +478,16 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             addToBucket(teamBuckets.get(teamId), ticket, analysis);
 
             const date = ticket.createdat?.slice(0, 10);
-            if (date) daily.set(date, (daily.get(date) || 0) + 1);
+            if (date) {
+                const dayBucket = daily.get(date) || { count: 0, fake: 0, interested: 0, number_requests: 0 };
+                dayBucket.count += 1;
+                const auth = ticket.call_authenticity || analysis?.call_authenticity;
+                if (auth === 'fake') dayBucket.fake += 1;
+                const out = ticket.call_outcome || analysis?.call_outcome;
+                if (out === 'interested') dayBucket.interested += 1;
+                if (ticket.asked_mobile_number) dayBucket.number_requests += 1;
+                daily.set(date, dayBucket);
+            }
             const d = new Date(ticket.createdat);
             if (Number.isFinite(d.getTime())) {
                 const year = d.getUTCFullYear();
@@ -483,6 +502,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             .filter((rating) => rating !== null);
         summary.avg_duration_seconds = summary.total_calls ? Math.round(summary.duration_seconds / summary.total_calls) : 0;
         summary.avg_rating_10 = allRatings.length ? roundTo(allRatings.reduce((a, b) => a + b, 0) / allRatings.length) : 0;
+        summary.number_request_rate = safePercent(summary.number_requests, summary.total_calls);
 
         const ticketMap = new Map(tickets.map(t => [t.id, t]));
         function finalizeBucket(bucket) {
@@ -499,7 +519,8 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
                 avg_duration_seconds: bucket.total_calls ? Math.round(bucket.duration_seconds / bucket.total_calls) : 0,
                 avg_rating_10: ratingCount ? roundTo(ratingSum / ratingCount) : 0,
                 daily: Object.entries(bucket.daily).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
-                weekly: Object.entries(bucket.weekly).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week))
+                weekly: Object.entries(bucket.weekly).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week)),
+                number_request_rate: safePercent(bucket.number_requests, bucket.total_calls)
             };
         }
 
@@ -518,7 +539,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             summary,
             agents: Array.from(agentBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
             teams: Array.from(teamBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
-            daily: Array.from(daily.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
+            daily: Array.from(daily.entries()).map(([date, b]) => ({ date, count: b.count, fake: b.fake, interested: b.interested, number_requests: b.number_requests })).sort((a, b) => a.date.localeCompare(b.date)),
             weekly: Array.from(weekly.entries()).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week))
         });
     } catch (error) {

@@ -48,7 +48,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AuthenticityBarChart, PresalesMultiTrendChart } from '@/components/ui/charts';
+import { AuthenticityBarChart, NumberRequestsTrendChart, PresalesMultiTrendChart } from '@/components/ui/charts';
 
 interface OutcomeCounts {
     interested: number;
@@ -71,6 +71,8 @@ interface PerformanceBucket {
     avg_rating_10: number;
     outcome_counts: OutcomeCounts;
     authenticity_counts: AuthenticityCounts;
+    number_requests: number;
+    number_request_rate: number;
     team_leader?: {
         full_name: string;
         email?: string | null;
@@ -87,16 +89,16 @@ interface OutcomeDataQuality {
 
 interface PresalesPerformance {
     period: string;
-    summary: PerformanceBucket;
+    summary: PerformanceBucket & { number_requests: number; number_request_rate: number };
     agents: PerformanceBucket[];
     teams: PerformanceBucket[];
-    daily: Array<{ date: string; count: number }>;
+    daily: Array<{ date: string; count: number; fake: number; interested: number; number_requests: number }>;
     weekly: Array<{ week: string; count: number }>;
     outcome_data_quality?: OutcomeDataQuality;
 }
 
 type TableView = 'agents' | 'teams';
-type TableSort = 'calls' | 'fake' | 'interested' | 'rating';
+type TableSort = 'calls' | 'fake' | 'interested' | 'rating' | 'number_requests';
 type RiskLevel = 'low' | 'medium' | 'high';
 type Momentum = 'up' | 'flat' | 'down';
 
@@ -108,6 +110,7 @@ interface IntelligenceRow extends PerformanceBucket {
     interested_rate: number;
     follow_up_rate: number;
     analyzed_rate: number;
+    number_request_rate_pct: number;
 }
 
 interface FunnelStage {
@@ -118,6 +121,7 @@ interface FunnelStage {
 }
 
 const PERIODS = [
+    { key: 'today', label: 'Today' },
     { key: '7d', label: '7 Days' },
     { key: '30d', label: '30 Days' },
     { key: '90d', label: '90 Days' },
@@ -128,7 +132,8 @@ const SORT_LABELS: Record<TableSort, string> = {
     calls: 'calls',
     fake: 'fake risk',
     interested: 'interested',
-    rating: 'rating'
+    rating: 'rating',
+    number_requests: 'number requests'
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -199,7 +204,8 @@ function deriveIntelligenceRow(row: PerformanceBucket): IntelligenceRow {
         fake_rate: fakeRate,
         interested_rate: interestedRate,
         follow_up_rate: followUpRate,
-        analyzed_rate: analyzedRate
+        analyzed_rate: analyzedRate,
+        number_request_rate_pct: row.number_request_rate ?? 0,
     };
 }
 
@@ -346,6 +352,8 @@ function PresalesPerformanceContent() {
     const analyzedRate = ratio(analyzedCalls, totalCalls) * 100;
     const outcomeCoverage = ratio(outcomeTotal, totalCalls) * 100;
     const authenticityRate = ratio(realCalls, authenticityTotal) * 100;
+    const numberRequests = summary?.number_requests ?? 0;
+    const numberRequestRate = summary?.number_request_rate ?? 0;
 
     const aiConfidence = useMemo(() => {
         if (data?.outcome_data_quality?.total_analyzed) {
@@ -425,30 +433,21 @@ function PresalesPerformanceContent() {
     );
 
     const trendSeries = useMemo(() => {
-        const points = data?.daily ?? [];
-        if (!points.length || !totalCalls) return [];
+        return (data?.daily ?? []).map((point) => ({
+            date: point.date,
+            calls: point.count,
+            fake_calls: point.fake,
+            interested_calls: point.interested,
+            conversion_rate: point.count ? ratio(point.interested, point.count) * 100 : 0,
+        }));
+    }, [data?.daily]);
 
-        const avgCalls = points.reduce((sum, point) => sum + point.count, 0) / points.length;
-        const fakeRatio = ratio(fakeCalls, totalCalls);
-        const interestedRatio = ratio(interested, totalCalls);
-
-        return points.map((point) => {
-            const volatility = avgCalls ? (point.count - avgCalls) / avgCalls : 0;
-            const adjustedFakeRatio = clamp(fakeRatio + volatility * 0.06, 0.01, 0.98);
-            const adjustedInterestedRatio = clamp(interestedRatio - volatility * 0.03, 0.01, 0.95);
-
-            const fakeCallsEstimate = Math.round(point.count * adjustedFakeRatio);
-            const interestedEstimate = Math.round(point.count * adjustedInterestedRatio);
-
-            return {
-                date: point.date,
-                calls: point.count,
-                fake_calls: fakeCallsEstimate,
-                interested_calls: interestedEstimate,
-                conversion_rate: point.count ? ratio(interestedEstimate, point.count) * 100 : 0
-            };
-        });
-    }, [data?.daily, fakeCalls, interested, totalCalls]);
+    const numberRequestSeries = useMemo(() => {
+        return (data?.daily ?? []).map((point) => ({
+            date: point.date,
+            count: point.number_requests,
+        }));
+    }, [data?.daily]);
 
     const agentRows = useMemo(() => (data?.agents ?? []).map(deriveIntelligenceRow), [data?.agents]);
     const teamRows = useMemo(() => (data?.teams ?? []).map(deriveIntelligenceRow), [data?.teams]);
@@ -470,6 +469,7 @@ function PresalesPerformanceContent() {
             if (sortBy === 'calls') return right.total_calls - left.total_calls;
             if (sortBy === 'fake') return right.fake_rate - left.fake_rate;
             if (sortBy === 'interested') return right.interested_rate - left.interested_rate;
+            if (sortBy === 'number_requests') return right.number_request_rate_pct - left.number_request_rate_pct;
             return right.avg_rating_10 - left.avg_rating_10;
         });
     }, [activeRows, query, sortBy]);
@@ -636,7 +636,7 @@ function PresalesPerformanceContent() {
                                 </SectionCard>
                             </section>
 
-                            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
                                 <KpiCard
                                     label="Total Calls"
                                     icon={<PhoneCall className="h-4 w-4" />}
@@ -660,6 +660,12 @@ function PresalesPerformanceContent() {
                                     icon={<Users2 className="h-4 w-4" />}
                                     value={formatPercent(followUpRate)}
                                     footnote={`${formatCount(followUp)} follow-up required`}
+                                />
+                                <KpiCard
+                                    label="Number Requests"
+                                    icon={<ShieldAlert className="h-4 w-4" />}
+                                    value={formatCount(numberRequests)}
+                                    footnote={`${formatPercent(numberRequestRate)} of calls`}
                                 />
                             </section>
 
@@ -768,19 +774,37 @@ function PresalesPerformanceContent() {
                                 </SectionCard>
                             </section>
 
-                            <section>
+                            <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
                                 <SectionCard
                                     title="Operational Trend Intelligence"
-                                    subtitle="Total calls with estimated fake volume, interested outcomes, and conversion trajectory."
+                                    subtitle="Total calls, fake volume, interested outcomes, and conversion trajectory — real per-day data."
                                     icon={<Gauge className="h-4 w-4" />}
                                 >
                                     <PresalesMultiTrendChart data={trendSeries} height={236} />
-                                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                                        <StatusBadge status="neutral" size="sm">
-                                            Estimated secondary lines
-                                        </StatusBadge>
-                                        <span>Fake and interested trend lines are inferred from current period mix to preserve API contract.</span>
+                                </SectionCard>
+
+                                <SectionCard
+                                    title="Number Request Activity"
+                                    subtitle="Daily count of calls where agents asked leads for their mobile number."
+                                    icon={<ShieldAlert className="h-4 w-4" />}
+                                    className="border-rose-500/30"
+                                >
+                                    <div className="mb-3 grid grid-cols-2 gap-2">
+                                        <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 p-2.5">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-rose-300">Total Incidents</p>
+                                            <p className="text-2xl font-bold text-[var(--color-text-primary)]">{formatCount(numberRequests)}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--surface-elevated)] p-2.5">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">Incident Rate</p>
+                                            <p className="text-2xl font-bold text-[var(--color-text-primary)]">{formatPercent(numberRequestRate)}</p>
+                                        </div>
                                     </div>
+                                    <NumberRequestsTrendChart data={numberRequestSeries} height={160} />
+                                    {numberRequests === 0 && (
+                                        <p className="mt-2 text-center text-xs text-[var(--color-text-muted)]">
+                                            No number requests detected in this period.
+                                        </p>
+                                    )}
                                 </SectionCard>
                             </section>
 
@@ -811,6 +835,7 @@ function PresalesPerformanceContent() {
                                                         <DropdownMenuRadioItem value="fake">Fake risk</DropdownMenuRadioItem>
                                                         <DropdownMenuRadioItem value="interested">Interested rate</DropdownMenuRadioItem>
                                                         <DropdownMenuRadioItem value="rating">Rating</DropdownMenuRadioItem>
+                                                        <DropdownMenuRadioItem value="number_requests">Number requests</DropdownMenuRadioItem>
                                                     </DropdownMenuRadioGroup>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -852,6 +877,7 @@ function PresalesPerformanceContent() {
                                                             <TableHead className="text-center">Momentum</TableHead>
                                                             <TableHead className="text-right">Interested</TableHead>
                                                             <TableHead className="text-right">Fake</TableHead>
+                                                            <TableHead className="text-right">🚨 Nr. Req.</TableHead>
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
@@ -889,12 +915,19 @@ function PresalesPerformanceContent() {
                                                                 <TableCell className="text-right">
                                                                     <span className="font-semibold text-[var(--color-text-primary)]">{formatPercent(row.fake_rate * 100)}</span>
                                                                 </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    {row.number_requests > 0 ? (
+                                                                        <span className="font-semibold text-rose-500">{formatCount(row.number_requests)}</span>
+                                                                    ) : (
+                                                                        <span className="text-[var(--color-text-muted)]">—</span>
+                                                                    )}
+                                                                </TableCell>
                                                             </TableRow>
                                                         ))}
 
                                                         {!visibleRows.length ? (
                                                             <TableRow>
-                                                                <TableCell colSpan={6} className="py-10 text-center text-sm text-[var(--color-text-muted)]">
+                                                                <TableCell colSpan={7} className="py-10 text-center text-sm text-[var(--color-text-muted)]">
                                                                     No matching {view} found for the current query.
                                                                 </TableCell>
                                                             </TableRow>

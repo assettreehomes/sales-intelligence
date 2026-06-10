@@ -1605,6 +1605,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             callOutcome,
             callAuthenticity,
             callStatus,
+            askedMobileNumber,
             page = 1,
             limit = 12
         } = req.query;
@@ -1680,6 +1681,9 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             }
             if (callAuthenticity && callAuthenticity !== 'all') {
                 query = query.eq('call_authenticity', callAuthenticity);
+            }
+            if (askedMobileNumber === 'true') {
+                query = query.eq('asked_mobile_number', true);
             }
         } else {
             const analysisTicketIds = await getTicketIdsForAnalysisFilters(callOutcome, callAuthenticity);

@@ -266,28 +266,48 @@ Use these minimum values for fake or unanalysable calls:
   "language_detected": "<Hindi|English|Tamil|Telugu|Mixed|Other>",
   "comparison_with_previous": null,
 
-  "mobile_number_alert": {
-    "detected": <true|false>,
-    "time": "<M:SS format e.g. '2:15', or null if not detected>",
-    "description": "<one sentence describing what the agent said, or null>",
-    "start_time_ms": <milliseconds from audio start, or null>,
-    "end_time_ms": <milliseconds from audio start, or null>,
-    "transcript_excerpt": "<exact quote from the call, or null>"
+  "number_requests": {
+    "detected": <true|false — true if instances array is non-empty>,
+    "instances": [
+      {
+        "reason": "<one sentence: what was asked and why, e.g. 'Agent asked for prospect's WhatsApp number to send property brochure'>",
+        "time": "<M:SS format e.g. '1:15'>",
+        "transcript_excerpt": "<exact or near-exact quote from the call>",
+        "start_time_ms": <milliseconds from audio start, integer>,
+        "end_time_ms": <milliseconds from audio start, integer>
+      }
+    ]
   }
 }
 
-## MOBILE NUMBER THEFT DETECTION
-Watch for any moment where the agent explicitly asks the prospect for a personal
-mobile number beyond what TeleCMI already captured. This is a serious red flag —
-it may indicate the agent is stealing the lead to sell to a competitor.
+## NUMBER REQUEST DETECTION
 
-Flag ONLY explicit personal number requests. Do NOT flag standard call-backs:
-- OK (no flag): "I'll call you back on this number", "Is this the best number for you?"
-- FLAG: "Can you give me your personal number?", "WhatsApp me on your other number",
-  "Give me your direct number so I can stay in touch personally"
+Scan the ENTIRE call and capture EVERY moment where the agent asks for, requests,
+mentions needing, or hints at wanting any kind of contact number from the prospect.
+Be EXTREMELY strict — flag even minor, indirect, casual, or softly-worded requests.
 
-If detected: fill all fields with the exact moment details.
-If NOT detected: { "detected": false } with all other fields null.
+### ALWAYS FLAG (flag every one of these, no exceptions):
+- Any ask for a mobile number: "Can you share your number?", "What's your mobile?"
+- Any ask for WhatsApp: "Can you share your WhatsApp?", "Share your WhatsApp number",
+  "I'll send you details on WhatsApp — what's your number?", "WhatsApp me"
+- Indirect contact requests: "How can I reach you?", "Is there another number I can reach you on?",
+  "Can I have your personal contact?", "Drop me your contact"
+- Soft or casual asks: "Could you send me your number?", "Give me a missed call",
+  "Just message me your number", "You can share your contact with me"
+- Alternate number requests: "Do you have another number?", "Any other contact?",
+  "Your direct number?", "Personal number?"
+- Even if framed as helpful: "I'll WhatsApp you the brochure — can I get your number?",
+  "To send you the floor plan, can you share your WhatsApp?"
+
+### DO NOT FLAG (these are fine):
+- Agent saying "I'll call you back on this number" (using the number TeleCMI already captured)
+- Agent confirming the captured number: "Is this the best number to reach you?"
+- Prospect voluntarily offering their number without being asked
+
+### IMPORTANT:
+- Capture ALL instances in the call — there may be more than one. Return every one.
+- If nothing detected, return an empty instances array: { "detected": false, "instances": [] }
+- Do NOT decide if it is theft or not — just detect and describe what was said and why.
 
 ## STRICT RULES
 1. Return ONLY the JSON object — no markdown fences, no prose before or after.
@@ -317,6 +337,6 @@ If NOT detected: { "detected": false } with all other fields null.
 13. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate.
 14. language_detected must always be one of: Hindi, English, Tamil, Telugu, Mixed, Other.
     Never return null for this field — use "Other" if the language is unrecognisable.
-15. mobile_number_alert is MANDATORY at the top level. Always return it. If no theft
-    attempt detected: { "detected": false } with all other fields null.`;
+15. number_requests is MANDATORY at the top level. Always return it. If no number
+    request detected: { "detected": false, "instances": [] }. Never omit this field.`;
 }

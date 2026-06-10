@@ -138,6 +138,46 @@ export function AuthenticityBarChart({ real, fake, height = 180 }: AuthenticityB
     );
 }
 
+// ─── Number Requests Trend Bar ───────────────────────────────────────
+interface NumberRequestsTrendProps {
+    data: { date: string; count: number }[];
+    height?: number;
+}
+
+export function NumberRequestsTrendChart({ data, height = 160 }: NumberRequestsTrendProps) {
+    const formatted = data.slice(-30).map(d => ({
+        date: new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        Requests: d.count,
+    }));
+    if (!formatted.length) {
+        return (
+            <div className="flex items-center justify-center text-sm" style={{ height, color: CHART_COLORS.text }}>
+                No data yet
+            </div>
+        );
+    }
+    return (
+        <div style={{ height }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={formatted} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
+                    <defs>
+                        <linearGradient id="redBarGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f87171" />
+                            <stop offset="100%" stopColor="#b91c1c" />
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
+                    <XAxis dataKey="date" tick={{ fill: CHART_COLORS.text, fontSize: 9 }} axisLine={false} tickLine={false}
+                        interval={Math.floor(formatted.length / 6)} />
+                    <YAxis tick={{ fill: CHART_COLORS.text, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(239,68,68,0.08)' }} />
+                    <Bar dataKey="Requests" fill="url(#redBarGrad)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
 // ─── Daily Trend Bar ─────────────────────────────────────────────────
 interface DailyTrendProps {
     data: { date: string; count: number }[];

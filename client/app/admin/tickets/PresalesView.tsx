@@ -16,6 +16,7 @@ import {
     PhoneIncoming,
     PhoneMissed,
     BadgeCheck,
+    ShieldAlert,
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { TicketHeatmap } from '@/components/TicketHeatmap';
@@ -148,6 +149,18 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
         setPage,
     } = usePresalesStore();
 
+    const numberRequestsActive = filters.numberRequestsFilter === 'true';
+
+    function toggleNumberRequestsFilter() {
+        if (numberRequestsActive) {
+            setFilter('numberRequestsFilter', 'all');
+        } else {
+            setFilter('numberRequestsFilter', 'true');
+            setFilter('dateFilter', 'all');
+            setFilter('sortOrder', 'desc');
+        }
+    }
+
     useEffect(() => {
         fetchTickets();
     }, [filters, currentPage, fetchTickets]);
@@ -164,6 +177,31 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
     return (
         <>
             <div className="flex-1 p-5 md:p-7 overflow-auto">
+                    {/* Number Requests filter toggle */}
+                    <div className="mb-4 flex items-center gap-3">
+                        <button
+                            onClick={toggleNumberRequestsFilter}
+                            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all border ${
+                                numberRequestsActive
+                                    ? 'bg-red-600 border-red-600 text-white shadow-md shadow-red-500/20'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-red-300 hover:text-red-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300'
+                            }`}
+                        >
+                            <ShieldAlert className="w-4 h-4" />
+                            Number Requests
+                            {numberRequestsActive && (
+                                <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold">
+                                    All Time
+                                </span>
+                            )}
+                        </button>
+                        {numberRequestsActive && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Showing all tickets where agent asked for a number · latest first
+                            </p>
+                        )}
+                    </div>
+
                     <TicketHeatmap
                         source="telecmi"
                         title="Daily Ticket Intensity Heatmap"
@@ -306,10 +344,27 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                         )}
                                         {ticket.asked_mobile_number && (
                                             <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white dark:bg-red-500">
-                                                🚨 Lead Theft Risk
+                                                🚨 {ticket.mobile_number_count && ticket.mobile_number_count > 1 ? `${ticket.mobile_number_count}x ` : ''}Number Request
                                             </span>
                                         )}
                                     </div>
+
+                                    {/* Number request alert */}
+                                    {ticket.asked_mobile_number && (
+                                        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 dark:border-red-500/30 dark:bg-red-500/10">
+                                            <div className="flex items-start gap-2">
+                                                <span className="mt-0.5 text-base leading-none">🚨</span>
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-bold uppercase tracking-wide text-red-700 dark:text-red-400">
+                                                        Number Request{ticket.mobile_number_count && ticket.mobile_number_count > 1 ? ` · ${ticket.mobile_number_count} instances` : ''}
+                                                    </p>
+                                                    <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-300 line-clamp-2">
+                                                        {ticket.mobile_number_reason || 'Number request detected — view details'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* TeleCMI badge */}
                                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
