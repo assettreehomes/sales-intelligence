@@ -359,7 +359,7 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                                         Number Request{ticket.mobile_number_count && ticket.mobile_number_count > 1 ? ` · ${ticket.mobile_number_count} instances` : ''}
                                                     </p>
                                                     <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-300 line-clamp-2">
-                                                        {ticket.mobile_number_reason || 'Number request detected — view details'}
+                                                        {ticket.mobile_number_reason || 'Agent requested a contact number — open ticket for details'}
                                                     </p>
                                                 </div>
                                             </div>

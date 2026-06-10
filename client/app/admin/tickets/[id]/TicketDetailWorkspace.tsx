@@ -127,10 +127,32 @@ export function TicketDetailWorkspace({
         detected: boolean;
         instances: NumberRequestInstance[];
     };
+    // New schema: scores.number_requests.instances[]
+    // Legacy schema (pre-migration): scores.mobile_number_alert flat object
+    type LegacyMobileAlert = {
+        detected?: boolean;
+        description?: string | null;
+        time?: string | null;
+        transcript_excerpt?: string | null;
+        start_time_ms?: number | null;
+        end_time_ms?: number | null;
+    };
     const numberRequests = isPresales
         ? (analysis?.scores?.number_requests as NumberRequests | null | undefined) ?? null
         : null;
-    const numberInstances: NumberRequestInstance[] = numberRequests?.instances ?? [];
+    const legacyAlert = isPresales && !numberRequests
+        ? (analysis?.scores?.mobile_number_alert as LegacyMobileAlert | null | undefined) ?? null
+        : null;
+    const numberInstances: NumberRequestInstance[] = numberRequests?.instances
+        ?? (legacyAlert?.detected && legacyAlert.description
+            ? [{
+                reason: legacyAlert.description,
+                time: legacyAlert.time ?? null,
+                transcript_excerpt: legacyAlert.transcript_excerpt ?? null,
+                start_time_ms: legacyAlert.start_time_ms ?? null,
+                end_time_ms: legacyAlert.end_time_ms ?? null,
+              }]
+            : []);
 
     const timelineMarkers = useMemo(() => {
         const totalSec = Math.max(callDuration || 0, 1);
