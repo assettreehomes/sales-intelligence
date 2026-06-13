@@ -28,24 +28,58 @@ const analysisResponseSchema = {
     'objections',
     'action_items',
     'recommendations',
-    'call_outcome',
-    'comparison_with_previous'
+    'call_outcome'
   ],
   properties: {
     summary: { type: SchemaType.STRING },
     overall_score: { type: SchemaType.NUMBER },
-    scores: { type: SchemaType.OBJECT },
-    key_moments: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT } },
-    objections: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT } },
-    action_items: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    scores: {
+      type: SchemaType.OBJECT,
+      required: ['rapport_building', 'needs_discovery', 'objection_handling', 'closing_techniques', 'product_knowledge', 'professionalism', 'politeness', 'confidence', 'interest', 'speakers'],
+      properties: {
+        rapport_building:    { type: SchemaType.NUMBER },
+        needs_discovery:     { type: SchemaType.NUMBER },
+        objection_handling:  { type: SchemaType.NUMBER },
+        closing_techniques:  { type: SchemaType.NUMBER },
+        product_knowledge:   { type: SchemaType.NUMBER },
+        professionalism:     { type: SchemaType.NUMBER },
+        politeness:          { type: SchemaType.NUMBER },
+        confidence:          { type: SchemaType.NUMBER },
+        interest:            { type: SchemaType.STRING, enum: ['low', 'medium', 'high'] },
+        speakers:            { type: SchemaType.INTEGER }
+      }
+    },
+    key_moments: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          timestamp:         { type: SchemaType.STRING },
+          description:       { type: SchemaType.STRING },
+          sentiment:         { type: SchemaType.STRING },
+          importance:        { type: SchemaType.STRING }
+        }
+      }
+    },
+    objections: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          objection:    { type: SchemaType.STRING },
+          response:     { type: SchemaType.STRING },
+          effectiveness:{ type: SchemaType.STRING }
+        }
+      }
+    },
+    action_items:    { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     call_outcome: {
       type: SchemaType.STRING,
       enum: ['interested', 'not_interested', 'follow_up_required']
     },
-    comparison_with_previous: { type: SchemaType.OBJECT, nullable: true },
     call_duration_seconds: { type: SchemaType.INTEGER },
-    speakers_detected: { type: SchemaType.INTEGER }
+    speakers_detected:     { type: SchemaType.INTEGER }
   }
 };
 
