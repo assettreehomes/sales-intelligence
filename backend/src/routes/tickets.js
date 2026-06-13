@@ -2970,49 +2970,7 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             }
         }
 
-        console.log(`✅ Phase 1 complete for re-analysis: ${id} (Score: ${analysis.overall_score})`);
-
-        // ── Phase 2: Comparison (only for visitNumber > 1) ──
-        if (visitNumber > 1) {
-            // Resolve the previous ticket ID — use stored value or fallback to querying by client_id
-            let resolvedPrevTicketId = prevTicketId;
-            if (!resolvedPrevTicketId && ticket.client_id) {
-                console.log(`🔍 Phase 2: No previousvisitticketid set. Falling back to client_id lookup...`);
-                const { data: prevTickets } = await supabaseAdmin
-                    .from('tickets')
-                    .select('id, visitnumber')
-                    .eq('client_id', ticket.client_id)
-                    .neq('id', id)
-                    .order('visitnumber', { ascending: false })
-                    .limit(1);
-
-                if (prevTickets && prevTickets.length > 0) {
-                    resolvedPrevTicketId = prevTickets[0].id;
-                    console.log(`✅ Found previous ticket by client_id: ${resolvedPrevTicketId} (Visit #${prevTickets[0].visitnumber})`);
-                }
-            }
-
-            if (resolvedPrevTicketId) {
-                try {
-                    const previousAnalysis = await getPreviousAnalysis(resolvedPrevTicketId);
-                    if (previousAnalysis) {
-                        console.log(`📊 Phase 2: Comparing Visit #${visitNumber} with Visit #${visitNumber - 1}`);
-                        const comparison = await runComparisonAnalysis(analysis, previousAnalysis, visitNumber);
-                        if (comparison) {
-                            await supabaseAdmin
-                                .from('analysisresults')
-                                .update({ comparisonwithprevious: comparison })
-                                .eq('ticketid', id);
-                            console.log(`✅ Phase 2 complete. Delta: ${comparison.delta_score}`);
-                        }
-                    }
-                } catch (compErr) {
-                    console.warn(`⚠️ Phase 2 comparison failed (non-fatal):`, compErr.message);
-                }
-            } else {
-                console.warn(`⚠️ Could not find previous ticket for comparison (Visit #${visitNumber})`);
-            }
-        }
+        console.log(`✅ Re-analysis complete for ticket ${id} (Score: ${analysis.overall_score})`);
 
         // Fetch final updated data to return
         const { data: updatedTicket } = await supabaseAdmin
