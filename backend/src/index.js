@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 // Queue + retry imports
-import { getQueueStats } from './services/vertexQueue.js';
+import { proQueue, flashQueue } from './services/queues.js';
 import { startAutoRetry } from './services/autoRetry.js';
 
 // Route imports
@@ -74,7 +74,10 @@ app.get('/health', (req, res) => {
         timestamp: new Date().toISOString(),
         version: '2.1.0',
         environment: process.env.NODE_ENV || 'development',
-        vertexQueue: getQueueStats()
+        vertexQueue: {
+            pro:   proQueue.getQueueStats(),
+            flash: flashQueue.getQueueStats(),
+        }
     });
 });
 

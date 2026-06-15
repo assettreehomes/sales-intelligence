@@ -1,5 +1,6 @@
 import { SchemaType, VertexAI } from '@google-cloud/vertexai';
-import { callVertex, is429 } from './vertexQueue.js';
+import { is429 } from './vertexQueue.js';
+import { proQueue } from './queues.js';
 import { checkAudioExists, getAudioUri } from '../config/gcs.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -114,7 +115,7 @@ function validateAnalysis(analysis) {
 }
 
 async function generateAnalysis(audioUri, mimeType, prompt) {
-  const response = await callVertex(() => model.generateContent({
+  const response = await proQueue.callVertex(() => model.generateContent({
     contents: [{
       role: 'user',
       parts: [
@@ -284,7 +285,7 @@ export async function runComparisonAnalysis(currentAnalysis, previousAnalysis, v
   console.log(`📊 Phase 2: Running comparison (Visit #${visitNumber} vs Visit #${visitNumber - 1})`);
 
   try {
-    const response = await callVertex(() => model.generateContent({
+    const response = await proQueue.callVertex(() => model.generateContent({
       contents: [{
         role: 'user',
         parts: [{ text: prompt }]

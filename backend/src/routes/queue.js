@@ -1,7 +1,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { getQueueStats, clearQueue } from '../services/vertexQueue.js';
+import { proQueue, flashQueue } from '../services/queues.js';
 import { supabaseAdmin } from '../config/supabase.js';
 
 const router = express.Router();
@@ -15,7 +15,10 @@ router.use(authMiddleware, requireRole('admin', 'superadmin'));
  */
 router.get('/status', async (req, res) => {
     try {
-        const queue = getQueueStats();
+        const queue = {
+            pro:   proQueue.getQueueStats(),
+            flash: flashQueue.getQueueStats(),
+        };
 
         // Ticket counts from DB
         const { data, error } = await supabaseAdmin
@@ -81,7 +84,7 @@ router.get('/status', async (req, res) => {
  */
 router.post('/reset', async (req, res) => {
     try {
-        const cleared = clearQueue();
+        const cleared = proQueue.clearQueue() + flashQueue.clearQueue();
 
         const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
         const { data: resetTickets, error } = await supabaseAdmin

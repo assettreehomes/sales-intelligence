@@ -1,5 +1,6 @@
 import { SchemaType, VertexAI } from '@google-cloud/vertexai';
-import { callVertex, is429 } from './vertexQueue.js';
+import { is429 } from './vertexQueue.js';
+import { flashQueue } from './queues.js';
 import { checkAudioExists, getAudioUri, buckets } from '../config/gcs.js';
 import { getPresalesAnalysisPrompt } from '../prompts/analysis.js';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -285,7 +286,7 @@ export function validatePresalesAnalysis(analysis) {
 }
 
 async function generatePresalesAnalysis(audioUri, mimeType, prompt) {
-    const response = await callVertex(() => model.generateContent({
+    const response = await flashQueue.callVertex(() => model.generateContent({
         contents: [{
             role: 'user',
             parts: [
