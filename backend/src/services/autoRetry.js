@@ -21,7 +21,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { storeTelecmiRecordingForAnalysis } from './telecmiRecording.js';
 import { triggerPresalesAnalysis } from './presalesAnalysis.js';
 
-const BATCH_SIZE    = Number(process.env.RETRY_BATCH_SIZE)   || 3;
+const BATCH_SIZE    = Number(process.env.RETRY_BATCH_SIZE)   || 1;
 const INTERVAL_MS   = Number(process.env.RETRY_INTERVAL_MS)  || 20 * 60 * 1000;
 const MAX_ATTEMPTS  = Number(process.env.RETRY_MAX_ATTEMPTS) || 10;
 const INITIAL_DELAY = 3 * 60 * 1000;  // wait 3 min after boot before first run
@@ -53,6 +53,21 @@ async function markPermanentFailed(ticketId, reason) {
 
 async function runRetryBatch() {
     try {
+        // Reset any tickets stuck at 'processing' for more than 10 minutes.
+        // These are orphaned mid-analysis (crash, timeout, etc.) — drop them back
+        // to analysis_failed so the retry loop below picks them up.
+        const stuckCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data: stuckTickets } = await supabaseAdmin
+            .from('tickets')
+            .update({ status: 'analysis_failed', analysiserror: 'Reset by autoRetry: stuck in processing > 10 min' })
+            .eq('status', 'processing')
+            .eq('source', 'telecmi')
+            .lt('analysis_started_at', stuckCutoff)
+            .select('id');
+        if (stuckTickets?.length) {
+            console.log(`Auto-retry: reset ${stuckTickets.length} stuck processing ticket(s) → analysis_failed`);
+        }
+
         // Blacklist approach: retry everything that isn't permanently failed
         const { data: tickets, error } = await supabaseAdmin
             .from('tickets')

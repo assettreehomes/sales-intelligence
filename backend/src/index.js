@@ -7,6 +7,7 @@ import { dirname, join } from 'path';
 // Queue + retry imports
 import { proQueue, flashQueue } from './services/queues.js';
 import { startAutoRetry } from './services/autoRetry.js';
+import { supabaseAdmin } from './config/supabase.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -125,6 +126,19 @@ app.listen(PORT, () => {
 ║  Vertex AI: ${process.env.VERTEX_LOCATION || 'us-central1'}                           ║
 ╚═══════════════════════════════════════════════════╝
     `);
+
+    // On every startup, reset any tickets left stuck at 'processing' from a previous
+    // revision or crash. They will be picked up by autoRetry on the next cycle.
+    supabaseAdmin
+        .from('tickets')
+        .update({ status: 'analysis_failed', analysiserror: 'Reset on startup: previous revision left ticket in-flight' })
+        .eq('status', 'processing')
+        .eq('source', 'telecmi')
+        .lt('analysis_started_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+        .then(({ data, error }) => {
+            if (error) console.warn('Startup cleanup: failed to reset stuck tickets:', error.message);
+            else if (data?.length) console.log(`Startup cleanup: reset ${data.length} stuck processing ticket(s) → analysis_failed`);
+        });
 
     startAutoRetry();
 });
