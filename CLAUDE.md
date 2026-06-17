@@ -195,9 +195,9 @@ The reconciliation block in `processCdr()` (`telecmi.js:135–207`) is wrapped i
 - `agent_email` is the primary agent matching field — more reliable than `agent_name`
 - Only send for answered/completed calls — missed/cancelled calls should not be pushed
 
-### Current Status (as of 2026-05-23)
-- `/webhooks/selldo/lead` — receiving real events from Sell.Do ✅
-- `/webhooks/selldo/call` — **never received a real Sell.Do event** ❌ (Sell.Do not yet configured)
+### Current Status (as of 2026-06-18)
+- `/webhooks/selldo/lead` — receiving real events from Sell.Do ✅; end-to-end tested (creates draft, reassigns, idempotent skip all confirmed)
+- `/webhooks/selldo/call` — end-to-end tested ✅ (`enriched` and `pending_created` paths both confirmed); Sell.Do not yet configured to send real events ❌
 - All rows in `selldo_pending_calls` are test data; `matched: false` across the board
 - TeleCMI CDRs all have `custom: "false"` — no lead_id coming from TeleCMI's Click-to-Call side either
 
