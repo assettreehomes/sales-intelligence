@@ -11,7 +11,7 @@ const router = Router();
 
 const TELECMI_APP_ID     = process.env.TELECMI_APP_ID;
 const TELECMI_SECRET     = process.env.TELECMI_SECRET;
-const MIN_DURATION_SECONDS = 10;
+const MIN_DURATION_SECONDS = 20;
 const SYNC_STAGGER_MS    = Number(process.env.VERTEX_SYNC_STAGGER_MS) || 1500;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
