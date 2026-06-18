@@ -16,6 +16,14 @@ const SYNC_STAGGER_MS    = Number(process.env.VERTEX_SYNC_STAGGER_MS) || 1500;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Mask phone number — keep first 5 + last 2 digits, hide the rest with X
+// e.g. 919840912567 → 91984XXXXX67, 9876543210 → 98765XXXX10
+function maskPhone(number) {
+    const s = String(number);
+    if (s === 'unknown' || s.length < 7) return s;
+    return s.slice(0, 5) + 'X'.repeat(Math.max(0, s.length - 7)) + s.slice(-2);
+}
+
 /**
  * Core CDR processing pipeline. Shared by both webhook and sync.
  * Returns { processed, skipped, reason?, ticketId? }
@@ -30,9 +38,9 @@ async function processCdr(cdr, skipInitialDelay = false) {
     // Explicit direction-aware customer number mapping:
     // outbound = agent calls customer → customer number is in 'to'
     // inbound  = customer calls in   → customer number is in 'from'
-    const from      = direction === 'inbound'
+    const from      = maskPhone(direction === 'inbound'
         ? (cdr.from?.toString() || 'unknown')
-        : (cdr.to?.toString()   || cdr.from?.toString() || 'unknown');
+        : (cdr.to?.toString()   || cdr.from?.toString() || 'unknown'));
     // webhook uses 'answeredsec'; sync API uses 'duration' or 'dur'
     const duration  = Number(cdr.duration || cdr.dur || cdr.answeredsec || 0);
     const filename  = cdr.filename || cdr.file    || null;
@@ -190,6 +198,7 @@ async function processCdr(cdr, skipInitialDelay = false) {
 
                 if (pending.lead_id) {
                     updates.telecmi_lead_id = String(pending.lead_id);
+                    updates.client_id       = String(pending.lead_id);
                 }
 
                 const { error: enrichError } = await supabaseAdmin

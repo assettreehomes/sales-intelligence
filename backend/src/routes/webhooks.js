@@ -288,6 +288,7 @@ router.post('/selldo/call', async (req, res) => {
 
             if (leadId) {
                 updates.telecmi_lead_id = leadId;
+                updates.client_id       = leadId;
             }
 
             const { error: updateError } = await supabaseAdmin
