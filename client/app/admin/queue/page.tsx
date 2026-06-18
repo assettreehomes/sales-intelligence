@@ -111,9 +111,17 @@ interface StuckTicket {
     stuck_min: number;
 }
 
+interface ActiveTicket {
+    id: string;
+    name: string;
+    agent: string | null;
+    elapsed_min: number;
+}
+
 interface QueueStatus {
     queue: QueueStats;
     tickets: TicketCounts;
+    active: ActiveTicket[];
     stuck: StuckTicket[];
     autoRetry: {
         batchSize: number;
@@ -1162,6 +1170,133 @@ function StuckTicketsTable({
     );
 }
 
+function ActiveQueuePanel({ tickets }: { tickets: ActiveTicket[] }) {
+    return (
+        <SectionCard
+            title="Currently Processing"
+            subtitle="Tickets actively being analysed by Vertex AI right now."
+            icon={<Zap className="h-4 w-4" />}
+            actions={<Badge variant={tickets.length ? 'default' : 'secondary'}>{tickets.length} active</Badge>}
+            contentClassName={tickets.length ? 'px-0 pb-0' : undefined}
+        >
+            {!tickets.length ? (
+                <div className="flex min-h-32 flex-col items-center justify-center text-center">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--semantic-border)] bg-[var(--semantic-surface-muted)] text-[var(--semantic-text-muted)]">
+                        <CirclePause className="h-4 w-4" />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-[var(--semantic-text-primary)]">Queue is idle</p>
+                    <p className="mt-1 text-xs text-[var(--semantic-text-muted)]">No tickets are currently being analysed.</p>
+                </div>
+            ) : (
+                <Table>
+                    <TableHeader className="bg-[var(--semantic-surface-elevated)]">
+                        <TableRow className="hover:bg-transparent">
+                            <TableHead>Ticket ID</TableHead>
+                            <TableHead>Client</TableHead>
+                            <TableHead>Agent</TableHead>
+                            <TableHead>Elapsed</TableHead>
+                            <TableHead>Status</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {tickets.map((ticket) => (
+                            <TableRow key={ticket.id}>
+                                <TableCell>
+                                    <span className="font-mono text-xs font-semibold text-[var(--semantic-primary)]">{ticket.id.slice(0, 8)}</span>
+                                </TableCell>
+                                <TableCell>
+                                    <span className="font-semibold text-[var(--semantic-text-primary)]">{ticket.name}</span>
+                                </TableCell>
+                                <TableCell className="text-[var(--semantic-text-secondary)]">{ticket.agent || 'Unassigned'}</TableCell>
+                                <TableCell>
+                                    <span className="text-xs font-medium text-[var(--semantic-text-secondary)]">
+                                        {ticket.elapsed_min < 1 ? '< 1 min' : `${ticket.elapsed_min} min`}
+                                    </span>
+                                </TableCell>
+                                <TableCell>
+                                    <StatusBadge status="online" dot size="sm">Analysing</StatusBadge>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            )}
+        </SectionCard>
+    );
+}
+
+function RestartQueueDialog({
+    open,
+    onOpenChange,
+    status,
+    onConfirm,
+    restarting
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    status: QueueStatus | null;
+    onConfirm: () => Promise<void>;
+    restarting: boolean;
+}) {
+    const waiting = status?.queue.waiting ?? 0;
+    const retryable = status?.tickets.retryable ?? 0;
+    const processing = status?.tickets.processing ?? 0;
+    const maxRpm = status?.queue.maxRpm ?? 1;
+    const total = waiting + retryable + processing;
+    const eta = Math.ceil(total / Math.max(maxRpm, 1));
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Restart Analysis Queue</DialogTitle>
+                    <DialogDescription>
+                        This will clear the in-memory queue and reset all stuck or failed tickets so they are retried by the auto-retry service.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                    <div className="rounded-xl border border-[var(--semantic-border)] bg-[var(--semantic-surface-muted)] p-4 text-sm space-y-2">
+                        <div className="flex justify-between">
+                            <span className="text-[var(--semantic-text-muted)]">Waiting jobs to clear</span>
+                            <span className="font-semibold text-[var(--semantic-text-primary)]">{waiting}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-[var(--semantic-text-muted)]">Processing tickets to reset</span>
+                            <span className="font-semibold text-[var(--semantic-text-primary)]">{processing}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-[var(--semantic-text-muted)]">Failed tickets to retry</span>
+                            <span className="font-semibold text-[var(--semantic-text-primary)]">{retryable}</span>
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 text-sm">
+                        <div className="flex items-center gap-2">
+                            <Clock3 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span className="text-[var(--semantic-text-secondary)]">
+                                At <span className="font-semibold text-[var(--semantic-text-primary)]">{maxRpm} RPM</span>, estimated completion:{' '}
+                                <span className="font-semibold text-amber-700 dark:text-amber-300">~{eta} min</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={restarting}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={() => void onConfirm()}
+                        disabled={restarting}
+                    >
+                        {restarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                        Restart Queue
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function AutoRetryConfiguration({ status }: { status: QueueStatus | null }) {
     const [open, setOpen] = useState(false);
     const settings = [
@@ -1247,6 +1382,8 @@ export default function QueuePage() {
     const [secondsAgo, setSecondsAgo] = useState(0);
     const [resettingTicket, setResettingTicket] = useState<string | null>(null);
     const [retryingAll, setRetryingAll] = useState(false);
+    const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+    const [restarting, setRestarting] = useState(false);
     const [range, setRange] = useState<TimeRange>('24H');
     const previousStatusRef = useRef<QueueStatus | null>(null);
 
@@ -1354,6 +1491,26 @@ export default function QueuePage() {
             notifyError('Unable to retry the stuck ticket batch');
         } finally {
             setRetryingAll(false);
+        }
+    };
+
+    const handleRestartQueue = async () => {
+        if (!token) return;
+        setRestarting(true);
+        try {
+            const response = await fetch(`${API_URL}/admin/queue/restart`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Queue restart failed');
+            const result = await response.json() as { ticketsReset: number; estimatedMinutes: number };
+            notifySuccess(`Queue restarted — ${result.ticketsReset} tickets queued (~${result.estimatedMinutes} min)`);
+            setRestartDialogOpen(false);
+            await fetchStatus(true);
+        } catch {
+            notifyError('Queue restart failed');
+        } finally {
+            setRestarting(false);
         }
     };
 
@@ -1499,17 +1656,16 @@ export default function QueuePage() {
                                     {retryingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                                     Retry stuck
                                 </Button>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span>
-                                            <Button variant="outline" size="sm" disabled>
-                                                <CirclePause className="h-4 w-4" />
-                                                Pause
-                                            </Button>
-                                        </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Queue pause is not supported by the current API.</TooltipContent>
-                                </Tooltip>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setRestartDialogOpen(true)}
+                                    disabled={!status}
+                                    className="border-rose-500/30 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300"
+                                >
+                                    <RotateCcw className="h-4 w-4" />
+                                    Restart Queue
+                                </Button>
                             </div>
                         }
                     />
@@ -1544,6 +1700,8 @@ export default function QueuePage() {
                             <FailureAnalytics status={status} />
                         </section>
 
+                        <ActiveQueuePanel tickets={status?.active ?? []} />
+
                         <StuckTicketsTable
                             tickets={status?.stuck ?? []}
                             resettingTicket={resettingTicket}
@@ -1558,6 +1716,14 @@ export default function QueuePage() {
                         </footer>
                     </div>
                 </main>
+
+                <RestartQueueDialog
+                    open={restartDialogOpen}
+                    onOpenChange={setRestartDialogOpen}
+                    status={status}
+                    onConfirm={handleRestartQueue}
+                    restarting={restarting}
+                />
             </TooltipProvider>
         </AdminShell>
     );

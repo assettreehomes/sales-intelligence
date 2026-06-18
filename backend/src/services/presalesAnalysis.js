@@ -337,6 +337,18 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             number_requests: numberRequests
         };
 
+        // Guard: ticket may have been deleted while analysis was in flight
+        const { data: ticketCheck } = await supabaseAdmin
+            .from('tickets')
+            .select('id')
+            .eq('id', ticketId)
+            .maybeSingle();
+
+        if (!ticketCheck) {
+            console.warn(`⚠️ Presales: ticket ${ticketId} no longer exists — skipping save (deleted during analysis)`);
+            return;
+        }
+
         // Upsert into analysisresults — same table, same columns as site visit analysis
         const { error: upsertError } = await supabaseAdmin
             .from('analysisresults')

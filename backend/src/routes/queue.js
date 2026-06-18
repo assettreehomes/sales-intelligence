@@ -41,6 +41,16 @@ router.get('/status', async (req, res) => {
             }
         }
 
+        // Active = processing for less than 10 minutes
+        const { data: activeTickets } = await supabaseAdmin
+            .from('tickets')
+            .select('id, clientname, createdby, analysis_started_at')
+            .eq('status', 'processing')
+            .eq('source', 'telecmi')
+            .gte('analysis_started_at', new Date(now - 10 * 60 * 1000).toISOString())
+            .order('analysis_started_at', { ascending: false })
+            .limit(20);
+
         // Stuck = processing for more than 10 minutes
         const { data: stuckTickets, error: stuckErr } = await supabaseAdmin
             .from('tickets')
@@ -59,6 +69,12 @@ router.get('/status', async (req, res) => {
                 retryable,
                 permanent_failed: permanent,
             },
+            active: (activeTickets || []).map(t => ({
+                id:          t.id,
+                name:        t.clientname || 'Unknown',
+                agent:       t.createdby || null,
+                elapsed_min: Math.round((now - new Date(t.analysis_started_at).getTime()) / 60000),
+            })),
             stuck: stuckErr ? [] : (stuckTickets || []).map(t => ({
                 id:         t.id,
                 name:       t.clientname || 'Unknown',
@@ -107,6 +123,49 @@ router.post('/reset', async (req, res) => {
         });
     } catch (err) {
         console.error('Queue reset error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /admin/queue/restart
+ * Full queue restart:
+ *   1. Drains in-memory waiting jobs
+ *   2. Resets all processing telecmi tickets → analysis_failed
+ *   3. Clears error on all retryable analysis_failed tickets (fresh retry slate)
+ * Returns counts + estimated minutes to clear backlog at current Flash RPM.
+ */
+router.post('/restart', async (req, res) => {
+    try {
+        const cleared = proQueue.clearQueue() + flashQueue.clearQueue();
+
+        const { data: procReset, error: procErr } = await supabaseAdmin
+            .from('tickets')
+            .update({ status: 'analysis_failed', analysiserror: 'Queue restart: reset by admin' })
+            .eq('status', 'processing')
+            .eq('source', 'telecmi')
+            .select('id');
+
+        if (procErr) throw procErr;
+
+        const { data: failReset, error: failErr } = await supabaseAdmin
+            .from('tickets')
+            .update({ analysiserror: 'Queue restart: cleared by admin' })
+            .eq('status', 'analysis_failed')
+            .eq('source', 'telecmi')
+            .not('analysiserror', 'ilike', 'permanent_failed%')
+            .select('id');
+
+        if (failErr) throw failErr;
+
+        const ticketsReset = (procReset?.length || 0) + (failReset?.length || 0);
+        const { maxRpm } = flashQueue.getQueueStats();
+        const estimatedMinutes = Math.ceil(ticketsReset / Math.max(maxRpm, 1));
+
+        console.log(`Queue restart: cleared ${cleared} waiting jobs, reset ${ticketsReset} tickets`);
+        res.json({ success: true, queueCleared: cleared, ticketsReset, estimatedMinutes });
+    } catch (err) {
+        console.error('Queue restart error:', err);
         res.status(500).json({ error: err.message });
     }
 });
