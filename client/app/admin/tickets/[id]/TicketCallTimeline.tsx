@@ -43,7 +43,7 @@ export function TicketCallTimeline({ moments, duration, onJump }: TicketCallTime
                     const cat = deriveMomentCategory(m);
                     const clock = momentClock(m);
                     const label = m.label || m.description || 'Moment';
-                    const note = m.transcript_excerpt || m.coaching_note || m.description;
+                    const note = m.description;
                     return (
                         <li key={i} className="ci-timeline__item">
                             <span className={`ci-timeline__dot ci-timeline__dot--${cat}`} />

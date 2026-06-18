@@ -54,7 +54,6 @@ import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketDetailWorkspace } from './TicketDetailWorkspace';
 import { TicketStickyPlayer } from './TicketStickyPlayer';
-import { TicketCoachingCards } from './TicketCoachingCards';
 import { ConversationComparisonChart } from '@/components/ui/charts';
 
 type ParsedScoreChange = {
@@ -2108,10 +2107,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     ))}
                                 </div>
                             </div>
-                        )}
-
-                        {analysis?.improvementsuggestions && analysis.improvementsuggestions.length > 0 && (
-                            <TicketCoachingCards suggestions={analysis.improvementsuggestions} />
                         )}
 
                         </TicketDetailWorkspace>

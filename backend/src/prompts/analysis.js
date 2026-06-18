@@ -114,11 +114,9 @@ Listen carefully to the entire call and return a single valid JSON object.
 Do NOT include markdown, code blocks, or any text outside the JSON.
 
 Every field in the schema below is REQUIRED and must have a concrete, valid value.
-The ONLY fields that may be null are: comparison_with_previous (always null for this flow),
-budget_range, timeline, appointment_details, and better_response (null only when not applicable).
-All other fields — including call_outcome, call_authenticity, summary, overall_score, scores,
-lead_qualification, key_moments, call_duration_seconds, speakers_detected, language_detected —
-must always be populated. Never return null for these fields.
+All fields — including call_outcome, call_authenticity, summary, overall_score, scores,
+lead_qualification, key_moments, speakers_detected — must always be populated.
+Never return null for these fields.
 
 ## FAKE / INVALID CALL HANDLING
 If the call is fake, silent, a wrong number, a hello/hangup, agent-only monologue, or too
@@ -127,14 +125,9 @@ Use these minimum values for fake or unanalysable calls:
 - call_authenticity: "fake"
 - call_outcome: "not_interested"
 - overall_score: 1
-- All six skill scores (rapport_building, needs_discovery, objection_handling,
-  closing_techniques, product_knowledge, professionalism): 1
 - politeness: 0, confidence: 0
 - interest: "low", speakers: 1 (or actual count if detectable)
 - lead_quality: "unknown"
-- budget_discussed, timeline_discussed, location_preference_discussed, appointment_secured: false
-- budget_range, timeline, appointment_details: null
-- purpose: "not_discussed"
 - summary: one or two sentences describing what made the call fake or unanalysable
   (e.g. "Call was immediately disconnected after the agent's greeting. No meaningful
   conversation occurred and no prospect interaction was captured.")
@@ -142,45 +135,14 @@ Use these minimum values for fake or unanalysable calls:
   (e.g. the connection, the hangup, or the silence)
 - objections: [] (empty array — no real objection was raised)
 - action_items: at least one item (e.g. "Flag call as dropped/fake in CRM")
-- recommendations: at least one item (e.g. "Investigate why the call was not connected")
 
 ## SCORING RUBRICS (apply these strictly)
 
-### rapport_building (1-10)
-10 = Warm, natural greeting, used prospect's name, built personal connection
-7-9 = Good opener, friendly tone, some personal touch
-4-6 = Generic opener, professional but no personal warmth
-1-3 = Cold, robotic, immediately jumped to pitch without any relationship building
-
-### needs_discovery (1-10)
-10 = Asked about budget range, timeline, preferred location, family size, purpose (investment/own use), current housing — all covered
-7-9 = Covered most qualifying questions
-4-6 = Asked 1-2 qualifying questions only
-1-3 = No discovery — agent pitched without understanding prospect's needs
-
-### objection_handling (1-10)
-10 = Acknowledged every objection empathetically, gave specific factual responses, converted resistance
-7-9 = Handled most objections well with some facts
-4-6 = Gave vague or dismissive responses to objections
-1-3 = Ignored objections or became defensive
-
-### closing_techniques (1-10)
-10 = Secured a concrete next step (appointment date confirmed, callback scheduled, brochure sent)
-7-9 = Attempted a close, got a soft commitment
-4-6 = Mentioned next steps but did not confirm anything
-1-3 = Call ended with no clear next step
-
-### product_knowledge (1-10)
-10 = Quoted accurate prices, amenities, possession dates, location advantages without hesitation
-7-9 = Generally accurate with minor gaps
-4-6 = Vague on specifics, deflected detailed questions
-1-3 = Could not answer basic product questions
-
-### professionalism (1-10)
-10 = No filler words, clear diction, proper grammar, never interrupted prospect
-7-9 = Generally professional with minor issues
-4-6 = Some interruptions, informal language, or filler words
-1-3 = Rude, unprofessional, or heavily unprepared
+### overall_score (1-10)
+9-10 = Excellent all-round call: strong opener, thorough discovery, objections handled, clear next step secured
+7-8 = Good call with minor gaps in one or two areas
+4-6 = Average performance: some areas done well but key steps missed
+1-3 = Poor or fake call: little to no prospect engagement or value delivered
 
 ### politeness_score (0-100)
 100 = Consistently respectful, thanked the prospect, used "please" and "sir/ma'am"
@@ -197,17 +159,11 @@ Use these minimum values for fake or unanalysable calls:
 ## REQUIRED JSON OUTPUT
 
 {
-  "summary": "Write 3-5 sentences covering: (1) call outcome — did it end with a next step? (2) prospect's apparent interest level and key needs, (3) agent's strongest and weakest moment on this call. Be specific, not generic.",
+  "summary": "<2 sentences max: (1) call outcome and prospect interest level, (2) agent's strongest or weakest moment. Be specific.>",
 
-  "overall_score": <number 1-10, weighted average of the 6 skill scores above, rounded to 1 decimal>,
+  "overall_score": <number 1-10, rounded to 1 decimal>,
 
   "scores": {
-    "rapport_building": <integer 1-10>,
-    "needs_discovery": <integer 1-10>,
-    "objection_handling": <integer 1-10>,
-    "closing_techniques": <integer 1-10>,
-    "product_knowledge": <integer 1-10>,
-    "professionalism": <integer 1-10>,
     "politeness": <integer 0-100>,
     "confidence": <integer 0-100>,
     "interest": "<low|medium|high>",
@@ -215,26 +171,15 @@ Use these minimum values for fake or unanalysable calls:
   },
 
   "lead_qualification": {
-    "budget_discussed": <true|false>,
-    "budget_range": "<e.g. '50-70 lakhs' or null if not mentioned>",
-    "timeline_discussed": <true|false>,
-    "timeline": "<e.g. 'looking to buy within 6 months' or null>",
-    "purpose": "<investment|self_use|not_discussed>",
-    "location_preference_discussed": <true|false>,
-    "appointment_secured": <true|false>,
-    "appointment_details": "<date/time if mentioned, else null>",
     "lead_quality": "<hot|warm|cold|unknown>"
   },
 
   "key_moments": [
     {
-      "label": "<10-15 word description of what happened>",
+      "label": "<6-8 word description of what happened>",
       "category": "<positive|negative|neutral|objection|commitment|qualification>",
       "start_time_ms": <milliseconds from start of audio, integer>,
-      "end_time_ms": <milliseconds from start of audio, integer>,
-      "transcript_excerpt": "<exact or near-exact quote from the call, 1-3 sentences>",
-      "importance": "<high|medium|low>",
-      "coaching_note": "<one sentence: what the agent did right or should have done differently here>"
+      "importance": "<high|medium|low>"
     }
   ],
 
@@ -243,38 +188,27 @@ Use these minimum values for fake or unanalysable calls:
       "objection": "<exactly what the prospect said or the concern they raised>",
       "response": "<exactly how the agent responded>",
       "effectiveness": "<excellent|good|fair|poor>",
-      "resolved": <true|false>,
-      "better_response": "<how the agent should have responded if effectiveness is fair or poor, else null>"
+      "resolved": <true|false>
     }
   ],
 
   "action_items": [
-    "<Concrete, specific follow-up action with owner — e.g. 'Agent to WhatsApp brochure of Tower B to prospect by EOD'>",
-    "<Another action item>"
-  ],
-
-  "recommendations": [
-    "<Specific coaching point for this agent based on this call — not generic advice>",
-    "<Another recommendation>"
+    "<Concrete follow-up action — e.g. 'Agent to WhatsApp brochure of Tower B to prospect by EOD'>"
   ],
 
   "call_outcome": "<interested|not_interested|follow_up_required>",
   "call_authenticity": "<real|fake>",
 
-  "call_duration_seconds": <integer, your estimate of actual speaking duration>,
   "speakers_detected": <integer>,
-  "language_detected": "<Hindi|English|Tamil|Telugu|Mixed|Other>",
-  "comparison_with_previous": null,
 
   "number_requests": {
     "detected": <true|false — true if instances array is non-empty>,
     "instances": [
       {
-        "reason": "<one sentence: what was asked and why, e.g. 'Agent asked for prospect's WhatsApp number to send property brochure'>",
+        "reason": "<one sentence: what was asked and why>",
         "time": "<M:SS format e.g. '1:15'>",
         "transcript_excerpt": "<exact or near-exact quote from the call>",
-        "start_time_ms": <milliseconds from audio start, integer>,
-        "end_time_ms": <milliseconds from audio start, integer>
+        "start_time_ms": <milliseconds from audio start, integer>
       }
     ]
   }
@@ -311,32 +245,26 @@ Be EXTREMELY strict — flag even minor, indirect, casual, or softly-worded requ
 
 ## STRICT RULES
 1. Return ONLY the JSON object — no markdown fences, no prose before or after.
-2. key_moments: include a MINIMUM of 5 moments for calls over 2 minutes; at least 1 for shorter
-   or fake calls. Always include the opening, the first objection (if any), any commitment
-   moment, and the closing. Never return an empty key_moments array.
-3. start_time_ms and end_time_ms must be realistic millisecond values based on the audio
-   (e.g. 30 seconds in = 30000 ms). For fake/silent calls use 0 and the total duration.
-4. overall_score = (rapport_building + needs_discovery + objection_handling +
-   closing_techniques + product_knowledge + professionalism) / 6, rounded to 1 decimal.
-5. transcript_excerpt must be actual words spoken on the call. For fake calls, use whatever
-   audio fragment exists (e.g. "Hello?" / silence / dial tone). Never leave it empty or null.
-6. coaching_note must always be a non-empty sentence. For fake calls, note what the agent
-   should do (e.g. "Follow up to determine why the call dropped immediately").
-7. If a prospect raised NO objections, set "objections" to an empty array [].
-8. lead_quality: hot = appointment booked + clear budget; warm = interested but no
+2. key_moments: include a MINIMUM of 3 moments for calls over 2 minutes; at least 1 for shorter
+   or fake calls. Always include the opening, the first objection (if any), and the closing.
+   Never return an empty key_moments array.
+3. start_time_ms must be a realistic millisecond value based on the audio
+   (e.g. 30 seconds in = 30000 ms). For fake/silent calls use 0.
+4. overall_score: rate the call holistically 1-10 using the rubric above. Reflect reality —
+   a bad call should score 2-4, not 6-7. Never inflate scores.
+5. If a prospect raised NO objections, set "objections" to an empty array [].
+6. lead_quality: hot = appointment booked + clear budget; warm = interested but no
    appointment; cold = no interest shown; unknown = too short or fake to assess.
-9. call_outcome is MANDATORY, must be a top-level JSON key, must never be null, and must
+7. call_outcome is MANDATORY, must be a top-level JSON key, must never be null, and must
    be exactly one of: interested, not_interested, follow_up_required.
-10. call_authenticity is MANDATORY, must be a top-level JSON key, must never be null, and
-    must be exactly one of: real, fake.
-11. Do NOT place call_outcome or call_authenticity only inside scores. They must be present
-    at the top level of the returned JSON object.
-12. call_authenticity: real = a genuine conversation with meaningful prospect interaction;
+8. call_authenticity is MANDATORY, must be a top-level JSON key, must never be null, and
+   must be exactly one of: real, fake.
+9. Do NOT place call_outcome or call_authenticity only inside scores. They must be present
+   at the top level of the returned JSON object.
+10. call_authenticity: real = a genuine conversation with meaningful prospect interaction;
     fake = hello/hangup, silence, agent-only monologue, wrong number, or any call with no
     real prospect engagement.
-13. Scores must reflect reality — a bad call should score 2-4, not 6-7. Never inflate.
-14. language_detected must always be one of: Hindi, English, Tamil, Telugu, Mixed, Other.
-    Never return null for this field — use "Other" if the language is unrecognisable.
-15. number_requests is MANDATORY at the top level. Always return it. If no number
+11. action_items: maximum 2 items. Be specific and concrete.
+12. number_requests is MANDATORY at the top level. Always return it. If no number
     request detected: { "detected": false, "instances": [] }. Never omit this field.`;
 }

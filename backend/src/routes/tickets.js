@@ -549,24 +549,6 @@ function buildStyledTicketReportPdf({ ticket, analysis, actionItems, excuses }) 
     }
 
     addSectionHeading('Suggestions And Action Items');
-    addSubheading('AI Suggestions');
-    const suggestions = Array.isArray(analysis?.improvementsuggestions)
-        ? analysis.improvementsuggestions
-        : [];
-
-    if (suggestions.length === 0) {
-        addParagraph('No AI suggestions available for this ticket.', {
-            size: 9.5,
-            color: REPORT_PDF_COLOR_CHARCOAL
-        });
-    } else {
-        suggestions.slice(0, 15).forEach((suggestion, index) => {
-            addListItem(`${index + 1}.`, normalizeReportText(suggestion, 'No suggestion text provided.'), {
-                bottomGap: 5
-            });
-        });
-    }
-
     addSubheading('Tracked Action Items');
     if (!Array.isArray(actionItems) || actionItems.length === 0) {
         addParagraph('No tracked action items for this ticket.', {
@@ -1347,7 +1329,7 @@ async function triggerAnalysis(ticketId, ticket) {
                             ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
                             : null)
                 })) : [],
-                improvementsuggestions: analysis.recommendations || analysis.improvement_suggestions || [],
+                improvementsuggestions: [],
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,
@@ -2932,7 +2914,7 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                     sentiment: m.category || m.sentiment || null,
                     time: m.timestamp || (typeof m.start_time_ms === 'number' ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}` : null)
                 })) : [],
-                improvementsuggestions: analysis.recommendations || analysis.improvement_suggestions || [],
+                improvementsuggestions: [],
                 actionitems: analysis.action_items || [],
                 objections: analysis.objections || [],
                 scores: normalizedScores,

@@ -39,7 +39,6 @@ interface TrainingDetail {
             label?: string;
             description?: string;
         }>;
-        improvementsuggestions?: string[];
     } | null;
     audio_url: string | null;
 }

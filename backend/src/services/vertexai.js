@@ -28,7 +28,6 @@ const analysisResponseSchema = {
     'key_moments',
     'objections',
     'action_items',
-    'recommendations',
     'call_outcome'
   ],
   properties: {
@@ -36,10 +35,9 @@ const analysisResponseSchema = {
     overall_score: { type: SchemaType.NUMBER },
     scores: {
       type: SchemaType.OBJECT,
-      required: ['rapport_building', 'needs_discovery', 'objection_handling', 'closing_techniques', 'product_knowledge', 'professionalism', 'politeness', 'confidence', 'interest', 'speakers'],
+      required: ['rapport_building', 'objection_handling', 'closing_techniques', 'product_knowledge', 'professionalism', 'politeness', 'confidence', 'interest', 'speakers'],
       properties: {
         rapport_building:    { type: SchemaType.NUMBER },
-        needs_discovery:     { type: SchemaType.NUMBER },
         objection_handling:  { type: SchemaType.NUMBER },
         closing_techniques:  { type: SchemaType.NUMBER },
         product_knowledge:   { type: SchemaType.NUMBER },
@@ -73,14 +71,12 @@ const analysisResponseSchema = {
         }
       }
     },
-    action_items:    { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-    recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    action_items:      { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     call_outcome: {
       type: SchemaType.STRING,
       enum: ['interested', 'not_interested', 'follow_up_required']
     },
-    call_duration_seconds: { type: SchemaType.INTEGER },
-    speakers_detected:     { type: SchemaType.INTEGER }
+    speakers_detected: { type: SchemaType.INTEGER }
   }
 };
 
@@ -159,7 +155,6 @@ Return a valid JSON object with this exact structure:
   "overall_score": <number 1-10>,
   "scores": {
     "rapport_building": <1-10>,
-    "needs_discovery": <1-10>,
     "objection_handling": <1-10>,
     "closing_techniques": <1-10>,
     "product_knowledge": <1-10>,
@@ -187,16 +182,12 @@ Return a valid JSON object with this exact structure:
   "action_items": [
     "Specific follow-up action required"
   ],
-  "recommendations": [
-    "Specific improvement suggestion for future calls"
-  ],
-  "call_outcome": "<interested|not_interested|follow_up_required>",
-  "comparison_with_previous": null
+  "call_outcome": "<interested|not_interested|follow_up_required>"
 }
 
 IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.
-Set call_outcome to interested only when the customer shows buying intent or agrees to a meaningful next step; not_interested when they clearly decline or disengage; follow_up_required when interest is uncertain but a callback, brochure, site visit, or next action is needed.
-The comparison_with_previous field must always be null — comparison is handled separately.`;
+overall_score = (rapport_building + objection_handling + closing_techniques + product_knowledge + professionalism) / 5, rounded to 1 decimal.
+Set call_outcome to interested only when the customer shows buying intent or agrees to a meaningful next step; not_interested when they clearly decline or disengage; follow_up_required when interest is uncertain but a callback, brochure, site visit, or next action is needed.`;
 }
 
 /**

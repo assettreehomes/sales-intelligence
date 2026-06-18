@@ -28,28 +28,12 @@ const VALID_AUTHENTICITY = new Set(['real', 'fake']);
 const VALID_INTEREST = new Set(['low', 'medium', 'high']);
 const VALID_LEAD_QUALITY = new Set(['hot', 'warm', 'cold', 'unknown']);
 const REQUIRED_SCORE_KEYS = [
-    'rapport_building',
-    'needs_discovery',
-    'objection_handling',
-    'closing_techniques',
-    'product_knowledge',
-    'professionalism',
     'politeness',
     'confidence',
     'interest',
     'speakers'
 ];
-const REQUIRED_LEAD_KEYS = [
-    'budget_discussed',
-    'budget_range',
-    'timeline_discussed',
-    'timeline',
-    'purpose',
-    'location_preference_discussed',
-    'appointment_secured',
-    'appointment_details',
-    'lead_quality'
-];
+const REQUIRED_LEAD_KEYS = ['lead_quality'];
 
 const presalesResponseSchema = {
     type: SchemaType.OBJECT,
@@ -61,13 +45,9 @@ const presalesResponseSchema = {
         'key_moments',
         'objections',
         'action_items',
-        'recommendations',
         'call_outcome',
         'call_authenticity',
-        'call_duration_seconds',
         'speakers_detected',
-        'language_detected',
-        'comparison_with_previous',
         'number_requests'
     ],
     properties: {
@@ -77,12 +57,6 @@ const presalesResponseSchema = {
             type: SchemaType.OBJECT,
             required: REQUIRED_SCORE_KEYS,
             properties: {
-                rapport_building: { type: SchemaType.INTEGER },
-                needs_discovery: { type: SchemaType.INTEGER },
-                objection_handling: { type: SchemaType.INTEGER },
-                closing_techniques: { type: SchemaType.INTEGER },
-                product_knowledge: { type: SchemaType.INTEGER },
-                professionalism: { type: SchemaType.INTEGER },
                 politeness: { type: SchemaType.INTEGER },
                 confidence: { type: SchemaType.INTEGER },
                 interest: { type: SchemaType.STRING, enum: ['low', 'medium', 'high'] },
@@ -93,14 +67,6 @@ const presalesResponseSchema = {
             type: SchemaType.OBJECT,
             required: REQUIRED_LEAD_KEYS,
             properties: {
-                budget_discussed: { type: SchemaType.BOOLEAN },
-                budget_range: { type: SchemaType.STRING, nullable: true },
-                timeline_discussed: { type: SchemaType.BOOLEAN },
-                timeline: { type: SchemaType.STRING, nullable: true },
-                purpose: { type: SchemaType.STRING, enum: ['investment', 'self_use', 'not_discussed'] },
-                location_preference_discussed: { type: SchemaType.BOOLEAN },
-                appointment_secured: { type: SchemaType.BOOLEAN },
-                appointment_details: { type: SchemaType.STRING, nullable: true },
                 lead_quality: { type: SchemaType.STRING, enum: ['hot', 'warm', 'cold', 'unknown'] }
             }
         },
@@ -108,15 +74,12 @@ const presalesResponseSchema = {
             type: SchemaType.ARRAY,
             items: {
                 type: SchemaType.OBJECT,
-                required: ['label', 'category', 'start_time_ms', 'end_time_ms', 'transcript_excerpt', 'importance', 'coaching_note'],
+                required: ['label', 'category', 'start_time_ms', 'importance'],
                 properties: {
                     label: { type: SchemaType.STRING },
                     category: { type: SchemaType.STRING, enum: ['positive', 'negative', 'neutral', 'objection', 'commitment', 'qualification'] },
                     start_time_ms: { type: SchemaType.INTEGER },
-                    end_time_ms: { type: SchemaType.INTEGER },
-                    transcript_excerpt: { type: SchemaType.STRING },
-                    importance: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] },
-                    coaching_note: { type: SchemaType.STRING }
+                    importance: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] }
                 }
             }
         },
@@ -124,18 +87,16 @@ const presalesResponseSchema = {
             type: SchemaType.ARRAY,
             items: {
                 type: SchemaType.OBJECT,
-                required: ['objection', 'response', 'effectiveness', 'resolved', 'better_response'],
+                required: ['objection', 'response', 'effectiveness', 'resolved'],
                 properties: {
                     objection: { type: SchemaType.STRING },
                     response: { type: SchemaType.STRING, nullable: true },
                     effectiveness: { type: SchemaType.STRING, enum: ['excellent', 'good', 'fair', 'poor'] },
-                    resolved: { type: SchemaType.BOOLEAN },
-                    better_response: { type: SchemaType.STRING, nullable: true }
+                    resolved: { type: SchemaType.BOOLEAN }
                 }
             }
         },
         action_items: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-        recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         call_outcome: {
             type: SchemaType.STRING,
             enum: ['interested', 'not_interested', 'follow_up_required']
@@ -144,10 +105,7 @@ const presalesResponseSchema = {
             type: SchemaType.STRING,
             enum: ['real', 'fake']
         },
-        call_duration_seconds: { type: SchemaType.INTEGER },
         speakers_detected: { type: SchemaType.INTEGER },
-        language_detected: { type: SchemaType.STRING },
-        comparison_with_previous: { type: SchemaType.OBJECT, nullable: true },
         number_requests: {
             type: SchemaType.OBJECT,
             required: ['detected', 'instances'],
@@ -157,13 +115,12 @@ const presalesResponseSchema = {
                     type: SchemaType.ARRAY,
                     items: {
                         type: SchemaType.OBJECT,
-                        required: ['reason', 'time', 'transcript_excerpt', 'start_time_ms', 'end_time_ms'],
+                        required: ['reason', 'time', 'transcript_excerpt', 'start_time_ms'],
                         properties: {
                             reason: { type: SchemaType.STRING },
                             time: { type: SchemaType.STRING },
                             transcript_excerpt: { type: SchemaType.STRING },
-                            start_time_ms: { type: SchemaType.INTEGER },
-                            end_time_ms: { type: SchemaType.INTEGER }
+                            start_time_ms: { type: SchemaType.INTEGER }
                         }
                     }
                 }
@@ -212,12 +169,6 @@ export function validatePresalesAnalysis(analysis) {
     if (!isObject(analysis?.scores)) {
         missing.push('scores');
     } else {
-        for (const key of REQUIRED_SCORE_KEYS) {
-            if (!Object.prototype.hasOwnProperty.call(analysis.scores, key)) missing.push(`scores.${key}`);
-        }
-        for (const key of REQUIRED_SCORE_KEYS.slice(0, 6)) {
-            validateNumber(analysis.scores[key], `scores.${key}`, 1, 10, missing);
-        }
         validateNumber(analysis.scores.politeness, 'scores.politeness', 0, 100, missing);
         validateNumber(analysis.scores.confidence, 'scores.confidence', 0, 100, missing);
         if (!VALID_INTEREST.has(String(analysis.scores.interest || '').toLowerCase())) missing.push('scores.interest');
@@ -227,9 +178,6 @@ export function validatePresalesAnalysis(analysis) {
     if (!isObject(analysis?.lead_qualification)) {
         missing.push('lead_qualification');
     } else {
-        for (const key of REQUIRED_LEAD_KEYS) {
-            if (!Object.prototype.hasOwnProperty.call(analysis.lead_qualification, key)) missing.push(`lead_qualification.${key}`);
-        }
         if (!VALID_LEAD_QUALITY.has(String(analysis.lead_qualification.lead_quality || '').toLowerCase())) {
             missing.push('lead_qualification.lead_quality');
         }
@@ -240,21 +188,15 @@ export function validatePresalesAnalysis(analysis) {
     } else {
         analysis.key_moments.forEach((moment, index) => {
             if (!hasMeaningfulText(moment?.label)) missing.push(`key_moments[${index}].label`);
-            if (!hasMeaningfulText(moment?.transcript_excerpt)) missing.push(`key_moments[${index}].transcript_excerpt`);
-            if (!hasMeaningfulText(moment?.coaching_note)) missing.push(`key_moments[${index}].coaching_note`);
             validateNumber(moment?.start_time_ms, `key_moments[${index}].start_time_ms`, 0, 86400000, missing);
-            validateNumber(moment?.end_time_ms, `key_moments[${index}].end_time_ms`, 0, 86400000, missing);
         });
     }
 
     if (!Array.isArray(analysis?.objections)) missing.push('objections');
     if (!Array.isArray(analysis?.action_items)) missing.push('action_items');
-    if (!Array.isArray(analysis?.recommendations)) missing.push('recommendations');
     if (!callOutcome) missing.push('call_outcome');
     if (!callAuthenticity) missing.push('call_authenticity');
-    validateNumber(analysis?.call_duration_seconds, 'call_duration_seconds', 0, 86400, missing);
     validateNumber(analysis?.speakers_detected, 'speakers_detected', 1, 20, missing);
-    if (!hasMeaningfulText(analysis?.language_detected)) missing.push('language_detected');
 
     if (!isObject(analysis?.number_requests)) {
         missing.push('number_requests');
@@ -269,7 +211,6 @@ export function validatePresalesAnalysis(analysis) {
                 if (!hasMeaningfulText(inst?.reason)) missing.push(`number_requests.instances[${idx}].reason`);
                 if (!hasMeaningfulText(inst?.transcript_excerpt)) missing.push(`number_requests.instances[${idx}].transcript_excerpt`);
                 validateNumber(inst?.start_time_ms, `number_requests.instances[${idx}].start_time_ms`, 0, 86400000, missing);
-                validateNumber(inst?.end_time_ms, `number_requests.instances[${idx}].end_time_ms`, 0, 86400000, missing);
             });
         }
     }
@@ -338,28 +279,21 @@ Validation failed with: ${error.message}
 You MUST return a fully populated JSON object. Every field is required. Here is what you must fix:
 
 FIELD COMPLETENESS:
-- summary: must be a non-empty string (describe what happened, even if the call was fake/silent)
+- summary: must be a non-empty string (2 sentences max describing what happened)
 - overall_score: must be a number between 1 and 10
-- scores: must be a complete object with all 9 keys. For fake/unanalysable calls use 1 for
-  skill scores, 0 for politeness and confidence, "low" for interest, 1 for speakers.
-- lead_qualification: must be a complete object with all 9 keys. For fake calls set all
-  booleans to false, purpose to "not_discussed", lead_quality to "unknown", and string
-  fields (budget_range, timeline, appointment_details) to null.
+- scores: must include politeness (0-100), confidence (0-100), interest (low/medium/high), speakers (integer >= 1).
+  For fake/unanalysable calls use 0 for politeness and confidence, "low" for interest, 1 for speakers.
+- lead_qualification: must include lead_quality (hot/warm/cold/unknown). For fake calls use "unknown".
 - key_moments: must be a non-empty array with at least 1 entry. Each entry must have a
-  non-empty label, a non-empty transcript_excerpt (use actual audio fragment or "inaudible"),
-  a non-empty coaching_note, and valid start_time_ms / end_time_ms integers.
+  non-empty label and a valid start_time_ms integer.
 - objections: must be an array (empty [] is fine if no objections occurred)
 - action_items: must be a non-empty array with at least 1 string
-- recommendations: must be a non-empty array with at least 1 string
-- call_duration_seconds: must be a positive integer
 - speakers_detected: must be a positive integer (minimum 1)
-- language_detected: must be one of: Hindi, English, Tamil, Telugu, Mixed, Other
 
 MANDATORY TOP-LEVEL ENUM FIELDS (never null, never inside scores):
 - call_outcome: exactly one of: interested, not_interested, follow_up_required
 - call_authenticity: exactly one of: real, fake
 
-comparison_with_previous must be null.
 - number_requests: must always be present. Minimum: { "detected": false, "instances": [] }. Never omit.
 
 If this was a fake or silent call, follow the FAKE / INVALID CALL HANDLING section above
@@ -416,13 +350,11 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
         // Normalize scores — matches the existing analysisresults schema
         const numberRequests = analysis.number_requests || { detected: false, instances: [] };
         const normalizedScores = {
-            ...(analysis.scores || {}),
             politeness: analysis.scores?.politeness ?? null,
             confidence: analysis.scores?.confidence ?? null,
             interest:   analysis.scores?.interest   ?? null,
             speakers:   analysis.scores?.speakers   ?? null,
             lead_qualification: analysis.lead_qualification || null,
-            language_detected: analysis.language_detected || null,
             number_requests: numberRequests
         };
 
@@ -436,13 +368,12 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
                 summary:               analysis.summary ?? null,
                 keymoments:            (analysis.key_moments || []).map(m => ({
                     ...m,
-                    description: m.transcript_excerpt || m.coaching_note || null,
                     sentiment: m.category || null,
                     time: typeof m.start_time_ms === 'number'
                         ? `${Math.floor(m.start_time_ms / 60000)}:${String(Math.floor((m.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
                         : null
                 })),
-                improvementsuggestions: analysis.recommendations || [],
+                improvementsuggestions: [],
                 actionitems:           analysis.action_items || [],
                 objections:            analysis.objections || [],
                 scores:                normalizedScores,

@@ -27,21 +27,11 @@ interface Analysis {
         category?: string;
         importance?: string;
         start_time_ms?: number;
-        end_time_ms?: number;
-        transcript_excerpt?: string;
-        coaching_note?: string;
     }>;
-    improvementsuggestions: string[];
-    objections: (string | { objection: string; response?: string; effectiveness?: string; resolved?: boolean; better_response?: string | null })[];
+    objections: (string | { objection: string; response?: string; effectiveness?: string; resolved?: boolean })[];
     actionitems: (string | { item: string } | { action: string })[];
     lead_qualification?: {
-        budget_discussed?: boolean;
-        timeline_discussed?: boolean;
-        purpose?: string;
         lead_quality?: string;
-        appointment_secured?: boolean;
-        appointment_details?: string | null;
-        [key: string]: unknown;
     } | null;
     comparisonwithprevious?: {
         improvements?: string[];

@@ -66,7 +66,7 @@ export async function getPreviousAnalysis(previousTicketId) {
         summary: analysis.summary,
         scores: analysis.scores, // CRITICAL: needed for comparison
         key_moments: analysis.keymoments,
-        improvement_suggestions: analysis.improvementsuggestions,
+
         objections: analysis.objections,
         action_items: analysis.actionitems
     };

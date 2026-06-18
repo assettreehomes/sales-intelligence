@@ -7,9 +7,6 @@ export type TicketKeyMoment = {
     category?: string;
     importance?: string;
     start_time_ms?: number;
-    end_time_ms?: number;
-    transcript_excerpt?: string;
-    coaching_note?: string;
 };
 
 export type TicketObjection = string | {
@@ -17,7 +14,6 @@ export type TicketObjection = string | {
     response?: string;
     effectiveness?: string;
     resolved?: boolean;
-    better_response?: string | null;
 };
 
 export type TicketAnalysis = {
@@ -29,17 +25,10 @@ export type TicketAnalysis = {
     call_authenticity?: string | null;
     objections?: TicketObjection[];
     actionitems?: unknown[];
-    improvementsuggestions?: string[];
     keymoments?: TicketKeyMoment[];
     comparisonwithprevious?: Record<string, unknown> | null;
     lead_qualification?: {
-        budget_discussed?: boolean;
-        timeline_discussed?: boolean;
-        purpose?: string;
         lead_quality?: string;
-        appointment_secured?: boolean;
-        appointment_details?: string | null;
-        [key: string]: unknown;
     } | null;
 };
 
@@ -104,27 +93,6 @@ export function buildExecutiveFields(analysis: TicketAnalysis | null) {
         risk: deriveRiskLevel(analysis),
         recommendedAction,
     };
-}
-
-export function buildAiInsights(analysis: TicketAnalysis | null): string[] {
-    const insights: string[] = [];
-    const outcome = analysis?.call_outcome;
-    const auth = analysis?.call_authenticity;
-    const interest = String(analysis?.scores?.interest ?? '').toLowerCase();
-
-    if (auth === 'fake') insights.push('Call authenticity flagged as low — limited coaching value.');
-    if (outcome === 'not_interested') insights.push('Client disengaged — pricing or fit may be misaligned.');
-    if (outcome === 'follow_up_required') insights.push('Decision deferred — urgency not established on the call.');
-    if (interest === 'low') insights.push('Low interest signals detected in tone and responses.');
-    if (analysis?.objections?.length) insights.push('Pricing or product objections surfaced during the conversation.');
-
-    (analysis?.improvementsuggestions || []).slice(0, 2).forEach((s) => insights.push(s));
-
-    if (!insights.length && analysis?.summary) {
-        insights.push('Review executive summary for conversation context.');
-    }
-
-    return insights.slice(0, 5);
 }
 
 export function getScoreDelta(

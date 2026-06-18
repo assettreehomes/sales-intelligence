@@ -9,29 +9,15 @@ import { validatePresalesAnalysis } from '../services/presalesAnalysis.js';
 // Minimal valid analysis object that passes all checks
 function validAnalysis(overrides = {}) {
     return {
-        summary: 'Agent called the lead and discussed property options.',
+        summary: 'Agent called the lead and discussed property options. Lead showed interest but no appointment was secured.',
         overall_score: 7,
         scores: {
-            rapport_building: 7,
-            needs_discovery: 6,
-            objection_handling: 5,
-            closing_techniques: 6,
-            product_knowledge: 8,
-            professionalism: 7,
             politeness: 70,
             confidence: 65,
             interest: 'medium',
             speakers: 2
         },
         lead_qualification: {
-            budget_discussed: true,
-            budget_range: '80-100L',
-            timeline_discussed: true,
-            timeline: '6 months',
-            purpose: 'investment',
-            location_preference_discussed: true,
-            appointment_secured: false,
-            appointment_details: null,
             lead_quality: 'warm'
         },
         key_moments: [
@@ -39,21 +25,14 @@ function validAnalysis(overrides = {}) {
                 label: 'Budget confirmation',
                 category: 'qualification',
                 start_time_ms: 15000,
-                end_time_ms: 25000,
-                transcript_excerpt: 'Agent asked about budget and lead confirmed 80 lakhs.',
-                importance: 'high',
-                coaching_note: 'Good qualification question.'
+                importance: 'high'
             }
         ],
         objections: [],
         action_items: ['Send brochure by EOD'],
-        recommendations: ['Follow up in 2 days'],
         call_outcome: 'interested',
         call_authenticity: 'real',
-        call_duration_seconds: 90,
         speakers_detected: 2,
-        language_detected: 'English',
-        comparison_with_previous: null,
         number_requests: { detected: false, instances: [] },
         ...overrides
     };
@@ -74,8 +53,7 @@ describe('validatePresalesAnalysis: number_requests schema (Task #11)', () => {
                         reason: 'Agent asked for WhatsApp number to send brochure.',
                         time: '1:15',
                         transcript_excerpt: 'Can you share your WhatsApp number sir?',
-                        start_time_ms: 75000,
-                        end_time_ms: 79000
+                        start_time_ms: 75000
                     }
                 ]
             }
@@ -92,15 +70,13 @@ describe('validatePresalesAnalysis: number_requests schema (Task #11)', () => {
                         reason: 'Agent asked for mobile number.',
                         time: '0:45',
                         transcript_excerpt: 'What is your mobile number?',
-                        start_time_ms: 45000,
-                        end_time_ms: 49000
+                        start_time_ms: 45000
                     },
                     {
                         reason: 'Agent asked again for WhatsApp.',
                         time: '2:10',
                         transcript_excerpt: 'Can I get your WhatsApp number?',
-                        start_time_ms: 130000,
-                        end_time_ms: 135000
+                        start_time_ms: 130000
                     }
                 ]
             }
@@ -145,8 +121,7 @@ describe('validatePresalesAnalysis: number_requests schema (Task #11)', () => {
                         {
                             time: '1:00',
                             transcript_excerpt: 'Can I get your number?',
-                            start_time_ms: 60000,
-                            end_time_ms: 64000
+                            start_time_ms: 60000
                             // reason missing
                         }
                     ]
@@ -166,8 +141,7 @@ describe('validatePresalesAnalysis: number_requests schema (Task #11)', () => {
                             reason: 'Agent asked for number.',
                             time: '1:00',
                             // transcript_excerpt missing
-                            start_time_ms: 60000,
-                            end_time_ms: 64000
+                            start_time_ms: 60000
                         }
                     ]
                 }
@@ -186,8 +160,7 @@ describe('validatePresalesAnalysis: number_requests schema (Task #11)', () => {
                             reason: 'Agent asked for number.',
                             time: '1:00',
                             transcript_excerpt: 'Can I get your number?',
-                            start_time_ms: -100,  // invalid
-                            end_time_ms: 64000
+                            start_time_ms: -100  // invalid
                         }
                     ]
                 }

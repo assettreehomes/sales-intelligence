@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import {
-    buildAiInsights,
     buildExecutiveFields,
     buildOpportunity,
     confidenceFromImportance,
@@ -111,7 +110,6 @@ export function TicketDetailWorkspace({
     const [sidebarTab, setSidebarTab] = useState<SidebarTab>('insights');
 
     const executive = useMemo(() => buildExecutiveFields(analysis), [analysis]);
-    const aiInsights = useMemo(() => buildAiInsights(analysis), [analysis]);
     const opportunity = useMemo(() => buildOpportunity(analysis), [analysis]);
 
     const starRating = Math.round((analysis?.rating || 0) / 2);
@@ -121,7 +119,6 @@ export function TicketDetailWorkspace({
         time?: string | null;
         transcript_excerpt?: string | null;
         start_time_ms?: number | null;
-        end_time_ms?: number | null;
     };
     type NumberRequests = {
         detected: boolean;
@@ -135,7 +132,6 @@ export function TicketDetailWorkspace({
         time?: string | null;
         transcript_excerpt?: string | null;
         start_time_ms?: number | null;
-        end_time_ms?: number | null;
     };
     const numberRequests = isPresales
         ? (analysis?.scores?.number_requests as NumberRequests | null | undefined) ?? null
@@ -150,7 +146,6 @@ export function TicketDetailWorkspace({
                 time: legacyAlert.time ?? null,
                 transcript_excerpt: legacyAlert.transcript_excerpt ?? null,
                 start_time_ms: legacyAlert.start_time_ms ?? null,
-                end_time_ms: legacyAlert.end_time_ms ?? null,
               }]
             : []);
 
@@ -192,8 +187,6 @@ export function TicketDetailWorkspace({
     const actionItems = (analysis?.actionitems || [])
         .map(normalizeActionItem)
         .filter((item): item is string => Boolean(item));
-
-    const coachingTip = analysis?.improvementsuggestions?.[0] || null;
 
     const clientLabel = isPresales
         ? ticket.telecmi_lead_id
@@ -347,16 +340,6 @@ export function TicketDetailWorkspace({
                         </div>
                     </section>
 
-                    {coachingTip && (
-                        <section className="ci-panel ci-panel--coaching">
-                            <header className="ci-panel__head">
-                                <Sparkles className="h-5 w-5 text-amber-500" />
-                                <h2 className="ci-panel__title">Next best response</h2>
-                            </header>
-                            <p className="ci-coaching-text">&ldquo;{coachingTip}&rdquo;</p>
-                        </section>
-                    )}
-
                     <section className="ci-panel">
                         <header className="ci-panel__head" style={{ justifyContent: 'space-between' }}>
                             <div className="flex items-center gap-2">
@@ -375,7 +358,6 @@ export function TicketDetailWorkspace({
                                     const isObj = typeof obj !== 'string';
                                     const quote = isObj ? obj.objection || '' : (obj as string);
                                     const response = isObj ? obj.response : undefined;
-                                    const better = isObj ? obj.better_response : undefined;
                                     const resolved = isObj ? Boolean(obj.resolved) : false;
                                     const effectiveness = isObj ? String(obj.effectiveness || '').toLowerCase() : '';
                                     const sevClass = resolved
@@ -401,14 +383,6 @@ export function TicketDetailWorkspace({
                                                         <Sparkles className="h-3 w-3" /> Agent response
                                                     </div>
                                                     <p className="ci-objection-card__response-text">{response}</p>
-                                                </div>
-                                            )}
-                                            {better && (
-                                                <div className="ci-objection-card__response">
-                                                    <div className="ci-objection-card__response-label">
-                                                        <Lightbulb className="h-3 w-3" /> Suggested response
-                                                    </div>
-                                                    <p className="ci-objection-card__response-text">{better}</p>
                                                 </div>
                                             )}
                                         </li>
@@ -528,19 +502,6 @@ export function TicketDetailWorkspace({
                                         <p className="ci-empty">No key moments yet.</p>
                                     ) : null}
                                 </div>
-                                {aiInsights.length > 0 && (
-                                    <>
-                                        <h3 className="ci-tab-content__title mt-6">AI detected</h3>
-                                        <div className="flex flex-col gap-2">
-                                            {aiInsights.map((line, i) => (
-                                                <div key={i} className="ci-coaching-card ci-coaching-card--alt">
-                                                    <span className="ci-coaching-card__num">{i + 1}</span>
-                                                    <p className="ci-coaching-card__text">{line}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
                             </div>
                         )}
 
@@ -551,7 +512,7 @@ export function TicketDetailWorkspace({
                                     {sortedMoments.length ? (
                                         sortedMoments.map((moment, i) => {
                                             const time = momentClock(moment);
-                                            const text = moment.transcript_excerpt || moment.description || moment.label || '—';
+                                            const text = moment.description || moment.label || '—';
                                             return (
                                                 <button
                                                     key={i}
