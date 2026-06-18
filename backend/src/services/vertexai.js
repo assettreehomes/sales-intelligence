@@ -137,55 +137,14 @@ async function generateAnalysis(audioUri, mimeType, prompt) {
 function buildAnalysisPrompt(ticketInfo) {
   const { client_id, client_name, visit_number } = ticketInfo;
 
-  return `You are an expert sales call analyst for a real estate company. 
-Analyze this audio recording and provide a comprehensive assessment.
+  return `Real estate site visit analyst. Return JSON only — no markdown.
 
-## Context
-- Client ID: ${client_id || 'Unknown'}
-- Client Name: ${client_name || 'Not Provided'}
-- Visit Number: ${visit_number || 1}
+Client: ${client_name || 'Unknown'} | Visit #${visit_number || 1}
 
-## Required Output (JSON format)
-Return a valid JSON object with this exact structure:
+{"summary":"Client showed strong interest in 3BHK corner units and engaged well on pricing. Agent handled the location objection effectively but did not secure a confirmed next visit.","overall_score":7.2,"scores":{"rapport_building":8,"objection_handling":7,"closing_techniques":6,"product_knowledge":8,"professionalism":8,"politeness":80,"confidence":72,"interest":"high","speakers":2},"key_moments":[{"timestamp":"02:15","description":"Client expresses interest in corner unit view"},{"timestamp":"08:30","description":"Location objection raised and addressed"},{"timestamp":"18:45","description":"Agent proposes follow-up site visit"}],"objections":[{"objection":"The project is a bit far from my office.","response":"We have a shuttle service and the metro extension opens next year.","effectiveness":"good"}],"action_items":["Share floor plan for unit 1204 by EOD.","Follow-up call in 48 hours to confirm next visit."],"call_outcome":"interested"}
 
-{
-  "summary": "2-3 sentence executive summary of the call",
-  "overall_score": <number 1-10>,
-  "scores": {
-    "rapport_building": <1-10>,
-    "objection_handling": <1-10>,
-    "closing_techniques": <1-10>,
-    "product_knowledge": <1-10>,
-    "professionalism": <1-10>,
-    "politeness": <number 0-100>,
-    "confidence": <number 0-100>,
-    "interest": "<low|medium|high>",
-    "speakers": <number of distinct speakers detected>
-  },
-  "key_moments": [
-    {
-      "timestamp": "MM:SS",
-      "description": "Brief description of the moment",
-      "sentiment": "positive|negative|neutral",
-      "importance": "high|medium|low"
-    }
-  ],
-  "objections": [
-    {
-      "objection": "What the customer said",
-      "response": "How the agent responded",
-      "effectiveness": "excellent|good|fair|poor"
-    }
-  ],
-  "action_items": [
-    "Specific follow-up action required"
-  ],
-  "call_outcome": "<interested|not_interested|follow_up_required>"
-}
-
-IMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.
-overall_score = (rapport_building + objection_handling + closing_techniques + product_knowledge + professionalism) / 5, rounded to 1 decimal.
-Set call_outcome to interested only when the customer shows buying intent or agrees to a meaningful next step; not_interested when they clearly decline or disengage; follow_up_required when interest is uncertain but a callback, brochure, site visit, or next action is needed.`;
+overall_score=(rapport_building+objection_handling+closing_techniques+product_knowledge+professionalism)/5, 1 decimal.
+call_outcome: interested=buying intent or next step agreed; not_interested=clear decline; follow_up_required=uncertain.`;
 }
 
 /**
