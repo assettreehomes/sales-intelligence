@@ -263,7 +263,7 @@ router.post('/selldo/call', async (req, res) => {
         const { data: matchedTicket, error: matchError } = await supabaseAdmin
             .from('tickets')
             .select('id')
-            .eq('telecmi_call_id', callId)
+            .or(`telecmi_call_id.eq.${callId},telecmi_cmiuid.eq.${callId}`)
             .eq('source', 'telecmi')
             .limit(1)
             .maybeSingle();

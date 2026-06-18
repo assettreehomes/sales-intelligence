@@ -132,15 +132,30 @@ async function processCdr(cdr, skipInitialDelay = false) {
     console.log(`📞 TeleCMI: Created ticket ${ticketId} | agent=${agentFullname || agent || 'unmapped'} | from=${from} | duration=${duration}s`);
 
     // ── Reconcile pending Sell.Do data (graceful — never blocks ticket creation) ──
-    if (callId) {
+    if (callId || cmiuid) {
         try {
-            const { data: pending } = await supabaseAdmin
-                .from('selldo_pending_calls')
-                .select('*')
-                .eq('call_id', callId)
-                .eq('matched', false)
-                .limit(1)
-                .maybeSingle();
+            // Sell.Do sends call_id for outbound, cmiuid for inbound — try both
+            let pending = null;
+            if (callId) {
+                const { data } = await supabaseAdmin
+                    .from('selldo_pending_calls')
+                    .select('*')
+                    .eq('call_id', callId)
+                    .eq('matched', false)
+                    .limit(1)
+                    .maybeSingle();
+                pending = data;
+            }
+            if (!pending && cmiuid) {
+                const { data } = await supabaseAdmin
+                    .from('selldo_pending_calls')
+                    .select('*')
+                    .eq('call_id', cmiuid)
+                    .eq('matched', false)
+                    .limit(1)
+                    .maybeSingle();
+                pending = data;
+            }
 
             if (pending) {
                 let org = {
