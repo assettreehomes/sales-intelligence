@@ -26,14 +26,12 @@ const mimeTypes = {
 const VALID_OUTCOMES = new Set(['interested', 'not_interested', 'follow_up_required']);
 const VALID_AUTHENTICITY = new Set(['real', 'fake']);
 const VALID_INTEREST = new Set(['low', 'medium', 'high']);
-const VALID_LEAD_QUALITY = new Set(['hot', 'warm', 'cold', 'unknown']);
 const REQUIRED_SCORE_KEYS = [
     'politeness',
     'confidence',
     'interest',
     'speakers'
 ];
-const REQUIRED_LEAD_KEYS = ['lead_quality'];
 
 const presalesResponseSchema = {
     type: SchemaType.OBJECT,
@@ -41,7 +39,6 @@ const presalesResponseSchema = {
         'summary',
         'overall_score',
         'scores',
-        'lead_qualification',
         'key_moments',
         'objections',
         'action_items',
@@ -63,23 +60,15 @@ const presalesResponseSchema = {
                 speakers: { type: SchemaType.INTEGER }
             }
         },
-        lead_qualification: {
-            type: SchemaType.OBJECT,
-            required: REQUIRED_LEAD_KEYS,
-            properties: {
-                lead_quality: { type: SchemaType.STRING, enum: ['hot', 'warm', 'cold', 'unknown'] }
-            }
-        },
         key_moments: {
             type: SchemaType.ARRAY,
             items: {
                 type: SchemaType.OBJECT,
-                required: ['label', 'category', 'start_time_ms', 'importance'],
+                required: ['label', 'category', 'start_time_ms'],
                 properties: {
                     label: { type: SchemaType.STRING },
                     category: { type: SchemaType.STRING, enum: ['positive', 'negative', 'neutral', 'objection', 'commitment', 'qualification'] },
-                    start_time_ms: { type: SchemaType.INTEGER },
-                    importance: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] }
+                    start_time_ms: { type: SchemaType.INTEGER }
                 }
             }
         },
@@ -173,14 +162,6 @@ export function validatePresalesAnalysis(analysis) {
         validateNumber(analysis.scores.confidence, 'scores.confidence', 0, 100, missing);
         if (!VALID_INTEREST.has(String(analysis.scores.interest || '').toLowerCase())) missing.push('scores.interest');
         validateNumber(analysis.scores.speakers, 'scores.speakers', 1, 20, missing);
-    }
-
-    if (!isObject(analysis?.lead_qualification)) {
-        missing.push('lead_qualification');
-    } else {
-        if (!VALID_LEAD_QUALITY.has(String(analysis.lead_qualification.lead_quality || '').toLowerCase())) {
-            missing.push('lead_qualification.lead_quality');
-        }
     }
 
     if (!Array.isArray(analysis?.key_moments) || analysis.key_moments.length === 0) {
@@ -283,7 +264,6 @@ FIELD COMPLETENESS:
 - overall_score: must be a number between 1 and 10
 - scores: must include politeness (0-100), confidence (0-100), interest (low/medium/high), speakers (integer >= 1).
   For fake/unanalysable calls use 0 for politeness and confidence, "low" for interest, 1 for speakers.
-- lead_qualification: must include lead_quality (hot/warm/cold/unknown). For fake calls use "unknown".
 - key_moments: must be a non-empty array with at least 1 entry. Each entry must have a
   non-empty label and a valid start_time_ms integer.
 - objections: must be an array (empty [] is fine if no objections occurred)
@@ -354,7 +334,6 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             confidence: analysis.scores?.confidence ?? null,
             interest:   analysis.scores?.interest   ?? null,
             speakers:   analysis.scores?.speakers   ?? null,
-            lead_qualification: analysis.lead_qualification || null,
             number_requests: numberRequests
         };
 

@@ -3,9 +3,7 @@ export type TicketKeyMoment = {
     timestamp?: string;
     label?: string;
     description?: string;
-    sentiment?: string;
     category?: string;
-    importance?: string;
     start_time_ms?: number;
 };
 
@@ -27,9 +25,6 @@ export type TicketAnalysis = {
     actionitems?: unknown[];
     keymoments?: TicketKeyMoment[];
     comparisonwithprevious?: Record<string, unknown> | null;
-    lead_qualification?: {
-        lead_quality?: string;
-    } | null;
 };
 
 export function maskPhone(num: string | null | undefined): string {
@@ -121,11 +116,7 @@ const NEGATIVE_CATS = new Set(['negative', 'objection']);
 export function deriveMomentCategory(m: TicketKeyMoment | null | undefined): string {
     if (!m) return 'neutral';
     const cat = String(m.category || '').toLowerCase();
-    if (cat) return cat;
-    const sent = String(m.sentiment || '').toLowerCase();
-    if (sent === 'positive') return 'positive';
-    if (sent === 'negative') return 'negative';
-    return 'neutral';
+    return cat || 'neutral';
 }
 
 export function severityFromMoment(m: TicketKeyMoment): { tone: 'strong' | 'mild' | 'positive' | 'neutral'; label: string } {
@@ -145,20 +136,6 @@ export function severityFromMoment(m: TicketKeyMoment): { tone: 'strong' | 'mild
         return { tone: 'strong', label: 'Negative moment' };
     }
     return { tone: 'neutral', label: 'Neutral moment' };
-}
-
-export function confidenceFromImportance(importance: string | undefined | null): number {
-    const imp = String(importance || '').toLowerCase();
-    if (imp === 'high') return 92;
-    if (imp === 'medium') return 76;
-    if (imp === 'low') return 58;
-    return 70;
-}
-
-export function confidenceTone(pct: number): 'high' | 'med' | 'low' {
-    if (pct >= 80) return 'high';
-    if (pct >= 60) return 'med';
-    return 'low';
 }
 
 export function formatMsToClock(ms: number | undefined | null): string | null {
@@ -204,12 +181,11 @@ export function buildSentimentBar(analysis: TicketAnalysis | null): { positive: 
 }
 
 export function buildOpportunity(analysis: TicketAnalysis | null): string {
-    const quality = String(analysis?.lead_qualification?.lead_quality || '').toLowerCase();
     const interest = String(analysis?.scores?.interest ?? analysis?.customer_interest_level ?? '').toLowerCase();
-    if (quality === 'hot') return 'Hot lead with clear intent — push for site visit or commitment now.';
-    if (quality === 'warm' || interest === 'high') return 'Warm engagement detected — nurture with timely follow-up.';
-    if (quality === 'cold' || interest === 'low') return 'Low conversion likelihood — qualify or deprioritise.';
-    if (interest === 'medium') return 'Moderate interest — clarify needs before committing further effort.';
+    const outcome = analysis?.call_outcome;
+    if (interest === 'high' || outcome === 'interested') return 'Warm engagement detected — nurture with timely follow-up.';
+    if (interest === 'low' || outcome === 'not_interested') return 'Low conversion likelihood — qualify or deprioritise.';
+    if (interest === 'medium' || outcome === 'follow_up_required') return 'Moderate interest — clarify needs before committing further effort.';
     return 'Opportunity not yet conclusive — extract more discovery on next contact.';
 }
 

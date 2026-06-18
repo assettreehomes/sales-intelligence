@@ -23,16 +23,11 @@ interface Analysis {
         timestamp?: string;
         label?: string;
         description?: string;
-        sentiment: 'positive' | 'negative' | 'neutral';
         category?: string;
-        importance?: string;
         start_time_ms?: number;
     }>;
     objections: (string | { objection: string; response?: string; effectiveness?: string; resolved?: boolean })[];
     actionitems: (string | { item: string } | { action: string })[];
-    lead_qualification?: {
-        lead_quality?: string;
-    } | null;
     comparisonwithprevious?: {
         improvements?: string[];
         regressions?: string[];

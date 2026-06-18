@@ -17,8 +17,6 @@ import { Avatar } from '@/components/Avatar';
 import {
     buildExecutiveFields,
     buildOpportunity,
-    confidenceFromImportance,
-    confidenceTone,
     deriveMomentCategory,
     maskPhone,
     momentClock,
@@ -160,10 +158,8 @@ export function TicketDetailWorkspace({
             return {
                 time,
                 label: m.label || m.description || 'Moment',
-                sentiment: m.sentiment,
                 category: m.category,
                 positionPct,
-                confidence: confidenceFromImportance(m.importance),
             };
         });
         // Inject number request instances as high-priority markers
@@ -175,10 +171,8 @@ export function TicketDetailWorkspace({
             return {
                 time: inst.time ?? (startMs !== null ? `${Math.floor(startMs / 60000)}:${String(Math.floor((startMs % 60000) / 1000)).padStart(2, '0')}` : '0:00'),
                 label: '🚨 Number Request',
-                sentiment: 'negative',
                 category: 'negative',
                 positionPct,
-                confidence: 100,
             };
         });
         return [...alertMarkers, ...momentMarkers];
@@ -475,7 +469,6 @@ export function TicketDetailWorkspace({
                                             const label = moment.label || moment.description || 'Key moment';
                                             const cat = deriveMomentCategory(moment);
                                             const sev = severityFromMoment(moment);
-                                            const conf = confidenceFromImportance(moment.importance);
                                             return (
                                                 <button
                                                     key={i}
@@ -491,10 +484,6 @@ export function TicketDetailWorkspace({
                                                         </span>
                                                     </span>
                                                     <span className="ci-moment__label">{label}</span>
-                                                    <span className="ci-conf">
-                                                        <span className={`ci-conf__dot ci-conf__dot--${confidenceTone(conf)}`} />
-                                                        {conf}% confidence
-                                                    </span>
                                                 </button>
                                             );
                                         })

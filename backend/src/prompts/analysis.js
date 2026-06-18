@@ -54,23 +54,6 @@ Analyze the conversation and return ONLY a valid JSON object (no markdown, no co
 
   "call_outcome": "<interested|not_interested|follow_up_required>",
 
-  "comparison_with_previous": {
-    "overall_narrative": "For repeat visits: A 2-3 sentence summary comparing this visit to the previous one",
-    "score_changes": {
-      "rapport_building": {"previous": 7, "current": 8, "change": +1},
-      "needs_discovery": {"previous": 5, "current": 7, "change": +2},
-      "objection_handling": {"previous": 6, "current": 6, "change": 0},
-      "closing_techniques": {"previous": 4, "current": 5, "change": +1},
-      "product_knowledge": {"previous": 8, "current": 9, "change": +1},
-      "professionalism": {"previous": 9, "current": 9, "change": 0}
-    },
-    "improvements": ["Specific areas that improved since last visit, with concrete examples"],
-    "regressions": ["Specific areas that got worse since last visit, with concrete examples"],
-    "unchanged": ["Specific areas that remained consistent"],
-    "delta_score": 0.5,
-    "key_differences": ["Major behavioral or tactical changes between visits"]
-  },
-
   "call_duration_seconds": <estimated call duration>,
   "speakers_detected": <number of distinct speakers>
 }
@@ -115,7 +98,7 @@ Do NOT include markdown, code blocks, or any text outside the JSON.
 
 Every field in the schema below is REQUIRED and must have a concrete, valid value.
 All fields — including call_outcome, call_authenticity, summary, overall_score, scores,
-lead_qualification, key_moments, speakers_detected — must always be populated.
+key_moments, speakers_detected — must always be populated.
 Never return null for these fields.
 
 ## FAKE / INVALID CALL HANDLING
@@ -127,7 +110,6 @@ Use these minimum values for fake or unanalysable calls:
 - overall_score: 1
 - politeness: 0, confidence: 0
 - interest: "low", speakers: 1 (or actual count if detectable)
-- lead_quality: "unknown"
 - summary: one or two sentences describing what made the call fake or unanalysable
   (e.g. "Call was immediately disconnected after the agent's greeting. No meaningful
   conversation occurred and no prospect interaction was captured.")
@@ -170,16 +152,11 @@ Use these minimum values for fake or unanalysable calls:
     "speakers": <integer — number of distinct voices detected, minimum 1>
   },
 
-  "lead_qualification": {
-    "lead_quality": "<hot|warm|cold|unknown>"
-  },
-
   "key_moments": [
     {
       "label": "<6-8 word description of what happened>",
       "category": "<positive|negative|neutral|objection|commitment|qualification>",
-      "start_time_ms": <milliseconds from start of audio, integer>,
-      "importance": "<high|medium|low>"
+      "start_time_ms": <milliseconds from start of audio, integer>
     }
   ],
 
@@ -253,18 +230,16 @@ Be EXTREMELY strict — flag even minor, indirect, casual, or softly-worded requ
 4. overall_score: rate the call holistically 1-10 using the rubric above. Reflect reality —
    a bad call should score 2-4, not 6-7. Never inflate scores.
 5. If a prospect raised NO objections, set "objections" to an empty array [].
-6. lead_quality: hot = appointment booked + clear budget; warm = interested but no
-   appointment; cold = no interest shown; unknown = too short or fake to assess.
-7. call_outcome is MANDATORY, must be a top-level JSON key, must never be null, and must
+6. call_outcome is MANDATORY, must be a top-level JSON key, must never be null, and must
    be exactly one of: interested, not_interested, follow_up_required.
-8. call_authenticity is MANDATORY, must be a top-level JSON key, must never be null, and
+7. call_authenticity is MANDATORY, must be a top-level JSON key, must never be null, and
    must be exactly one of: real, fake.
-9. Do NOT place call_outcome or call_authenticity only inside scores. They must be present
+8. Do NOT place call_outcome or call_authenticity only inside scores. They must be present
    at the top level of the returned JSON object.
-10. call_authenticity: real = a genuine conversation with meaningful prospect interaction;
-    fake = hello/hangup, silence, agent-only monologue, wrong number, or any call with no
-    real prospect engagement.
-11. action_items: maximum 2 items. Be specific and concrete.
-12. number_requests is MANDATORY at the top level. Always return it. If no number
+9. call_authenticity: real = a genuine conversation with meaningful prospect interaction;
+   fake = hello/hangup, silence, agent-only monologue, wrong number, or any call with no
+   real prospect engagement.
+10. action_items: maximum 2 items. Be specific and concrete.
+11. number_requests is MANDATORY at the top level. Always return it. If no number
     request detected: { "detected": false, "instances": [] }. Never omit this field.`;
 }

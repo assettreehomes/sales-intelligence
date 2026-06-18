@@ -17,15 +17,11 @@ function validAnalysis(overrides = {}) {
             interest: 'medium',
             speakers: 2
         },
-        lead_qualification: {
-            lead_quality: 'warm'
-        },
         key_moments: [
             {
                 label: 'Budget confirmation',
                 category: 'qualification',
-                start_time_ms: 15000,
-                importance: 'high'
+                start_time_ms: 15000
             }
         ],
         objections: [],
@@ -213,7 +209,6 @@ describe('validatePresalesAnalysis: general validation (Task #14 — re-analyze 
         const input = validAnalysis();
         const result = validatePresalesAnalysis(input);
         assert.ok(result.scores);
-        assert.ok(result.lead_qualification);
         assert.deepEqual(result.number_requests, { detected: false, instances: [] });
     });
 });

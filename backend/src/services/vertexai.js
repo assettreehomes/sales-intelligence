@@ -54,9 +54,7 @@ const analysisResponseSchema = {
         type: SchemaType.OBJECT,
         properties: {
           timestamp:         { type: SchemaType.STRING },
-          description:       { type: SchemaType.STRING },
-          sentiment:         { type: SchemaType.STRING },
-          importance:        { type: SchemaType.STRING }
+          description:       { type: SchemaType.STRING }
         }
       }
     },
