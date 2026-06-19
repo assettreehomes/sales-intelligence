@@ -31,8 +31,9 @@ function maskPhone(number) {
  * @param {boolean} skipInitialDelay - Skip the 45s wait (use true for sync, false for webhook)
  */
 async function processCdr(cdr, skipInitialDelay = false) {
-    const cmiuid    = cdr.cmiuid   || cdr.cmiuuid || cdr.uid || null;
-    const callId    = cdr.call_id  || null;
+    const cmiuid     = cdr.cmiuid   || cdr.cmiuuid || cdr.uid || null;
+    const callId     = cdr.call_id  || null;
+    const requestId  = cdr.request_id?.toString().trim() || null;
     const agent     = cdr.agent    || cdr.agentid || cdr.user || null;
     const direction = cdr.direction || 'outbound';
     // Explicit direction-aware customer number mapping:
@@ -120,8 +121,9 @@ async function processCdr(cdr, skipInitialDelay = false) {
             telecmi_filename:  filename,
             telecmi_user:      agent,           // raw e.g. "5088_33336999"
             telecmi_direction: direction,        // "inbound" | "outbound"
-            telecmi_custom:    rawCustom,        // raw JSON string (null if custom=false)
-            telecmi_lead_id:   telecmiLeadId,    // extracted lead ID or null
+            telecmi_custom:      rawCustom,        // raw JSON string (null if custom=false)
+            telecmi_lead_id:     telecmiLeadId,   // extracted lead ID or null
+            telecmi_request_id:  requestId,       // TeleCMI request_id — used for Sell.Do matching
             client_id:         from,
             clientname:        name,
             visittype:         'telecmi_call',
@@ -159,6 +161,16 @@ async function processCdr(cdr, skipInitialDelay = false) {
                     .from('selldo_pending_calls')
                     .select('*')
                     .eq('call_id', cmiuid)
+                    .eq('matched', false)
+                    .limit(1)
+                    .maybeSingle();
+                pending = data;
+            }
+            if (!pending && requestId) {
+                const { data } = await supabaseAdmin
+                    .from('selldo_pending_calls')
+                    .select('*')
+                    .eq('call_id', requestId)
                     .eq('matched', false)
                     .limit(1)
                     .maybeSingle();
