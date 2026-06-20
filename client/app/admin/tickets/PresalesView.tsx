@@ -12,6 +12,7 @@ import {
     Loader2,
     RefreshCcw,
     Users,
+    User,
     PhoneCall,
     PhoneIncoming,
     PhoneMissed,
@@ -278,22 +279,16 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                         <StarRating rating={ticket.rating} />
                                     </div>
 
-                                    {/* Meta row: agent + duration + date */}
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                                        {ticket.creator_details ? (
-                                            <span className="flex items-center gap-1">
-                                                <Avatar name={ticket.creator_details.fullname} src={ticket.creator_details.avatar_url} size="sm" />
-                                                {ticket.creator_details.fullname}
+                                    {/* Meta row: agent + team badges + duration + date */}
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                                        {ticket.selldo_agent_name && (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                                <User className="w-3 h-3" />
+                                                {ticket.selldo_agent_name}
                                             </span>
-                                        ) : ticket.telecmi_user ? (
-                                            <span className="flex items-center gap-1 italic text-slate-400 dark:text-slate-500">
-                                                Ext. {ticket.telecmi_user.split('_')[0]}
-                                            </span>
-                                        ) : (
-                                            <span className="text-slate-300 dark:text-slate-600 italic">No agent</span>
                                         )}
                                         {ticket.selldo_team_name && (
-                                            <span className="flex items-center gap-1">
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                                 <Users className="w-3 h-3" />
                                                 {ticket.selldo_team_name}
                                             </span>

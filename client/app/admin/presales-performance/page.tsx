@@ -279,7 +279,7 @@ function FunnelVisual({ stages }: { stages: FunnelStage[] }) {
 function PresalesPerformanceContent() {
     const { session } = useAuth();
 
-    const [period, setPeriod] = useState('30d');
+    const [period, setPeriod] = useState('today');
     const [view, setView] = useState<TableView>('agents');
     const [query, setQuery] = useState('');
     const [sortBy, setSortBy] = useState<TableSort>('calls');
@@ -291,7 +291,7 @@ function PresalesPerformanceContent() {
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
     const loadData = useCallback(
-        async (selectedPeriod = period, silent = false) => {
+        async (selectedPeriod: string, silent = false) => {
             if (!session?.access_token) return;
 
             if (!silent) setLoading(true);
@@ -317,7 +317,7 @@ function PresalesPerformanceContent() {
                 if (!silent) setLoading(false);
             }
         },
-        [period, session?.access_token]
+        [session?.access_token]
     );
 
     useEffect(() => {
@@ -538,7 +538,7 @@ function PresalesPerformanceContent() {
                             </div>
                         </div>
                     ) : data ? (
-                        <>
+                        <div className={loading ? 'opacity-50 pointer-events-none transition-opacity duration-200' : 'transition-opacity duration-200'}>
                             {data.outcome_data_quality?.is_partial && data.outcome_data_quality.inferred > 0 ? (
                                 <div className="rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-[var(--color-text-secondary)]">
                                     <p className="inline-flex items-center gap-2 font-semibold text-amber-300">
@@ -950,7 +950,7 @@ function PresalesPerformanceContent() {
                                     </div>
                                 </SectionCard>
                             </section>
-                        </>
+                        </div>
                     ) : null}
                 </div>
             </main>
