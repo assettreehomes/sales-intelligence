@@ -282,14 +282,14 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                     {/* Meta row: agent + team badges + duration + date */}
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400">
                                         {ticket.selldo_agent_name && (
-                                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
-                                                <User className="w-3 h-3" />
+                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                                <User className="w-3.5 h-3.5" />
                                                 {ticket.selldo_agent_name}
                                             </span>
                                         )}
                                         {ticket.selldo_team_name && (
-                                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                                <Users className="w-3 h-3" />
+                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                                <Users className="w-3.5 h-3.5" />
                                                 {ticket.selldo_team_name}
                                             </span>
                                         )}

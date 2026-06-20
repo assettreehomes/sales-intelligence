@@ -27,6 +27,20 @@ export type TicketAnalysis = {
     comparisonwithprevious?: Record<string, unknown> | null;
 };
 
+export function derivePresalesAgentName(ticket: {
+    presales_agent?: { full_name?: string } | null;
+    selldo_agent_name?: string | null;
+}): string | null {
+    return ticket.presales_agent?.full_name?.trim() || ticket.selldo_agent_name?.trim() || null;
+}
+
+export function derivePresalesTeamName(ticket: {
+    presales_team?: { name?: string } | null;
+    selldo_team_name?: string | null;
+}): string | null {
+    return ticket.presales_team?.name?.trim() || ticket.selldo_team_name?.trim() || null;
+}
+
 export function maskPhone(num: string | null | undefined): string {
     if (!num) return 'Unknown';
     const str = String(num).replace(/\D/g, '');

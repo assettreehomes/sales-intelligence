@@ -20,6 +20,8 @@ import {
     buildExecutiveFields,
     buildOpportunity,
     deriveMomentCategory,
+    derivePresalesAgentName,
+    derivePresalesTeamName,
     maskPhone,
     momentClock,
     normalizeActionItem,
@@ -194,7 +196,8 @@ export function TicketDetailWorkspace({
         ? `Ext. ${ticket.telecmi_user.split('_')[0]}`
         : agentName;
 
-    const teamLabel = ticket.presales_team?.name || ticket.selldo_team_name || null;
+    const presalesAgentName = isPresales ? derivePresalesAgentName(ticket) : null;
+    const teamLabel = derivePresalesTeamName(ticket);
 
     return (
         <div className="ci-workspace">
@@ -222,14 +225,14 @@ export function TicketDetailWorkspace({
                             {analysis.call_outcome.replaceAll('_', ' ')}
                         </span>
                     )}
-                    {isPresales && agentLabel && agentLabel !== 'Unknown Agent' && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
-                            <User className="h-3 w-3" /> {agentLabel}
+                    {presalesAgentName && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                            <User className="h-3.5 w-3.5" /> {presalesAgentName}
                         </span>
                     )}
-                    {isPresales && teamLabel && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
-                            <Users className="h-3 w-3" /> {teamLabel}
+                    {teamLabel && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                            <Users className="h-3.5 w-3.5" /> {teamLabel}
                         </span>
                     )}
                     <div
@@ -296,7 +299,7 @@ export function TicketDetailWorkspace({
                 analysis={analysis}
                 metricCards={metricCards}
                 clientLabel={clientLabel}
-                agentLabel={agentLabel}
+                agentLabel={presalesAgentName || agentLabel}
                 teamLabel={teamLabel}
                 callDuration={callDuration}
             />
