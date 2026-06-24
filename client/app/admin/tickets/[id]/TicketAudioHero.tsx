@@ -1,7 +1,7 @@
 'use client';
 
-import { RefObject } from 'react';
-import { Gauge, Pause, Play, RotateCcw } from 'lucide-react';
+import { RefObject, useState } from 'react';
+import { Download, Gauge, Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 
 export interface TicketAudioHeroProps {
     isPlaying: boolean;
@@ -42,6 +42,8 @@ export interface TicketAudioHeroProps {
     clamp: (value: number, min: number, max: number) => number;
     timelineMarkers?: Array<{ time: string; label: string; sentiment?: string; category?: string; positionPct?: number; confidence?: number }>;
     onMarkerClick?: (time: string) => void;
+    isPresales?: boolean;
+    onDownloadRecording?: () => void | Promise<void>;
 }
 
 function categoryClass(category?: string, sentiment?: string): string {
@@ -95,7 +97,21 @@ export function TicketAudioHero(props: TicketAudioHeroProps) {
         clamp,
         timelineMarkers = [],
         onMarkerClick,
+        isPresales,
+        onDownloadRecording,
     } = props;
+
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    async function handleDownload() {
+        if (!onDownloadRecording || isDownloading) return;
+        setIsDownloading(true);
+        try {
+            await onDownloadRecording();
+        } finally {
+            setIsDownloading(false);
+        }
+    }
 
     return (
         <section className="ci-audio-hero">
@@ -106,9 +122,25 @@ export function TicketAudioHero(props: TicketAudioHeroProps) {
                         <p className="ci-audio-hero__eyebrow">Conversation recording</p>
                         <h2 className="ci-audio-hero__title">Listen & review with AI context</h2>
                     </div>
-                    <span className="ci-audio-hero__duration">
-                        {formatTime(displayedCurrentTime)} / {formatTime(duration)}
-                    </span>
+                    <div className="flex items-center gap-3">
+                        {isPresales && onDownloadRecording && (
+                            <button
+                                type="button"
+                                onClick={() => { void handleDownload(); }}
+                                disabled={isDownloading}
+                                className="ci-audio-hero__btn flex items-center gap-1.5 text-xs disabled:opacity-60"
+                                aria-label="Download recording"
+                            >
+                                {isDownloading
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <Download className="h-3.5 w-3.5" />}
+                                Download
+                            </button>
+                        )}
+                        <span className="ci-audio-hero__duration">
+                            {formatTime(displayedCurrentTime)} / {formatTime(duration)}
+                        </span>
+                    </div>
                 </div>
 
                 <div className="ci-audio-hero__toolbar">

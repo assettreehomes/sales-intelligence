@@ -479,12 +479,13 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
 
             const date = ticket.createdat?.slice(0, 10);
             if (date) {
-                const dayBucket = daily.get(date) || { count: 0, fake: 0, interested: 0, number_requests: 0 };
+                const dayBucket = daily.get(date) || { count: 0, fake: 0, interested: 0, follow_up: 0, number_requests: 0 };
                 dayBucket.count += 1;
                 const auth = ticket.call_authenticity || analysis?.call_authenticity;
                 if (auth === 'fake') dayBucket.fake += 1;
                 const out = ticket.call_outcome || analysis?.call_outcome;
                 if (out === 'interested') dayBucket.interested += 1;
+                if (out === 'follow_up_required') dayBucket.follow_up += 1;
                 if (ticket.asked_mobile_number) dayBucket.number_requests += 1;
                 daily.set(date, dayBucket);
             }
@@ -539,7 +540,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             summary,
             agents: Array.from(agentBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
             teams: Array.from(teamBuckets.values()).map(finalizeBucket).sort((a, b) => b.total_calls - a.total_calls),
-            daily: Array.from(daily.entries()).map(([date, b]) => ({ date, count: b.count, fake: b.fake, interested: b.interested, number_requests: b.number_requests })).sort((a, b) => a.date.localeCompare(b.date)),
+            daily: Array.from(daily.entries()).map(([date, b]) => ({ date, count: b.count, fake: b.fake, interested: b.interested, follow_up: b.follow_up, number_requests: b.number_requests })).sort((a, b) => a.date.localeCompare(b.date)),
             weekly: Array.from(weekly.entries()).map(([week, count]) => ({ week, count })).sort((a, b) => a.week.localeCompare(b.week))
         });
     } catch (error) {

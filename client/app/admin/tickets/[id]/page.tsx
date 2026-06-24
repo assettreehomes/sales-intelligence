@@ -1010,6 +1010,26 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return resolvedUrl;
     }, [fetchAudioUrl, id, audioUrl]);
 
+    const handleDownloadRecording = useCallback(async () => {
+        const url = await ensureSignedAudioUrl(false);
+        if (!url) return;
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('Download failed');
+            const blob = await resp.blob();
+            const objUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objUrl;
+            a.download = `recording-${id}.mp3`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(objUrl);
+        } catch {
+            notifyError('Could not download recording. Please try again.');
+        }
+    }, [ensureSignedAudioUrl, id]);
+
     const getSeekLimit = useCallback((audio: HTMLAudioElement | null) => {
         if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
             return audio.duration;
@@ -1953,6 +1973,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 playbackSpeedValue: playbackSpeed,
                                 volume,
                                 clamp,
+                                isPresales,
+                                onDownloadRecording: isPresales ? handleDownloadRecording : undefined,
                             }}
                         >
                                 <div className="ci-panel">
