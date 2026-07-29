@@ -38,7 +38,7 @@ interface EmployeeStatus {
         id: string;
         fullname: string;
         email: string;
-        role: 'employee' | 'intern' | string;
+        role: 'employee' /* | 'intern' */ | string;
         avatar_url?: string;
     };
     status: {
@@ -55,7 +55,7 @@ interface EmployeeStatus {
 
 type StateFilter = 'all' | 'online' | 'offline';
 type ActivityFilter = 'all' | 'recording' | 'idle';
-type RoleFilter = 'all' | 'employee' | 'intern';
+type RoleFilter = 'all' | 'employee'; // | 'intern';
 
 function relativeTime(iso: string | null): string {
     if (!iso) return 'n/a';
@@ -269,7 +269,7 @@ export default function LiveStatusPage() {
                                     options={[
                                         { value: 'all', label: 'All roles' },
                                         { value: 'employee', label: 'Employees' },
-                                        { value: 'intern', label: 'Interns' },
+                                        // { value: 'intern', label: 'Interns' },
                                     ]}
                                 />
                                 <Button type="button" variant="secondary" className="h-11" onClick={() => void fetchStatus()} disabled={loading}>

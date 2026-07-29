@@ -41,7 +41,7 @@ interface Employee {
     id: string;
     fullname: string;
     email: string;
-    role: 'employee' | 'admin' | 'superadmin' | 'intern';
+    role: 'employee' | 'admin' | 'superadmin'; // | 'intern';
     status: 'active' | 'inactive';
     last_login?: string;
     telecmi_agent_id?: string | null;
@@ -92,7 +92,7 @@ function EmployeesPageContent() {
     const [fullname, setFullname] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [newRole, setNewRole] = useState<'employee' | 'admin' | 'superadmin' | 'intern'>('employee');
+    const [newRole, setNewRole] = useState<'employee' | 'admin' | 'superadmin' /*| 'intern'*/>('employee');
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [createdEmployee, setCreatedEmployee] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -448,7 +448,7 @@ function EmployeesPageContent() {
     const activeCount = employees.filter((employee) => employee.status === 'active').length;
     const inactiveCount = employees.length - activeCount;
     const adminCount = employees.filter((employee) => employee.role === 'admin' || employee.role === 'superadmin').length;
-    const internCount = employees.filter((employee) => employee.role === 'intern').length;
+    // const internCount = employees.filter((employee) => employee.role === 'intern').length;
     const presalesAgentCount = presalesEmployees.filter((employee) => employee.role === 'agent').length;
     const presalesLeaderCount = presalesEmployees.filter((employee) => employee.role === 'team_leader').length;
     const presalesUnassignedCount = presalesEmployees.filter((employee) => employee.role === 'agent' && !employee.team_id).length;
@@ -680,7 +680,7 @@ function EmployeesPageContent() {
                                         disabled={submitting}
                                         options={[
                                             { value: 'employee', label: 'Employee' },
-                                            { value: 'intern', label: 'Intern' },
+                                            // { value: 'intern', label: 'Intern' },
                                             { value: 'admin', label: 'Admin' },
                                             { value: 'superadmin', label: 'Superadmin' },
                                         ]}
@@ -738,7 +738,7 @@ function EmployeesPageContent() {
                                 <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Active users</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{activeCount}</p></CardContent></Card>
                                 <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Total users</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{employees.length}</p></CardContent></Card>
                                 <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Admin roles</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{adminCount}</p></CardContent></Card>
-                                <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Interns</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{internCount}</p></CardContent></Card>
+                                {/* <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.08em] text-[var(--semantic-text-muted)]">Interns</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-2xl font-semibold">{internCount}</p></CardContent></Card> */}
                             </>
                         ) : (
                             <>

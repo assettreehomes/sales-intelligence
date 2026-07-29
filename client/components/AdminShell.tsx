@@ -209,7 +209,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         setMobileOpen(true);
     };
 
-    const homeHref = (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : '/admin/performance';
+    const homeHref = /* (profile?.role === 'intern' || profile?.role === 'employee') ? '/intern' : */ '/admin/performance';
 
     const openExternalInNewTab = useCallback((url: string) => {
         if (typeof window === 'undefined') return;
@@ -252,25 +252,25 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
     }, []);
 
     const navItems = useMemo<AdminNavItem[]>(() => {
-        if (profile?.role === 'intern' || profile?.role === 'employee') {
-            return [
-                { id: 'training' as const, label: 'Training', icon: GraduationCap, group: 'analytics', href: '/intern' }
-            ];
-        }
+        // if (profile?.role === 'intern' || profile?.role === 'employee') {
+        //     return [
+        //         { id: 'training' as const, label: 'Training', icon: GraduationCap, group: 'analytics', href: '/intern' }
+        //     ];
+        // }
 
         return [
             { id: 'performance' as const, label: 'Sales Performance', icon: BarChart3, group: 'analytics', href: '/admin/performance' },
             { id: 'presalesPerformance' as const, label: 'Presales Performance', icon: TrendingUp, group: 'analytics', href: '/admin/presales-performance' },
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, group: 'operations', href: '/admin/tickets' },
-            { id: 'queue' as const, label: 'Analysis Queue', icon: Layers, group: 'operations', href: '/admin/queue' },
+            // { id: 'queue' as const, label: 'Analysis Queue', icon: Layers, group: 'operations', href: '/admin/queue' },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, group: 'operations', href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, group: 'operations', href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, group: 'operations', href: '/admin/activity' },
             { id: 'employees' as const, label: 'Employees', icon: UserPlus, group: 'people', href: '/admin/employees' },
             { id: 'live' as const, label: 'Live Status', icon: Radio, group: 'people', href: '/admin/live' },
-            { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, group: 'tools', onClick: openSellDo },
-            { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, group: 'tools', onClick: openAntivirusApp },
-            { id: 'imou' as const, label: 'CCTV Video', icon: Camera, group: 'tools', onClick: openImou }
+            // { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, group: 'tools', onClick: openSellDo },
+            // { id: 'antivirus' as const, label: 'Antivirus App', icon: Shield, group: 'tools', onClick: openAntivirusApp },
+            // { id: 'imou' as const, label: 'CCTV Video', icon: Camera, group: 'tools', onClick: openImou }
         ];
     }, [profile?.role, openAntivirusApp, openImou, openSellDo]);
 

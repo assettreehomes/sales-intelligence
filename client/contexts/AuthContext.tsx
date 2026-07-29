@@ -10,7 +10,7 @@ export interface UserProfile {
     id: string;
     email: string;
     fullname: string;
-    role: 'superadmin' | 'admin' | 'employee' | 'intern';
+    role: 'superadmin' | 'admin' | 'employee'; // | 'intern';
     status: 'active' | 'inactive';
     lastlogin?: string;
 }

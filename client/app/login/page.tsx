@@ -43,10 +43,10 @@ export default function LoginPage() {
                 return;
             }
 
-            if (profile.role === 'intern' || profile.role === 'employee') {
-                router.replace('/intern');
-                return;
-            }
+            // if (profile.role === 'intern' || profile.role === 'employee') {
+            //     router.replace('/intern');
+            //     return;
+            // }
         }
     }, [user, profile, authLoading, profileLoading, router, signOut]);
 
