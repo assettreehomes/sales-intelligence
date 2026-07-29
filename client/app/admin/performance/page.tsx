@@ -646,47 +646,7 @@ export default function PerformancePage() {
                                                     </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-xl border border-white/20 bg-black/12 p-2.5">
-                                                    <div>
-                                                        <p className="text-[11px] uppercase tracking-[0.08em] text-white/70">Momentum</p>
-                                                        <p className="inline-flex items-center gap-1 text-sm font-semibold text-white">
-                                                            <TrendingUp className="h-3.5 w-3.5" />
-                                                            {topPerformerInsight.trendDelta >= 0 ? '+' : ''}
-                                                            {topPerformerInsight.trendDelta.toFixed(2)} recent shift
-                                                        </p>
-                                                    </div>
-                                                    <div className="flex h-14 items-end gap-1">
-                                                        {topPerformerInsight.trendBars.length ? (
-                                                            topPerformerInsight.trendBars.map((value, idx) => (
-                                                                <span
-                                                                    key={`${value}-${idx}`}
-                                                                    className="w-2 rounded-sm bg-white/80"
-                                                                    style={{ height: `${Math.max(12, Math.min(100, (value / 5) * 100))}%` }}
-                                                                />
-                                                            ))
-                                                        ) : (
-                                                            <span className="text-xs text-white/65">No trend data</span>
-                                                        )}
-                                                    </div>
-                                                </div>
 
-                                                <div className="grid grid-cols-[auto_1fr] items-center gap-2 rounded-xl border border-white/20 bg-black/12 p-2.5">
-                                                    <p className="text-[11px] uppercase tracking-[0.08em] text-white/70">Skill focus</p>
-                                                    <div className="h-2 overflow-hidden rounded-full bg-white/20">
-                                                        <div
-                                                            className="h-full rounded-full bg-white/80 transition-all duration-700"
-                                                            style={{ width: `${Math.min(100, Math.max(4, (topPerformerInsight.strongestSkillValue / 10) * 100))}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex justify-center rounded-xl border border-white/20 bg-black/12 p-1">
-                                                    <SkillRadarChart
-                                                        size={148}
-                                                        labels={skillKeys.map((k) => SKILL_CHART_LABELS[k])}
-                                                        values={skillKeys.map((k) => topPerformerEmployee?.skills?.[k] ?? 0)}
-                                                    />
-                                                </div>
                                             </div>
                                         ) : (
                                             <p className="text-sm text-white/80">No top performer in this period.</p>
@@ -703,61 +663,7 @@ export default function PerformancePage() {
                                     </SectionCard>
                                 </section>
 
-                                <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-                                    <SectionCard title="Skills Heatmap" icon={<Target className="h-4 w-4" />} subtitle="Quick skill-read for active employees">
-                                        <ScrollArea className="w-full">
-                                            <table className="w-full min-w-[760px] border-separate border-spacing-y-1 text-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th className="px-2 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">Employee</th>
-                                                        {skillKeys.map((skill) => (
-                                                            <th key={skill} className="px-2 py-2 text-center text-[10px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-                                                                {SKILL_CHART_LABELS[skill]}
-                                                            </th>
-                                                        ))}
-                                                        <th className="px-2 py-2 text-center text-[10px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">Avg</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {analytics?.employees.slice(0, 6).map((employee) => (
-                                                        <tr key={employee.user_id}>
-                                                            <td className="px-2 py-1.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <Avatar src={employee.avatar_url} name={employee.fullname} size="xs" />
-                                                                    <span className="font-medium text-[var(--color-text-primary)]">{employee.fullname}</span>
-                                                                </div>
-                                                            </td>
-                                                            {skillKeys.map((skill) => {
-                                                                const value = employee.skills?.[skill] ?? 0;
-                                                                return (
-                                                                    <td key={`${employee.user_id}-${skill}`} className="px-1 py-1.5 text-center">
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <span className={`inline-flex min-w-[2.6rem] items-center justify-center rounded-md border px-2 py-1 text-xs font-medium ${skillToneClass(value)}`}>
-                                                                                    {value > 0 ? value.toFixed(1) : '--'}
-                                                                                </span>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                {employee.fullname} - {SKILL_LABELS[skill]}: {value > 0 ? value.toFixed(1) : 'No score'}
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                            <td className="px-1 py-1.5 text-center">
-                                                                <Badge variant="secondary">{employee.skill_avg.toFixed(1)}</Badge>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </ScrollArea>
-                                    </SectionCard>
 
-                                    <SectionCard title="Rating Distribution" icon={<Star className="h-4 w-4" />}>
-                                        <RatingDistChart data={ratingDistChart} height={220} />
-                                    </SectionCard>
-                                </section>
 
                                 <section className="space-y-4">
                                     <div className="flex flex-wrap items-center justify-between gap-2">

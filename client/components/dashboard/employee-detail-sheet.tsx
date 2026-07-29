@@ -103,7 +103,7 @@ export function EmployeeDetailSheet({ open, onOpenChange, employee, isOnline = f
 
                                 <Separator />
 
-                                <section className="space-y-3">
+                                {/* <section className="space-y-3">
                                     <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Skill Radar</h3>
                                     <div className="flex justify-center rounded-xl border border-[var(--color-border-subtle)] bg-[var(--surface-card)] p-3">
                                         <SkillRadarChart
@@ -148,7 +148,7 @@ export function EmployeeDetailSheet({ open, onOpenChange, employee, isOnline = f
                                             <p className="text-sm text-[var(--color-text-muted)]">No visit type data in this period.</p>
                                         )}
                                     </div>
-                                </section>
+                                </section> */}
                             </div>
                         </ScrollArea>
                     </>
