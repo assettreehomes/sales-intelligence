@@ -24,7 +24,7 @@ export function useEmployeeHeartbeat() {
     const sendNowRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
-        if (!user || !profile || (profile.role !== 'employee' && profile.role !== 'intern')) {
+        if (!user || !profile || (profile.role !== 'employee' /* && profile.role !== 'intern' */)) {
             return;
         }
 

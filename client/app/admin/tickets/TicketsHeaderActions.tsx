@@ -15,7 +15,7 @@ export function TicketsHeaderActions({ view }: TicketsHeaderActionsProps) {
 
     return (
         <>
-            <SendReportButton />
+            {/* <SendReportButton /> */}
             {view === 'presales' ? (
                 <button
                     type="button"
