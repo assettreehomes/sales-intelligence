@@ -15,7 +15,10 @@ import {
     Ticket,
     TrendingUp,
     Trophy,
-    Users
+    Users,
+    Download,
+    FileText,
+    Loader2
 } from 'lucide-react';
 
 import { AdminShell } from '@/components/AdminShell';
@@ -37,6 +40,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { NotificationBell } from '@/components/NotificationBell';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { KpiCard } from '@/components/dashboard/kpi-card';
 import { SectionCard } from '@/components/dashboard/section-card';
@@ -153,9 +157,11 @@ const RATING_DISTRIBUTION_COLOR_BY_LABEL: Record<string, string> = {
 };
 
 const PERIODS = [
+    { key: 'today', label: 'Today' },
     { key: '7d', label: '7 Days' },
     { key: '30d', label: '30 Days' },
-    { key: '90d', label: '90 Days' }
+    { key: '90d', label: '90 Days' },
+    { key: 'all', label: 'All Time' }
 ];
 
 function skillToneClass(value: number) {
@@ -186,6 +192,9 @@ export default function PerformancePage() {
     const [showAllEmployees, setShowAllEmployees] = useState(false);
     const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
+    const contentRef = useRef<HTMLDivElement>(null);
 
     const [uploadingUserId, setUploadingUserId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -220,6 +229,7 @@ export default function PerformancePage() {
 
             setAnalytics(empData);
             setLeaderboard(lbData);
+            setLastUpdated(new Date());
 
             const map: Record<string, boolean> = {};
             const rawStatuses = statusData?.statuses;
@@ -428,6 +438,72 @@ export default function PerformancePage() {
 
     const showLoading = loading || !analytics || !leaderboard;
 
+    function downloadCSV() {
+        if (!analytics || !leaderboard) return;
+        const rows: string[] = [];
+        const esc = (v: string | number) => {
+            const s = String(v);
+            return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const row = (...cols: (string | number)[]) => rows.push(cols.map(esc).join(','));
+
+        const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? period;
+        row(`Performance Report — ${periodLabel}`, `Generated: ${new Date().toLocaleString()}`);
+        rows.push('');
+
+        row('SUMMARY');
+        row('Metric', 'Value');
+        row('Total Tickets', summary?.total_tickets ?? 0);
+        row('Analyzed Tickets', summary?.analyzed_tickets ?? 0);
+        row('Completion Rate', `${(summary?.completion_rate ?? 0).toFixed(0)}%`);
+        row('Average Rating', `${(summary?.avg_rating_5 ?? 0).toFixed(1)}/5`);
+        row('Training Calls', summary?.training_calls ?? 0);
+        row('Team Members', summary?.total_employees ?? 0);
+        rows.push('');
+
+        if (analytics.employees.length > 0) {
+            row('EMPLOYEE PERFORMANCE');
+            row('Name', 'Email', 'Role', 'Tickets', 'Rating', 'Completion', 'Skills');
+            for (const a of analytics.employees) {
+                row(a.fullname, a.email ?? '', a.role, a.total_tickets, a.avg_rating_5.toFixed(2), `${a.completion_rate.toFixed(0)}%`, a.skill_avg.toFixed(2));
+            }
+        }
+
+        const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `performance-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    async function downloadScreenshot() {
+        if (!contentRef.current) return;
+        setIsExporting(true);
+        try {
+            const html2canvas = (await import('html2canvas-pro')).default;
+            const isDark = document.documentElement.classList.contains('dark');
+            const canvas = await html2canvas(contentRef.current, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: isDark ? '#09090b' : '#ffffff',
+            });
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `performance-${period}-${new Date().toISOString().slice(0, 10)}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } finally {
+            setIsExporting(false);
+        }
+    }
+
     return (
         <AdminShell activeSection="performance">
             <TooltipProvider delayDuration={180}>
@@ -464,11 +540,41 @@ export default function PerformancePage() {
                                 >
                                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                                 </Button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!analytics || isExporting}
+                                            className="gap-1.5"
+                                        >
+                                            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                            Export
+                                            <ChevronDown className="h-3 w-3 opacity-60" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-44">
+                                        <DropdownMenuItem onClick={downloadCSV} className="gap-2 cursor-pointer">
+                                            <FileText className="h-4 w-4" />
+                                            Download CSV
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => { void downloadScreenshot(); }} className="gap-2 cursor-pointer">
+                                            <Camera className="h-4 w-4" />
+                                            Screenshot
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <NotificationBell />
+                                {lastUpdated && (
+                                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                        Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                )}
                             </div>
                         }
                     />
 
-                    <div className="mx-auto flex w-full max-w-[82rem] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+                    <div ref={contentRef} className="mx-auto flex w-full max-w-[82rem] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
                         {error ? (
                             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/12 px-4 py-3 text-sm text-rose-200">{error}</div>
                         ) : null}
