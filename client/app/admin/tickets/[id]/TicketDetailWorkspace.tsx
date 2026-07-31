@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useMemo } from 'react';
 import {
     AlertCircle,
     AlertTriangle,
@@ -31,11 +31,11 @@ import {
 } from './ticket-detail-utils';
 import { TicketAudioHero, type TicketAudioHeroProps } from './TicketAudioHero';
 import { TicketScoreHeader } from './TicketScoreHeader';
-import { TicketJsonViewer } from './TicketJsonViewer';
+
 import { TicketNextStep } from './TicketNextStep';
 import { TicketCallTimeline } from './TicketCallTimeline';
 
-type SidebarTab = 'insights' | 'transcript' | 'technical';
+
 
 export interface TicketDetailWorkspaceProps {
     ticket: {
@@ -109,7 +109,7 @@ export function TicketDetailWorkspace({
     callDuration,
     children,
 }: TicketDetailWorkspaceProps) {
-    const [sidebarTab, setSidebarTab] = useState<SidebarTab>('insights');
+
 
     const executive = useMemo(() => buildExecutiveFields(analysis), [analysis]);
     const opportunity = useMemo(() => buildOpportunity(analysis), [analysis]);
@@ -455,128 +455,65 @@ export function TicketDetailWorkspace({
                 </div>
 
                 <aside className="ci-workspace__aside">
-                    <div className="ci-tabs ci-tabs--segmented" role="tablist">
-                        {(['insights', 'transcript', 'technical'] as const).map((tab) => (
-                            <button
-                                key={tab}
-                                type="button"
-                                role="tab"
-                                aria-selected={sidebarTab === tab}
-                                className={`ci-tabs__btn ${sidebarTab === tab ? 'is-active' : ''}`}
-                                onClick={() => setSidebarTab(tab)}
-                            >
-                                {tab === 'insights' ? 'Insights' : tab === 'transcript' ? 'Transcript' : 'Technical'}
-                            </button>
-                        ))}
-                    </div>
-
                     <div className="ci-tabs__panel">
-                        {sidebarTab === 'insights' && (
-                            <div className="ci-tab-content">
-                                <h3 className="ci-tab-content__title">Key moments</h3>
-                                <div className="ci-moments">
-                                    {numberInstances.map((inst, i) => {
-                                        const time = inst.time ?? (inst.start_time_ms != null
-                                            ? `${Math.floor(inst.start_time_ms / 60000)}:${String(Math.floor((inst.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
-                                            : '0:00');
+                        <div className="ci-tab-content">
+                            <h3 className="ci-tab-content__title">Key moments</h3>
+                            <div className="ci-moments">
+                                {numberInstances.map((inst, i) => {
+                                    const time = inst.time ?? (inst.start_time_ms != null
+                                        ? `${Math.floor(inst.start_time_ms / 60000)}:${String(Math.floor((inst.start_time_ms % 60000) / 1000)).padStart(2, '0')}`
+                                        : '0:00');
+                                    return (
+                                        <button
+                                            key={`nr-${i}`}
+                                            type="button"
+                                            className="ci-moment"
+                                            onClick={() => { void seekToMoment(inst.time ?? inst.start_time_ms); }}
+                                        >
+                                            <span className="ci-moment__row">
+                                                <span className="ci-moment__dot ci-moment__dot--negative" />
+                                                <span className="ci-moment__time">{time}</span>
+                                                <span className="ci-severity ci-severity--strong">Alert</span>
+                                            </span>
+                                            <span className="ci-moment__label">🚨 {inst.reason}</span>
+                                            <span className="ci-conf">
+                                                <span className="ci-conf__dot ci-conf__dot--high" />
+                                                100% confidence
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                                {sortedMoments.length ? (
+                                    sortedMoments.map((moment, i) => {
+                                        const time = momentClock(moment);
+                                        const label = moment.label || moment.description || 'Key moment';
+                                        const cat = deriveMomentCategory(moment);
+                                        const sev = severityFromMoment(moment);
                                         return (
                                             <button
-                                                key={`nr-${i}`}
+                                                key={i}
                                                 type="button"
                                                 className="ci-moment"
-                                                onClick={() => { void seekToMoment(inst.time ?? inst.start_time_ms); }}
+                                                onClick={() => { void seekToMoment(time); }}
                                             >
                                                 <span className="ci-moment__row">
-                                                    <span className="ci-moment__dot ci-moment__dot--negative" />
+                                                    <span className={`ci-moment__dot ci-moment__dot--${cat}`} />
                                                     <span className="ci-moment__time">{time}</span>
-                                                    <span className="ci-severity ci-severity--strong">Alert</span>
+                                                    <span className={`ci-severity ci-severity--${sev.tone}`}>
+                                                        {sev.label}
+                                                    </span>
                                                 </span>
-                                                <span className="ci-moment__label">🚨 {inst.reason}</span>
-                                                <span className="ci-conf">
-                                                    <span className="ci-conf__dot ci-conf__dot--high" />
-                                                    100% confidence
-                                                </span>
+                                                <span className="ci-moment__label">{label}</span>
                                             </button>
                                         );
-                                    })}
-                                    {sortedMoments.length ? (
-                                        sortedMoments.map((moment, i) => {
-                                            const time = momentClock(moment);
-                                            const label = moment.label || moment.description || 'Key moment';
-                                            const cat = deriveMomentCategory(moment);
-                                            const sev = severityFromMoment(moment);
-                                            return (
-                                                <button
-                                                    key={i}
-                                                    type="button"
-                                                    className="ci-moment"
-                                                    onClick={() => { void seekToMoment(time); }}
-                                                >
-                                                    <span className="ci-moment__row">
-                                                        <span className={`ci-moment__dot ci-moment__dot--${cat}`} />
-                                                        <span className="ci-moment__time">{time}</span>
-                                                        <span className={`ci-severity ci-severity--${sev.tone}`}>
-                                                            {sev.label}
-                                                        </span>
-                                                    </span>
-                                                    <span className="ci-moment__label">{label}</span>
-                                                </button>
-                                            );
-                                        })
-                                    ) : (analysis?.keymoments && analysis.keymoments.length > 0) ? (
-                                        <p className="ci-empty">No key moments within the recording duration.</p>
-                                    ) : numberInstances.length === 0 ? (
-                                        <p className="ci-empty">No key moments yet.</p>
-                                    ) : null}
-                                </div>
+                                    })
+                                ) : (analysis?.keymoments && analysis.keymoments.length > 0) ? (
+                                    <p className="ci-empty">No key moments within the recording duration.</p>
+                                ) : numberInstances.length === 0 ? (
+                                    <p className="ci-empty">No key moments yet.</p>
+                                ) : null}
                             </div>
-                        )}
-
-                        {sidebarTab === 'transcript' && (
-                            <div className="ci-tab-content">
-                                <h3 className="ci-tab-content__title">Conversation timeline</h3>
-                                <div className="ci-transcript">
-                                    {sortedMoments.length ? (
-                                        sortedMoments.map((moment, i) => {
-                                            const time = momentClock(moment);
-                                            const text = moment.description || moment.label || '—';
-                                            return (
-                                                <button
-                                                    key={i}
-                                                    type="button"
-                                                    className="ci-transcript__line"
-                                                    onClick={() => { void seekToMoment(time); }}
-                                                >
-                                                    <span className="ci-transcript__time">{time}</span>
-                                                    <span className="ci-transcript__text">&ldquo;{text}&rdquo;</span>
-                                                </button>
-                                            );
-                                        })
-                                    ) : (
-                                        <p className="ci-empty">Transcript highlights will appear after analysis.</p>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {sidebarTab === 'technical' && (
-                            <div className="ci-tab-content">
-                                <h3 className="ci-tab-content__title">Metadata</h3>
-                                <dl className="ci-meta-list">
-                                    <div><dt>Ticket ID</dt><dd className="font-mono text-xs">{ticket.id}</dd></div>
-                                    <div><dt>Visit type</dt><dd>{ticket.visittype || '—'}</dd></div>
-                                    {isPresales && ticket.selldo_enriched_at && (
-                                        <>
-                                            <div><dt>CRM agent</dt><dd>{ticket.selldo_agent_name || '—'}</dd></div>
-                                            <div><dt>Team</dt><dd>{ticket.selldo_team_name || '—'}</dd></div>
-                                            <div><dt>Call status</dt><dd>{ticket.selldo_call_status || '—'}</dd></div>
-                                        </>
-                                    )}
-                                </dl>
-                                <h3 className="ci-tab-content__title mt-6">Raw analysis</h3>
-                                <TicketJsonViewer data={analysis} />
-                            </div>
-                        )}
+                        </div>
                     </div>
                 </aside>
             </div>
