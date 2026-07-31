@@ -151,36 +151,54 @@ export function TicketDetailWorkspace({
               }]
             : []);
 
+    const safeMaxSec = callDuration && callDuration > 0 ? Math.max(0, callDuration - 30) : Infinity;
+
+    const filteredNumberInstances: NumberRequestInstance[] = numberInstances.filter((inst) => {
+        const startSec = typeof inst.start_time_ms === 'number'
+            ? inst.start_time_ms / 1000
+            : (() => {
+                const t = inst.time ?? '';
+                const parts = t.split(':').map(Number);
+                if (parts.length === 2) return (parts[0] ?? 0) * 60 + (parts[1] ?? 0);
+                if (parts.length === 3) return (parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0);
+                return 0;
+            })();
+        return startSec <= safeMaxSec;
+    });
+
     const timelineMarkers = useMemo(() => {
         const totalSec = Math.max(callDuration || 0, 1);
         const momentMarkers = sortedMoments.map((m) => {
             const time = momentClock(m);
             const startMs = typeof m.start_time_ms === 'number' ? m.start_time_ms : null;
-            const positionPct = startMs !== null && totalSec > 0
-                ? Math.max(0, Math.min(100, (startMs / 1000 / totalSec) * 100))
+            const rawPct = startMs !== null && totalSec > 0
+                ? (startMs / 1000 / totalSec) * 100
                 : undefined;
+            // Exclude markers that are beyond the audio duration
+            if (rawPct !== undefined && rawPct > 100) return null;
             return {
                 time,
                 label: m.label || m.description || 'Moment',
                 category: m.category,
-                positionPct,
+                positionPct: rawPct !== undefined ? Math.max(0, rawPct) : undefined,
             };
-        });
+        }).filter((x): x is NonNullable<typeof x> => x !== null);
         // Inject number request instances as high-priority markers
-        const alertMarkers = numberInstances.map((inst) => {
+        const alertMarkers = filteredNumberInstances.map((inst) => {
             const startMs = typeof inst.start_time_ms === 'number' ? inst.start_time_ms : null;
-            const positionPct = startMs !== null && totalSec > 0
-                ? Math.max(0, Math.min(100, (startMs / 1000 / totalSec) * 100))
+            const rawPct = startMs !== null && totalSec > 0
+                ? (startMs / 1000 / totalSec) * 100
                 : undefined;
+            if (rawPct !== undefined && rawPct > 100) return null;
             return {
                 time: inst.time ?? (startMs !== null ? `${Math.floor(startMs / 60000)}:${String(Math.floor((startMs % 60000) / 1000)).padStart(2, '0')}` : '0:00'),
                 label: '🚨 Number Request',
                 category: 'negative',
-                positionPct,
+                positionPct: rawPct !== undefined ? Math.max(0, rawPct) : undefined,
             };
-        });
+        }).filter((x): x is NonNullable<typeof x> => x !== null);
         return [...alertMarkers, ...momentMarkers];
-    }, [sortedMoments, callDuration, numberInstances]);
+    }, [sortedMoments, callDuration, filteredNumberInstances]);
 
     const actionItems = (analysis?.actionitems || [])
         .map(normalizeActionItem)
@@ -505,6 +523,8 @@ export function TicketDetailWorkspace({
                                                 </button>
                                             );
                                         })
+                                    ) : (analysis?.keymoments && analysis.keymoments.length > 0) ? (
+                                        <p className="ci-empty">No key moments within the recording duration.</p>
                                     ) : numberInstances.length === 0 ? (
                                         <p className="ci-empty">No key moments yet.</p>
                                     ) : null}

@@ -56,23 +56,7 @@ import { TicketDetailWorkspace } from './TicketDetailWorkspace';
 import { TicketStickyPlayer } from './TicketStickyPlayer';
 import { ConversationComparisonChart } from '@/components/ui/charts';
 
-type ParsedScoreChange = {
-    key: string;
-    label: string;
-    current: number;
-    previous: number;
-    change: number;
-};
 
-type ComparisonInsights = {
-    deltaScore: number | null;
-    overallNarrative: string | null;
-    keyDifferences: string[];
-    improvements: string[];
-    regressions: string[];
-    unchanged: string[];
-    scoreChanges: ParsedScoreChange[];
-};
 
 const AUDIO_VOLUME_STORAGE_KEY = 'ticketintel-audio-volume';
 const AUDIO_MUTE_STORAGE_KEY = 'ticketintel-audio-muted';
@@ -630,7 +614,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     const {
         ticket,
         analysis,
-        previousAnalysis,
         comparison,
         actionItemsDb,
         excuses,
@@ -758,8 +741,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return parts[0] ?? 0;
     };
 
+    const effectiveDuration = duration > 0 ? duration : (Number((ticket as Record<string, unknown>)?.duration) || 0);
+    const safeMaxTimestamp = Math.max(0, effectiveDuration - 30);
+
     const sortedMoments = analysis?.keymoments
-        ? [...analysis.keymoments].sort((a, b) => {
+        ? [...analysis.keymoments]
+            .filter((m) => {
+                const mMs = typeof m.start_time_ms === 'number' ? m.start_time_ms : parseTime(m.time || m.timestamp || '00:00') * 1000;
+                return (mMs / 1000) <= safeMaxTimestamp;
+            })
+            .sort((a, b) => {
             // Prefer start_time_ms (exact ms), fall back to string time parsing
             const aMs = typeof a.start_time_ms === 'number' ? a.start_time_ms : parseTime(a.time || a.timestamp || '00:00') * 1000;
             const bMs = typeof b.start_time_ms === 'number' ? b.start_time_ms : parseTime(b.time || b.timestamp || '00:00') * 1000;
@@ -1635,53 +1626,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         () =>
             comparison?.labels?.map((label, i) => ({
                 label,
-                Current: comparison.current[i] ?? 0,
-                Previous: comparison.previous[i] ?? 0
+                Current: comparison.current[i] ?? 0
             })) ?? [],
         [comparison]
     );
-
-    const formatScoreLabel = (key: string) =>
-        key
-            .replaceAll('_', ' ')
-            .replace(/\b\w/g, (char) => char.toUpperCase());
-
-    const comparisonInsights = useMemo<ComparisonInsights | null>(() => {
-        if (!analysis?.comparisonwithprevious) return null;
-
-        const raw = analysis.comparisonwithprevious as unknown as Record<string, unknown>;
-
-        const toArray = (value: unknown): string[] =>
-            Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-
-        const scoreChangesRaw = raw.score_changes as Record<string, unknown> | undefined;
-        const scoreChanges: ParsedScoreChange[] = scoreChangesRaw
-            ? Object.entries(scoreChangesRaw).flatMap(([key, value]) => {
-                if (!value || typeof value !== 'object') return [];
-                const row = value as Record<string, unknown>;
-                const current = typeof row.current === 'number' ? row.current : 0;
-                const previous = typeof row.previous === 'number' ? row.previous : 0;
-                const change = typeof row.change === 'number' ? row.change : current - previous;
-                return [{
-                    key,
-                    label: formatScoreLabel(key),
-                    current,
-                    previous,
-                    change
-                }];
-            })
-            : [];
-
-        return {
-            deltaScore: typeof raw.delta_score === 'number' ? raw.delta_score : null,
-            overallNarrative: typeof raw.overall_narrative === 'string' ? raw.overall_narrative : null,
-            keyDifferences: toArray(raw.key_differences),
-            improvements: toArray(raw.improvements),
-            regressions: toArray(raw.regressions),
-            unchanged: toArray(raw.unchanged),
-            scoreChanges
-        };
-    }, [analysis]);
 
     const metricCards = useMemo(() => {
         const politeness = analysis?.scores?.politeness ?? analysis?.politeness_score ?? 0;
@@ -1980,109 +1928,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <div className="ci-panel">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                                         <div className="flex items-center gap-3">
-                                            <h3 className="ci-panel__title">Current Conversation</h3>
-                                            {comparisonInsights?.deltaScore !== null && comparisonInsights?.deltaScore !== undefined && (
-                                                <span className={`ci-trend-chip ci-trend-chip--${comparisonInsights.deltaScore > 0 ? 'up' : comparisonInsights.deltaScore < 0 ? 'down' : 'flat'}`}>
-                                                    {comparisonInsights.deltaScore > 0 ? <TrendingUp className="h-3 w-3" /> : comparisonInsights.deltaScore < 0 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                                                    {comparisonInsights.deltaScore > 0 ? `+${comparisonInsights.deltaScore}` : comparisonInsights.deltaScore} vs previous
-                                                </span>
-                                            )}
+                                            <h3 className="ci-panel__title">Conversation Scores</h3>
                                         </div>
                                     </div>
 
-                                    {comparisonChartData.length > 0 ? (
+                                    {comparisonChartData.length > 0 && (
                                         <div className="ticket-advanced-chart border border-gray-200/70 p-3 md:p-4">
                                             <ConversationComparisonChart data={comparisonChartData} height={236} />
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500 italic">No comparable previous analysis available.</p>
-                                    )}
-
-                                    {comparisonInsights && (
-                                        <div className="mt-5 space-y-3">
-                                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                                                <div className="lg:col-span-3 rounded-xl border border-gray-200 bg-white p-4">
-                                                    <p className="text-[11px] uppercase tracking-wider text-purple-700 mb-2">Overall Narrative</p>
-                                                    <p className="text-sm text-gray-700 leading-relaxed">
-                                                        {comparisonInsights.overallNarrative || 'No narrative generated for this comparison yet.'}
-                                                    </p>
-                                                    {comparisonInsights.keyDifferences.length > 0 && (
-                                                        <ul className="mt-3 space-y-1.5">
-                                                            {comparisonInsights.keyDifferences.map((item, idx) => (
-                                                                <li key={`${item}-${idx}`} className="text-xs text-gray-600 leading-relaxed">- {item}</li>
-                                                            ))}
-                                                        </ul>
-                                                    )}
-                                                </div>
-
-                                                <div className={`rounded-xl border p-4 ${comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore >= 0 ? 'border-green-200 bg-green-50/60' : 'border-red-200 bg-red-50/60'}`}>
-                                                    <p className="text-[11px] uppercase tracking-wider text-gray-600 mb-1">Delta Summary</p>
-                                                    <div className="flex items-center justify-between">
-                                                        <p className={`text-3xl font-semibold ${comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                            {comparisonInsights.deltaScore ?? 0}
-                                                        </p>
-                                                        {comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore > 0 ? <TrendingUp className="w-5 h-5 text-green-600" /> :
-                                                            comparisonInsights.deltaScore !== null && comparisonInsights.deltaScore < 0 ? <TrendingDown className="w-5 h-5 text-red-600" /> :
-                                                                <Minus className="w-5 h-5 text-gray-500" />}
-                                                    </div>
-                                                    <p className="text-xs text-gray-500 mt-2">Overall movement vs previous visit</p>
-                                                    {previousAnalysis?.rating !== undefined && (
-                                                        <p className="mt-3 text-sm text-gray-600">
-                                                            Previous rating: <span className="font-semibold">{previousAnalysis.rating}</span>
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {comparisonInsights.scoreChanges.length > 0 && (
-                                                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                                                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Skill Score Changes</p>
-                                                    <div className="space-y-2.5">
-                                                        {comparisonInsights.scoreChanges.map((row) => (
-                                                            <div key={row.key} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                                                <div className="flex items-center justify-between gap-3">
-                                                                    <p className="text-sm font-semibold text-gray-900">{row.label}</p>
-                                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${row.change > 0 ? 'bg-green-100 text-green-700' : row.change < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                        {row.change > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : row.change < 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
-                                                                        {row.change > 0 ? `+${row.change}` : row.change}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="mt-2 h-1.5 rounded-full bg-gray-200">
-                                                                    <div className={`h-1.5 rounded-full ${row.change > 0 ? 'bg-green-500' : row.change < 0 ? 'bg-red-500' : 'bg-gray-400'}`} style={{ width: `${Math.min(100, Math.max(8, row.current))}%` }} />
-                                                                </div>
-                                                                <p className="mt-1.5 text-xs text-gray-500">{`Previous ${row.previous}/100 -> Current ${row.current}/100`}</p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                <div className="rounded-xl border border-green-200 bg-white p-3">
-                                                    <p className="text-xs uppercase tracking-wide text-green-700 mb-2">Improvements</p>
-                                                    <ul className="space-y-1.5">
-                                                        {(comparisonInsights.improvements.length > 0 ? comparisonInsights.improvements : ['No explicit improvements listed.']).map((item, idx) => (
-                                                            <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                                <div className="rounded-xl border border-red-200 bg-white p-3">
-                                                    <p className="text-xs uppercase tracking-wide text-red-700 mb-2">Regressions</p>
-                                                    <ul className="space-y-1.5">
-                                                        {(comparisonInsights.regressions.length > 0 ? comparisonInsights.regressions : ['No regressions identified.']).map((item, idx) => (
-                                                            <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                                <div className="rounded-xl border border-gray-200 bg-white p-3">
-                                                    <p className="text-xs uppercase tracking-wide text-gray-600 mb-2">Unchanged</p>
-                                                    <ul className="space-y-1.5">
-                                                        {(comparisonInsights.unchanged.length > 0 ? comparisonInsights.unchanged : ['No unchanged items listed.']).map((item, idx) => (
-                                                            <li key={`${item}-${idx}`} className="text-xs text-gray-700 leading-relaxed">- {item}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            </div>
                                         </div>
                                     )}
                                 </div>
