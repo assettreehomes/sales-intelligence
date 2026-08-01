@@ -141,10 +141,14 @@ function buildAnalysisPrompt(ticketInfo) {
 
 Client: ${client_name || 'Unknown'} | Visit #${visit_number || 1}
 
-{"summary":"Client showed strong interest in 3BHK corner units and engaged well on pricing. Agent handled the location objection effectively but did not secure a confirmed next visit.","overall_score":7.2,"scores":{"rapport_building":8,"objection_handling":7,"closing_techniques":6,"product_knowledge":8,"professionalism":8,"politeness":80,"confidence":72,"interest":"high","speakers":2},"key_moments":[{"timestamp":"02:15","description":"Client expresses interest in corner unit view"},{"timestamp":"08:30","description":"Location objection raised and addressed"},{"timestamp":"18:45","description":"Agent proposes follow-up site visit"}],"objections":[{"objection":"The project is a bit far from my office.","response":"We have a shuttle service and the metro extension opens next year.","effectiveness":"good"}],"action_items":["Share floor plan for unit 1204 by EOD.","Follow-up call in 48 hours to confirm next visit."],"call_outcome":"interested"}
+Analyze only what is clearly audible in the uploaded recording. Never invent or assume customer intent, property details, project names, unit numbers, pricing, objections, agent responses, commitments, follow-ups, action items, speakers, or timestamps.
+
+Create key moments only for audible speech and use the actual time in the recording. Create objections only when the customer audibly expresses them, and include an agent response only when it is audible. Create action items only when they are explicitly agreed, requested, or clearly required by the audible conversation.
+
+If the audio is empty, silent, corrupted, or contains no intelligible sales conversation: set summary exactly to "Audio is empty or was not recorded properly. No sales conversation could be assessed." Set call_outcome to not_interested, overall_score and all numeric scores to 0, interest to low, speakers and speakers_detected to 0, and key_moments, objections, and action_items to empty arrays. Do not infer or fabricate any sales information.
 
 overall_score=(rapport_building+objection_handling+closing_techniques+product_knowledge+professionalism)/5, 1 decimal.
-call_outcome: interested=buying intent or next step agreed; not_interested=clear decline; follow_up_required=uncertain.`;
+call_outcome: interested=buying intent or next step agreed; not_interested=clear decline or no assessable conversation; follow_up_required=uncertain.`;
 }
 
 /**
