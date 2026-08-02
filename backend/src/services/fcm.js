@@ -20,6 +20,7 @@ export function isInvalidFcmTokenError(error) {
 export function buildDraftAssignmentMessage({ draftId, clientId, clientName, visitNumber, source, eventType }) {
     return {
         // Data-only message - ensures onMessageReceived is ALWAYS called (foreground AND background)
+        // NO notification payload - Android app shows custom notification with buttons
         data: {
             draft_id: String(draftId),
             client_id: clientId || clientName || 'Unknown',
@@ -30,10 +31,7 @@ export function buildDraftAssignmentMessage({ draftId, clientId, clientName, vis
             assignment_source: source
         },
         android: {
-            priority: 'high',
-            notification: {
-                channelId: 'draft_reminders'
-            }
+            priority: 'high'
         }
     };
 }
