@@ -19,10 +19,7 @@ export function isInvalidFcmTokenError(error) {
 
 export function buildDraftAssignmentMessage({ draftId, clientId, clientName, visitNumber, source, eventType }) {
     return {
-        notification: {
-            title: 'New task assigned',
-            body: `${clientName || 'A client'} - Visit #${visitNumber || 1}`
-        },
+        // Data-only message - ensures onMessageReceived is ALWAYS called (foreground AND background)
         data: {
             draft_id: String(draftId),
             client_id: clientId || clientName || 'Unknown',
@@ -33,11 +30,7 @@ export function buildDraftAssignmentMessage({ draftId, clientId, clientName, vis
             assignment_source: source
         },
         android: {
-            priority: 'high',
-            notification: {
-                channelId: 'draft_reminders',
-                sound: 'default'
-            }
+            priority: 'high'
         }
     };
 }
