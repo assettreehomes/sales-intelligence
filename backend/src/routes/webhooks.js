@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { logActivity } from '../services/activityLog.js';
 import { getVisitSequence } from '../services/visitSequencing.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
+import { notifyDraftAssignment } from '../services/fcm.js';
 
 const router = Router();
 
@@ -97,7 +98,7 @@ router.post('/selldo/lead', async (req, res) => {
         // 4. Check for existing draft for this lead_id (idempotency + reassignment)
         const { data: existingDrafts, error: draftQueryError } = await supabaseAdmin
             .from('tickets')
-            .select('id, createdby')
+            .select('id, createdby, visitnumber, visit_number')
             .eq('client_id', clientId)
             .eq('status', 'draft');
 
@@ -139,6 +140,16 @@ router.post('/selldo/lead', async (req, res) => {
                 employee_name: employee.fullname,
                 client_name: clientName,
                 lead_id: clientId
+            });
+
+            // Runs after the reassignment commit. FCM failures are contained by the service.
+            await notifyDraftAssignment({
+                assignedUserId: employee.id,
+                draftId: existingDraft.id,
+                clientName,
+                visitNumber: existingDraft.visit_number || existingDraft.visitnumber || 1,
+                source: 'selldo',
+                eventType: 'draft_reassigned'
             });
 
             return res.status(200).json({
@@ -184,6 +195,15 @@ router.post('/selldo/lead', async (req, res) => {
             client_name: clientName,
             lead_id: clientId,
             visit_number: visitNumber
+        });
+
+        // Runs after the insert and does not alter the Sell.Do webhook outcome.
+        await notifyDraftAssignment({
+            assignedUserId: employee.id,
+            draftId: ticketId,
+            clientName,
+            visitNumber,
+            source: 'selldo'
         });
 
         return res.status(200).json({

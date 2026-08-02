@@ -5,6 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin, requireEmployee } from '../middleware/rbac.js';
 import { logActivity } from '../services/activityLog.js';
 import { getVisitSequence } from '../services/visitSequencing.js';
+import { notifyDraftAssignment } from '../services/fcm.js';
 
 const router = Router();
 
@@ -86,6 +87,15 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 
         console.log(`📝 Created draft ticket: ${ticketId} for employee ${employee.fullname}`);
         await logActivity(req, 'draft.assign', { ticket_id: ticketId, employee_name: employee.fullname, client_name: normalizedClientName });
+
+        // FCM is isolated: this runs only after the draft exists and never changes assignment success.
+        await notifyDraftAssignment({
+            assignedUserId: employee.id,
+            draftId: ticketId,
+            clientName: normalizedClientName,
+            visitNumber,
+            source: 'admin'
+        });
 
         res.json({
             success: true,
