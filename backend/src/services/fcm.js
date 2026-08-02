@@ -17,7 +17,7 @@ export function isInvalidFcmTokenError(error) {
     return INVALID_TOKEN_CODES.has(error?.code);
 }
 
-export function buildDraftAssignmentMessage({ draftId, clientName, visitNumber, source, eventType }) {
+export function buildDraftAssignmentMessage({ draftId, clientId, clientName, visitNumber, source, eventType }) {
     return {
         notification: {
             title: 'New task assigned',
@@ -25,6 +25,9 @@ export function buildDraftAssignmentMessage({ draftId, clientName, visitNumber, 
         },
         data: {
             draft_id: String(draftId),
+            client_id: clientId || clientName || 'Unknown',
+            client_name: clientName || 'A client',
+            visit_number: String(visitNumber || 1),
             action: 'view_new_assignment',
             event_type: eventType,
             assignment_source: source
@@ -86,6 +89,7 @@ async function deactivateInvalidTokens(deviceIds, supabase) {
 export async function notifyDraftAssignment({
     assignedUserId,
     draftId,
+    clientId,
     clientName,
     visitNumber,
     source,
@@ -115,7 +119,7 @@ export async function notifyDraftAssignment({
         }
 
         const messaging = messagingFactory();
-        const message = buildDraftAssignmentMessage({ draftId, clientName, visitNumber, source, eventType });
+        const message = buildDraftAssignmentMessage({ draftId, clientId, clientName, visitNumber, source, eventType });
         const invalidDeviceIds = [];
         let sent = 0;
 

@@ -146,6 +146,7 @@ router.post('/selldo/lead', async (req, res) => {
             await notifyDraftAssignment({
                 assignedUserId: employee.id,
                 draftId: existingDraft.id,
+                clientId,
                 clientName,
                 visitNumber: existingDraft.visit_number || existingDraft.visitnumber || 1,
                 source: 'selldo',
@@ -201,6 +202,7 @@ router.post('/selldo/lead', async (req, res) => {
         await notifyDraftAssignment({
             assignedUserId: employee.id,
             draftId: ticketId,
+            clientId,
             clientName,
             visitNumber,
             source: 'selldo'

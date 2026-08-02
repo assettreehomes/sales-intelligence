@@ -92,6 +92,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
         await notifyDraftAssignment({
             assignedUserId: employee.id,
             draftId: ticketId,
+            clientId: normalizedClientId,
             clientName: normalizedClientName,
             visitNumber,
             source: 'admin'
