@@ -30,7 +30,10 @@ export function buildDraftAssignmentMessage({ draftId, clientId, clientName, vis
             assignment_source: source
         },
         android: {
-            priority: 'high'
+            priority: 'high',
+            notification: {
+                channelId: 'draft_reminders'
+            }
         }
     };
 }
