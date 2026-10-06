@@ -153,7 +153,7 @@ const RATING_DISTRIBUTION_COLOR_BY_LABEL: Record<string, string> = {
     fair: '#f59e0b',
     good: '#10b981',
     great: '#3b82f6',
-    excellent: '#8b5cf6'
+    excellent: '#7583dd'
 };
 
 const PERIODS = [
@@ -363,7 +363,7 @@ export default function PerformancePage() {
         return analytics.rating_distribution.map((bucket) => ({
             label: bucket.label,
             count: bucket.count,
-            color: RATING_DISTRIBUTION_COLOR_BY_LABEL[bucket.label.trim().toLowerCase()] ?? '#6d28d9'
+            color: RATING_DISTRIBUTION_COLOR_BY_LABEL[bucket.label.trim().toLowerCase()] ?? '#3549cc'
         }));
     }, [analytics]);
 
@@ -697,7 +697,7 @@ export default function PerformancePage() {
                                     <SectionCard
                                         title="Top Performer"
                                         icon={<Trophy className="h-4 w-4" />}
-                                        className="top-performer-card-animate self-start overflow-hidden border-[var(--color-primary-400)]/45 bg-[linear-gradient(170deg,color-mix(in_srgb,var(--color-primary-700),transparent_6%)_0%,color-mix(in_srgb,var(--color-primary-500),transparent_18%)_100%)]"
+                                        className="top-performer-card-animate self-start [&_h3]:text-white [&_h3_span]:text-[var(--brand-amber)] overflow-hidden border-[var(--color-primary-400)]/45 bg-[linear-gradient(170deg,color-mix(in_srgb,var(--color-primary-700),transparent_6%)_0%,color-mix(in_srgb,var(--color-primary-500),transparent_18%)_100%)]"
                                     >
                                         {topPerformer ? (
                                             <div className="space-y-3">

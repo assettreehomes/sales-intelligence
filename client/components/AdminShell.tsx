@@ -386,7 +386,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                         <Link href={homeHref} className="flex items-center gap-2 overflow-hidden">
                             <Image
                                 src="/ATH%20logo/ATH-small-logo.png"
-                                alt="ATH"
+                                alt="Asset Tree Homes"
                                 width={32}
                                 height={32}
                                 priority

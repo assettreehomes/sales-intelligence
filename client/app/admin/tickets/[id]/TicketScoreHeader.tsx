@@ -63,7 +63,7 @@ function TrendChip({ delta }: { delta: number | null }) {
 
 function scoreRingColor(score: number): string {
     if (score >= 80) return '#10b981';
-    if (score >= 60) return '#8b5cf6';
+    if (score >= 60) return '#7583dd';
     if (score >= 40) return '#f59e0b';
     return '#ef4444';
 }

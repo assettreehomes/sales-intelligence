@@ -153,7 +153,7 @@ const SORT_LABELS: Record<TableSort, string> = {
 };
 
 const CHART_LINES = [
-    { key: 'total_calls',     label: 'Total Calls',  color: '#8b5cf6' },
+    { key: 'total_calls',     label: 'Total Calls',  color: '#7583dd' },
     { key: 'real',            label: 'Real',         color: '#10b981' },
     { key: 'fake',            label: 'Fake',         color: '#ef4444' },
     { key: 'interested',      label: 'Interested',   color: '#22c55e' },
@@ -316,10 +316,10 @@ function LineTooltip({
 // Chart config for today's pie — purple palette
 const TODAY_CHART_CONFIG: ChartConfig = {
     value:         { label: 'Calls' },
-    interested:    { label: 'Interested',     color: '#6d28d9' },
-    follow_up:     { label: 'Follow-Up',      color: '#7c3aed' },
-    not_interested:{ label: 'Not Interested', color: '#a78bfa' },
-    fake:          { label: 'Fake',           color: '#c4b5fd' },
+    interested:    { label: 'Interested',     color: '#3549cc' },
+    follow_up:     { label: 'Follow-Up',      color: '#5364d4' },
+    not_interested:{ label: 'Not Interested', color: '#9ea8e7' },
+    fake:          { label: 'Fake',           color: '#c2c8f0' },
     unclassified:  { label: 'Unclassified',   color: '#ede9fe' },
 };
 
@@ -497,8 +497,8 @@ function PresalesPerformanceContent() {
     );
 
     const suspiciousChartConfig: ChartConfig = {
-        fake_calls:      { label: 'Fake Calls',      color: '#7c3aed' },
-        number_requests: { label: 'Nr. Requests',    color: '#a78bfa' },
+        fake_calls:      { label: 'Fake Calls',      color: '#5364d4' },
+        number_requests: { label: 'Nr. Requests',    color: '#9ea8e7' },
     };
 
     const showLoading = loading && !data;
@@ -608,7 +608,7 @@ function PresalesPerformanceContent() {
 
                 {/* ── Page Header ────────────────────────────────────────────── */}
                 <header className="relative overflow-hidden border-b border-purple-500/15 px-6 py-6 sm:px-8">
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_100%_0%,rgba(139,92,246,0.13),transparent)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_100%_0%,rgba(117,131,221,0.13),transparent)]" />
                     <div className="relative mx-auto flex max-w-[82rem] flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="space-y-1">
                             <Badge
@@ -716,7 +716,7 @@ function PresalesPerformanceContent() {
                             {/* ── Row 1: 4 KPI Stat Cards ────────────────────────── */}
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-                                <Card className="border-purple-500/15 transition-all duration-300 hover:border-purple-500/30 hover:shadow-[0_0_20px_rgba(139,92,246,0.07)]">
+                                <Card className="border-purple-500/15 transition-all duration-300 hover:border-purple-500/30 hover:shadow-[0_0_20px_rgba(117,131,221,0.07)]">
                                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                         <CardTitle className="text-sm font-medium text-muted-foreground">Total Calls</CardTitle>
                                         <span className={cn('flex items-center gap-0.5 text-xs font-semibold', trendDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
@@ -869,7 +869,7 @@ function PresalesPerformanceContent() {
                                         ) : (
                                             <ResponsiveContainer width="100%" height={300}>
                                                 <LineChart data={trendSeries} margin={{ left: 0, right: 8 }}>
-                                                    <CartesianGrid stroke="rgba(139,92,246,0.1)" vertical={false} />
+                                                    <CartesianGrid stroke="rgba(117,131,221,0.1)" vertical={false} />
                                                     <XAxis
                                                         dataKey="date"
                                                         tickLine={false}
@@ -933,7 +933,7 @@ function PresalesPerformanceContent() {
                                                     <RadarChart data={suspiciousRadarData}>
                                                         <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
                                                         <PolarAngleAxis dataKey="agent" tick={{ fontSize: 11 }} />
-                                                        <PolarGrid radialLines={false} stroke="rgba(139,92,246,0.2)" />
+                                                        <PolarGrid radialLines={false} stroke="rgba(117,131,221,0.2)" />
                                                         <Radar
                                                             dataKey="fake_calls"
                                                             name="Fake Calls"
@@ -953,8 +953,8 @@ function PresalesPerformanceContent() {
                                                     </RadarChart>
                                                 </ChartContainer>
                                                 <div className="mt-1 flex flex-wrap justify-center gap-3 px-4 pb-2">
-                                                    <span className="flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-[#7c3aed]" /> Fake Calls</span>
-                                                    <span className="flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-[#a78bfa]" /> Nr. Requests</span>
+                                                    <span className="flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-[#5364d4]" /> Fake Calls</span>
+                                                    <span className="flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-[#9ea8e7]" /> Nr. Requests</span>
                                                 </div>
                                             </>
                                         ) : (

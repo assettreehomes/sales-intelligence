@@ -164,7 +164,7 @@ const RANGE_MS: Record<TimeRange, number> = {
 };
 
 const CHART_COLORS = {
-    primary: '#8b5cf6',
+    primary: '#7583dd',
     processing: '#3b82f6',
     success: '#10b981',
     warning: '#f59e0b',
