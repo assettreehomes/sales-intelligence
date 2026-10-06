@@ -22,13 +22,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "TicketIntel - Sales Conversation Intelligence",
+  title: "Ai Voice Analysis - Asset Tree Homes",
   description: "AI-powered analysis for real estate sales calls",
   manifest: "/site.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "TicketIntel",
+    title: "Ai Voice Analysis",
   },
   icons: {
     icon: [
