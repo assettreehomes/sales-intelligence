@@ -633,7 +633,7 @@ function EmployeesPageContent() {
                                             type="email"
                                             value={email}
                                             onChange={(event) => setEmail(event.target.value)}
-                                            placeholder="name@company.com"
+                                            placeholder="name@assettreehomes.com"
                                             required
                                             disabled={submitting}
                                         />
