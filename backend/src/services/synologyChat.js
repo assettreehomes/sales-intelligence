@@ -9,9 +9,15 @@ export function isSynologyChatConfigured() {
     return Boolean(process.env.SYNOLOGY_CHAT_WEBHOOK_URL);
 }
 
+// Use the URL exactly as Synology shows it (token wrapped in %22 quotes); only undo an HTML-escaped
+// "&amp;" that sneaks in when the link is copied from a web page or chat.
+export function webhookUrl() {
+    return String(process.env.SYNOLOGY_CHAT_WEBHOOK_URL || '').trim().replace(/&amp;/g, '&');
+}
+
 export async function postSynologyChat(text) {
     if (!isSynologyChatConfigured()) throw new Error('Synology Chat not configured: set SYNOLOGY_CHAT_WEBHOOK_URL');
-    const res = await fetch(process.env.SYNOLOGY_CHAT_WEBHOOK_URL, {
+    const res = await fetch(webhookUrl(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ payload: JSON.stringify({ text }) }).toString()

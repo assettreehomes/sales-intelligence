@@ -155,6 +155,15 @@ describe('postSynologyChat', () => {
         assert.equal(JSON.parse(new URLSearchParams(seen.opts.body).get('payload')).text, 'hello');
     });
 
+    it('keeps the %22-quoted token and undoes a copied &amp;', async () => {
+        process.env.SYNOLOGY_CHAT_WEBHOOK_URL = ' https://nas.example:5001/webapi/entry.cgi?api=SYNO.Chat.External&amp;method=incoming&amp;version=2&amp;token=%22abc%22 ';
+        let seenUrl;
+        globalThis.fetch = async (url) => { seenUrl = url; return new Response('{"success":true}', { status: 200 }); };
+        await postSynologyChat('x');
+        assert.equal(seenUrl, 'https://nas.example:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=%22abc%22');
+        assert.equal(new URL(seenUrl).searchParams.get('token'), '"abc"');
+    });
+
     it('treats success:false as a failure', async () => {
         process.env.SYNOLOGY_CHAT_WEBHOOK_URL = 'https://nas.example/webapi/entry.cgi';
         globalThis.fetch = async () => new Response('{"success":false,"error":{"code":404}}', { status: 200 });
