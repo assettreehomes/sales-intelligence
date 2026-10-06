@@ -27,6 +27,7 @@ export interface PresalesTicket {
     selldo_call_status?: string | null;
     selldo_direction?: string | null;
     selldo_enriched_at?: string | null;
+    hr_email_sent_at?: string | null;
     presales_agent_id?: string | null;
     presales_team_id?: string | null;
     call_outcome?: 'interested' | 'not_interested' | 'follow_up_required' | string | null;

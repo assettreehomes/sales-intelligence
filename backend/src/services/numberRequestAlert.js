@@ -1,6 +1,7 @@
 // Alerts HR (email) and admins (Android push) when a presales call's analysis flags the agent
 // asking the customer for a number. One alert per call: the ticket is claimed
-// (hr_number_alert_sent_at) before sending, so a re-analysis of the same call never resends.
+// (number_alert_claimed_at) before sending, so a re-analysis of the same call never resends.
+// hr_email_sent_at records a successful HR email (the dashboard shows a Mail badge for it).
 //
 //   NUMBER_ALERT_TO   email recipients, comma separated (e.g. hr@assettreehomes.com); unset = no email
 //   DASHBOARD_URL     optional, adds an "Open the call" link to the email
@@ -10,7 +11,7 @@ import { sendEmail, isMailConfigured } from './mailer.js';
 import { isFcmEnabled, notifyAdminsNumberRequest } from './fcm.js';
 import { buildNumberRequestEmail, buildNumberRequestPush } from '../utils/numberRequestEmail.js';
 
-const isMissingColumn = err => err && (err.code === '42703' || err.code === 'PGRST204' || /hr_number_alert_sent_at/.test(err.message || ''));
+const isMissingColumn = err => err && (err.code === '42703' || err.code === 'PGRST204' || /number_alert_claimed_at|hr_email_sent_at/.test(err.message || ''));
 
 async function resolveAgentName(ticket) {
     if (ticket.selldo_agent_name) return ticket.selldo_agent_name;
@@ -29,9 +30,9 @@ async function resolveAgentName(ticket) {
 async function claimTicket(ticket) {
     const { data, error } = await supabaseAdmin
         .from('tickets')
-        .update({ hr_number_alert_sent_at: new Date().toISOString() })
+        .update({ number_alert_claimed_at: new Date().toISOString() })
         .eq('id', ticket.id)
-        .is('hr_number_alert_sent_at', null)
+        .is('number_alert_claimed_at', null)
         .select('id');
     if (!error) return { claimed: (data || []).length > 0, tracked: true };
     if (!isMissingColumn(error)) throw error;
@@ -41,7 +42,7 @@ async function claimTicket(ticket) {
 }
 
 async function releaseClaim(ticketId) {
-    await supabaseAdmin.from('tickets').update({ hr_number_alert_sent_at: null }).eq('id', ticketId);
+    await supabaseAdmin.from('tickets').update({ number_alert_claimed_at: null }).eq('id', ticketId);
 }
 
 /**
@@ -75,6 +76,10 @@ export async function sendNumberRequestAlert({ ticket, summary, instances }) {
                 const email = buildNumberRequestEmail({ agentName, ticket, summary, instances, dashboardUrl: process.env.DASHBOARD_URL });
                 await sendEmail({ to, ...email });
                 delivered = true;
+                if (tracked) {
+                    const { error } = await supabaseAdmin.from('tickets').update({ hr_email_sent_at: new Date().toISOString() }).eq('id', ticket.id);
+                    if (error) console.warn(`⚠️ Could not record HR email for ticket ${ticket.id}:`, error.message);
+                }
                 console.log(`📧 Number-request email sent for ticket ${ticket.id}`);
             } catch (err) {
                 console.error(`⚠️ Number-request email failed for ticket ${ticket.id}:`, err.message);

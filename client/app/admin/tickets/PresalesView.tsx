@@ -18,6 +18,7 @@ import {
     PhoneMissed,
     BadgeCheck,
     ShieldAlert,
+    Mail,
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { TicketHeatmap } from '@/components/TicketHeatmap';
@@ -370,6 +371,14 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                             {ticket.selldo_enriched_at && (
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                                                     <BadgeCheck className="w-2.5 h-2.5" /> Sell.Do
+                                                </span>
+                                            )}
+                                            {ticket.hr_email_sent_at && (
+                                                <span
+                                                    title={`Number-request alert emailed to HR on ${new Date(ticket.hr_email_sent_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                                                    className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+                                                >
+                                                    <Mail className="w-2.5 h-2.5" /> Mail
                                                 </span>
                                             )}
                                         </div>

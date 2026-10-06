@@ -59,7 +59,7 @@ sales-intelligence/
 - Adds `lead_qualification` (budget, timeline, purpose, appointment, lead quality)
 - Adds `call_authenticity` (real/fake detection)
 - Adds `mobile_number_alert` (detects if agent asked lead for mobile number — lead theft risk); sets `asked_mobile_number` boolean on ticket for fast filtering
-- When a call is flagged for a number request, `numberRequestAlert.js` emails HR ("Client Phone Number asked by <agent>": summary + transcript quotes) via `mailer.js` (Hostinger Email API) and pushes the same alert to admin/superadmin Android devices (`notifyAdminsNumberRequest` in `fcm.js`); once per call, tracked by `tickets.hr_number_alert_sent_at` (`backend/migrations/2026-10-06_hr_number_alert_sent_at.sql`)
+- When a call is flagged for a number request, `numberRequestAlert.js` emails HR ("Client Phone Number asked by <agent>": summary + transcript quotes) via `mailer.js` (Hostinger Email API) and pushes the same alert to admin/superadmin Android devices (`notifyAdminsNumberRequest` in `fcm.js`); once per call via `tickets.number_alert_claimed_at`; `tickets.hr_email_sent_at` drives the Mail badge on presales ticket cards (`backend/migrations/2026-10-06_number_request_alerts.sql`)
 - Re-analyze (`POST /tickets/:id/analyze`) responds 202 immediately; analysis fires async to avoid request timeout; **Phase 2 cross-visit comparison is skipped** during re-analysis (site visits only)
 - No cross-visit comparison (each call is independent)
 - Sell.Do CRM data reconciled via `selldo_pending_calls` table
