@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ticketintel-v1';
+const CACHE_NAME = 'ticketintel-v2';
 
 // Assets to pre-cache on install
 const PRECACHE_URLS = [

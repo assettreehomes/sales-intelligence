@@ -1,17 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import type { LoginResult } from '@/contexts/AuthContext';
 import { notifyError } from '@/lib/toast';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, Smartphone, Copy, Check } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ShieldCheck, Smartphone, Copy, Check, Moon, Sun } from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
 
 type LoginStep = 'credentials' | 'totp' | 'totp-setup';
 
 export default function LoginPage() {
     const router = useRouter();
+    const { theme, toggleTheme } = useTheme();
+    const isHydrated = useSyncExternalStore(() => () => { }, () => true, () => false);
+    const isDark = isHydrated && theme === 'dark';
     const { signIn, completeTOTP, confirmTOTPSetup, signOut, user, profile, loading: authLoading, profileLoading } = useAuth();
 
     // Form state
@@ -150,12 +154,16 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col">
-            {/* Dark mode toggle placeholder */}
+            {/* Dark mode toggle */}
             <div className="absolute top-4 right-4">
-                <button className="p-2 rounded-full border border-gray-300 bg-white hover:bg-gray-50 transition-colors">
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
+                <button
+                    type="button"
+                    onClick={toggleTheme}
+                    aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                    title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                    className="p-2 rounded-full border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+                >
+                    {isDark ? <Sun className="w-5 h-5 text-gray-600" /> : <Moon className="w-5 h-5 text-gray-600" />}
                 </button>
             </div>
 
@@ -163,11 +171,19 @@ export default function LoginPage() {
             <div className="flex justify-center pt-12 pb-6">
                 <Image
                     src="/ATH%20logo/ATH-full-logo.png"
-                    alt="ATH"
+                    alt="Asset Tree Homes"
                     width={280}
-                    height={86}
+                    height={127}
                     priority
-                    className="h-auto w-[240px] object-contain sm:w-[280px]"
+                    className="h-auto w-[240px] object-contain sm:w-[280px] dark:hidden"
+                />
+                <Image
+                    src="/ATH%20logo/ATH-full-logo-light.png"
+                    alt="Asset Tree Homes"
+                    width={280}
+                    height={127}
+                    priority
+                    className="hidden h-auto w-[240px] object-contain sm:w-[280px] dark:block"
                 />
             </div>
 
@@ -429,18 +445,9 @@ export default function LoginPage() {
 
                     {/* Footer */}
                     <div className="mt-8 text-center">
-                        <p className="text-gray-600 text-sm">© 2024 TicketIntel.</p>
-                        <p className="text-purple-600 text-sm italic">Your Imagination is Our Creation</p>
+                        <p className="text-gray-600 text-sm">© 2026 Asset Tree Homes. All rights reserved.</p>
                     </div>
                 </div>
-            </div>
-
-            {/* Help Link */}
-            <div className="text-center pb-6">
-                <p className="text-gray-500 text-sm">
-                    Need help? Contact our{' '}
-                    <a href="#" className="text-purple-600 hover:text-purple-700 underline">IT Support Team</a>
-                </p>
             </div>
         </div>
     );

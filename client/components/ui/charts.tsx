@@ -10,16 +10,16 @@ import {
 
 // ─── Theme tokens ───────────────────────────────────────────────────
 export const CHART_COLORS = {
-    purple:    '#8b5cf6',
-    purpleDim: '#6d28d9',
-    purpleGlow:'rgba(139,92,246,0.18)',
+    purple:    '#7583dd',
+    purpleDim: '#3549cc',
+    purpleGlow:'rgba(117,131,221,0.18)',
     emerald:   '#10b981',
     red:       '#ef4444',
     amber:     '#f59e0b',
-    muted:     'var(--chart-muted, rgba(139,92,246,0.12))',
-    grid:      'var(--chart-grid, rgba(139,92,246,0.18))',
-    text:      'var(--chart-text, rgba(30,16,64,0.6))',
-    textStrong:'var(--chart-text-strong, rgba(30,16,64,0.9))',
+    muted:     'var(--chart-muted, rgba(117,131,221,0.12))',
+    grid:      'var(--chart-grid, rgba(117,131,221,0.18))',
+    text:      'var(--chart-text, rgba(16,22,64,0.6))',
+    textStrong:'var(--chart-text-strong, rgba(16,22,64,0.9))',
 };
 
 // Outcome colors
@@ -39,7 +39,7 @@ function ChartTooltip({ active, payload, label, formatter }: {
     if (!active || !payload?.length) return null;
     return (
         <div className="rounded-xl border px-3 py-2 shadow-xl text-xs"
-            style={{ background: 'var(--chart-tooltip-bg, #1a0f2e)', borderColor: 'var(--chart-tooltip-border, rgba(139,92,246,0.4))', color: 'var(--chart-text-strong, #fff)' }}>
+            style={{ background: 'var(--chart-tooltip-bg, #0f132e)', borderColor: 'var(--chart-tooltip-border, rgba(117,131,221,0.4))', color: 'var(--chart-text-strong, #fff)' }}>
             {label && <p className="mb-1 font-semibold" style={{ color: CHART_COLORS.textStrong }}>{label}</p>}
             {payload.map((p, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -128,7 +128,7 @@ export function AuthenticityBarChart({ real, fake, height = 180 }: AuthenticityB
                     <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
                     <XAxis dataKey="name" tick={{ fill: CHART_COLORS.text, fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: CHART_COLORS.text, fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(139,92,246,0.08)' }} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(117,131,221,0.08)' }} />
                     <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                         {data.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                     </Bar>
@@ -195,15 +195,15 @@ export function DailyTrendChart({ data, height = 160 }: DailyTrendProps) {
                 <BarChart data={formatted} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
                     <defs>
                         <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#a855f7" />
-                            <stop offset="100%" stopColor="#6d28d9" />
+                            <stop offset="0%" stopColor="#717fdb" />
+                            <stop offset="100%" stopColor="#3549cc" />
                         </linearGradient>
                     </defs>
                     <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
                     <XAxis dataKey="date" tick={{ fill: CHART_COLORS.text, fontSize: 9 }} axisLine={false} tickLine={false}
                         interval={Math.floor(formatted.length / 6)} />
                     <YAxis tick={{ fill: CHART_COLORS.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(139,92,246,0.08)' }} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(117,131,221,0.08)' }} />
                     <Bar dataKey="Calls" fill="url(#barGrad)" radius={[4, 4, 0, 0]} />
                 </BarChart>
             </ResponsiveContainer>
@@ -229,8 +229,8 @@ export function RatingTrendChart({ data, height = 200 }: AreaTrendProps) {
                 <AreaChart data={formatted} margin={{ top: 8, right: 8, bottom: 8, left: -20 }}>
                     <defs>
                         <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                            <stop offset="5%" stopColor="#7583dd" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#7583dd" stopOpacity={0} />
                         </linearGradient>
                     </defs>
                     <CartesianGrid stroke={CHART_COLORS.grid} />
@@ -238,8 +238,8 @@ export function RatingTrendChart({ data, height = 200 }: AreaTrendProps) {
                         interval={Math.floor(formatted.length / 5)} />
                     <YAxis domain={[0, 5]} tick={{ fill: CHART_COLORS.text, fontSize: 10 }} axisLine={false} tickLine={false} />
                     <Tooltip content={<ChartTooltip formatter={(v, n) => n === 'Rating' ? v.toFixed(2) : String(v)} />} />
-                    <Area type="monotone" dataKey="Rating" stroke="#8b5cf6" strokeWidth={2}
-                        fill="url(#areaGrad)" dot={false} activeDot={{ r: 4, fill: '#8b5cf6' }} />
+                    <Area type="monotone" dataKey="Rating" stroke="#7583dd" strokeWidth={2}
+                        fill="url(#areaGrad)" dot={false} activeDot={{ r: 4, fill: '#7583dd' }} />
                 </AreaChart>
             </ResponsiveContainer>
         </div>
@@ -265,7 +265,7 @@ export function HorizontalBarChart({ data, height, color = CHART_COLORS.purple, 
                         axisLine={false} tickLine={false} />
                     <YAxis type="category" dataKey="name" tick={{ fill: CHART_COLORS.textStrong, fontSize: 11 }}
                         axisLine={false} tickLine={false} width={80} />
-                    <Tooltip content={<ChartTooltip formatter={(v) => v.toFixed(2)} />} cursor={{ fill: 'rgba(139,92,246,0.08)' }} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => v.toFixed(2)} />} cursor={{ fill: 'rgba(117,131,221,0.08)' }} />
                     <Bar dataKey="value" fill={color} radius={[0, 6, 6, 0]} label={{ position: 'right', fill: CHART_COLORS.textStrong, fontSize: 11, formatter: (v: unknown) => typeof v === 'number' ? v.toFixed(1) : String(v) }} />
                 </BarChart>
             </ResponsiveContainer>
@@ -281,7 +281,7 @@ interface RadarProps {
     color?: string;
 }
 
-export function SkillRadarChart({ labels, values, size = 160, color = '#8b5cf6' }: RadarProps) {
+export function SkillRadarChart({ labels, values, size = 160, color = '#7583dd' }: RadarProps) {
     const data = labels.map((label, i) => ({ subject: label, value: values[i] ?? 0, fullMark: 10 }));
     return (
         <div style={{ width: size, height: size }}>
@@ -312,7 +312,7 @@ export function RatingDistChart({ data, height = 200 }: RatingDistProps) {
                     <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
                     <XAxis dataKey="name" tick={{ fill: CHART_COLORS.text, fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: CHART_COLORS.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(139,92,246,0.08)' }} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(117,131,221,0.08)' }} />
                     <Bar dataKey="Count" radius={[6, 6, 0, 0]}>
                         {formatted.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                     </Bar>
@@ -349,8 +349,8 @@ export function ConversationComparisonChart({ data, height = 236 }: Conversation
                 <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 8, left: -10 }}>
                     <defs>
                         <linearGradient id="convCurrentGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.95} />
-                            <stop offset="100%" stopColor="#7c3aed" stopOpacity={0.45} />
+                            <stop offset="0%" stopColor="#9ea8e7" stopOpacity={0.95} />
+                            <stop offset="100%" stopColor="#5364d4" stopOpacity={0.45} />
                         </linearGradient>
                     </defs>
                     <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
@@ -377,7 +377,7 @@ export function ConversationComparisonChart({ data, height = 236 }: Conversation
                                 formatter={(value) => `${Math.round(value)} / 100`}
                             />
                         }
-                        cursor={{ fill: 'rgba(139,92,246,0.08)' }}
+                        cursor={{ fill: 'rgba(117,131,221,0.08)' }}
                     />
                     <Legend
                         iconType="circle"
@@ -391,11 +391,11 @@ export function ConversationComparisonChart({ data, height = 236 }: Conversation
                     <Line
                         type="monotone"
                         dataKey="Previous"
-                        stroke={CHART_COLORS.muted.toString().includes('var') ? 'rgba(139,92,246,0.55)' : CHART_COLORS.muted}
+                        stroke={CHART_COLORS.muted.toString().includes('var') ? 'rgba(117,131,221,0.55)' : CHART_COLORS.muted}
                         strokeDasharray="6 4"
                         strokeWidth={2.5}
-                        dot={{ r: 3, fill: 'rgba(139,92,246,0.55)', stroke: 'none' }}
-                        activeDot={{ r: 4, fill: 'rgba(139,92,246,0.8)' }}
+                        dot={{ r: 3, fill: 'rgba(117,131,221,0.55)', stroke: 'none' }}
+                        activeDot={{ r: 4, fill: 'rgba(117,131,221,0.8)' }}
                     />
                 </ComposedChart>
             </ResponsiveContainer>
@@ -439,8 +439,8 @@ export function PresalesMultiTrendChart({ data, height = 220 }: PresalesMultiTre
                 <ComposedChart data={formatted} margin={{ top: 8, right: 12, bottom: 8, left: -10 }}>
                     <defs>
                         <linearGradient id="presalesCallsGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.95} />
-                            <stop offset="100%" stopColor="#7c3aed" stopOpacity={0.45} />
+                            <stop offset="0%" stopColor="#9ea8e7" stopOpacity={0.95} />
+                            <stop offset="100%" stopColor="#5364d4" stopOpacity={0.45} />
                         </linearGradient>
                     </defs>
                     <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
@@ -475,7 +475,7 @@ export function PresalesMultiTrendChart({ data, height = 220 }: PresalesMultiTre
                                 }}
                             />
                         }
-                        cursor={{ fill: 'rgba(139,92,246,0.08)' }}
+                        cursor={{ fill: 'rgba(117,131,221,0.08)' }}
                     />
                     <Legend
                         iconType="circle"
