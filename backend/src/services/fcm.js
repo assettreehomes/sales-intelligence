@@ -134,7 +134,8 @@ export async function notifyAdminsNumberRequest({ ticketId, title, body }, {
 
         const message = {
             notification: { title, body },
-            data: { ticket_id: String(ticketId), action: 'view_ticket', event_type: 'number_request' },
+            // title/body repeated in data so the app can show it itself while it is open (data reaches onMessageReceived)
+            data: { ticket_id: String(ticketId), action: 'view_ticket', event_type: 'number_request', title, body },
             android: { priority: 'high', notification: { tag: `number_request_${ticketId}` } }
         };
         const { sent, invalid } = await sendToDevices(devices, message, { supabase, messagingFactory, timeoutMs });

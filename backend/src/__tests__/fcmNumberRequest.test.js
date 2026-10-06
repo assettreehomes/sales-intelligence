@@ -48,6 +48,7 @@ describe('FCM number-request alert to admins', () => {
             assert.deepEqual(sentMessages[0].tokens, ['t1', 't2']);
             assert.equal(sentMessages[0].notification.title, 'Client Phone Number asked by Priya S');
             assert.equal(sentMessages[0].data.event_type, 'number_request');
+            assert.equal(sentMessages[0].data.title, 'Client Phone Number asked by Priya S');
             assert.deepEqual(calls[2].update.is_active, false);
         } finally {
             process.env.FCM_ENABLED = prev;
