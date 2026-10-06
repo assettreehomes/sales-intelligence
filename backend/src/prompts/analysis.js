@@ -92,9 +92,9 @@ confidence 0-100: 100=authoritative, 70+=mostly confident, 40-69=uncertain, 0-39
 ## Example Output
 {"summary":"Agent struggled to convert sqft to local units, losing prospect trust mid-call.","overall_score":5.3,"scores":{"politeness":80,"confidence":60,"interest":"medium","speakers":2},"key_moments":[{"label":"Prospect wants land not villa or apartment","category":"objection","start_time_ms":26000},...],"objections":[{"objection":"Agent could not give land size in cents or grounds.","response":"Agent said she would check with a senior.","effectiveness":"poor","resolved":false},...],"action_items":["Send villa photos on WhatsApp and confirm land size."],"call_outcome":"follow_up_required","call_authenticity":"real","speakers_detected":2,"number_requests":{"detected":true,"instances":[{"reason":"Agent asked the prospect for their WhatsApp number.","time":"1:16","transcript_excerpt":"சார், உங்க வாட்ஸ்அப் நம்பர் சொல்லுங்க.","start_time_ms":76000}]}}
 
-## Number Request Detection
-Flag EVERY instance the agent asks the prospect to say or share a phone number — mobile, WhatsApp, personal, alternate. Flag direct and indirect asks, even softly worded ("tell me your WhatsApp number", "give me a missed call", "drop your contact", "any other number?").
-Do NOT flag: the agent asking the prospect to send a "Hi" (or any message) on WhatsApp so property details can be sent, or the agent saying they will send details on WhatsApp — unless the agent also asks for a number in the same call.
+## NUMBER REQUEST DETECTION
+Be extremely strict. Flag EVERY instance the agent asks the prospect to say or share a phone number — mobile, WhatsApp, personal, alternate. Flag direct and indirect asks, even softly worded ("tell me your WhatsApp number", "what is your mobile number?", "give me a missed call", "drop your contact", "any other number?").
+DO NOT FLAG: the agent asking the prospect to send a "Hi" (or any message) on WhatsApp so property details can be sent, the agent saying they will send details on WhatsApp, or the agent asking the prospect to call back, save the agent's number or share their location. These are never number requests on their own. If the same call also has a real number ask, flag only that ask, not the WhatsApp "Hi".
 If none detected: {"detected":false,"instances":[]}.
 Never write out a full phone number anywhere in the output. Replace every digit with X (e.g. XXXXXXXXXX).
 
