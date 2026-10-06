@@ -5,6 +5,7 @@ import { logActivity } from '../services/activityLog.js';
 import { getVisitSequence } from '../services/visitSequencing.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 import { notifyDraftAssignment } from '../services/fcm.js';
+import { maskPhone } from '../utils/maskPhone.js';
 
 const router = Router();
 
@@ -46,7 +47,7 @@ router.post('/selldo/lead', async (req, res) => {
 
         // Build notes from lead contact info
         const notesParts = [];
-        if (lead.phone) notesParts.push(`Phone: ${lead.phone}`);
+        if (lead.phone) notesParts.push(`Phone: ${maskPhone(String(lead.phone).replace(/\D/g, ''))}`);
         if (lead.email) notesParts.push(`Email: ${lead.email}`);
         if (payload.team_name) notesParts.push(`Team: ${payload.team_name}`);
         notesParts.push(`Source: sell.do (${event || 'unknown'})`);

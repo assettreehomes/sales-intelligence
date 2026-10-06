@@ -4,6 +4,7 @@ import { flashQueue } from './queues.js';
 import { checkAudioExists, getAudioUri, buckets } from '../config/gcs.js';
 import { getPresalesAnalysisPrompt } from '../prompts/analysis.js';
 import { supabaseAdmin } from '../config/supabase.js';
+import { maskNumbersDeep } from '../utils/maskPhone.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -325,7 +326,8 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
             team_name:        enrichedTicket.selldo_team_name || null
         };
 
-        const analysis = await analyzePresalesAudio(ticketId, ticketInfo);
+        // Mask any phone numbers the model quoted before anything is saved
+        const analysis = maskNumbersDeep(await analyzePresalesAudio(ticketId, ticketInfo));
 
         // Normalize scores — matches the existing analysisresults schema
         const numberRequests = analysis.number_requests || { detected: false, instances: [] };

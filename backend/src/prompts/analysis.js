@@ -95,6 +95,7 @@ confidence 0-100: 100=authoritative, 70+=mostly confident, 40-69=uncertain, 0-39
 ## Number Request Detection
 Flag EVERY instance the agent asks for any contact number — mobile, WhatsApp, personal, alternate. Flag direct and indirect asks, even softly worded ("give me a missed call", "drop your contact", "any other number?").
 If none detected: {"detected":false,"instances":[]}.
+Never write out a full phone number anywhere in the output. Replace every digit with X (e.g. XXXXXXXXXX).
 
 ## Rules
 1. JSON only. No markdown fences.
