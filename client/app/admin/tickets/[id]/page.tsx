@@ -1462,7 +1462,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             if (navigator.share) {
                 await navigator.share({
                     title: `Ticket #${id.slice(0, 4).toUpperCase()}`,
-                    text: 'TicketIntel ticket link',
+                    text: 'Ai Voice Analysis ticket link',
                     url: currentUrl
                 });
                 notifySuccess('Ticket link shared. Link is also copied to clipboard.');

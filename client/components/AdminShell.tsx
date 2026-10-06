@@ -393,7 +393,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                                 className="h-8 w-8 shrink-0 rounded-lg object-contain"
                             />
                             {!collapsed && (
-                                <span className="admin-shell-brand-text text-base font-semibold">TicketIntel</span>
+                                <span className="admin-shell-brand-text text-base font-semibold">Ai Voice Analysis</span>
                             )}
                         </Link>
 

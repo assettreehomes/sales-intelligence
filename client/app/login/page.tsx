@@ -195,7 +195,7 @@ export default function LoginPage() {
                     {loginStep === 'credentials' && (
                         <>
                             <div className="text-center mb-8">
-                                <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back</h1>
+                                <h1 className="text-2xl font-bold text-gray-900 mb-2">Ai Voice Analysis</h1>
                                 <p className="text-gray-500 text-sm">Please enter your credentials to access the portal</p>
                             </div>
 
@@ -215,7 +215,7 @@ export default function LoginPage() {
                                             type="email"
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
-                                            placeholder="name@company.com"
+                                            placeholder="name@assettreehomes.com"
                                             required
                                             className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all placeholder:text-gray-400"
                                         />
