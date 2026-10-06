@@ -7,6 +7,7 @@ import { dirname, join } from 'path';
 // Queue + retry imports
 import { proQueue, flashQueue } from './services/queues.js';
 import { startAutoRetry } from './services/autoRetry.js';
+import { startNumberRequestSummary } from './services/numberRequestSummary.js';
 import { supabaseAdmin } from './config/supabase.js';
 
 // Route imports
@@ -143,6 +144,7 @@ app.listen(PORT, () => {
         });
 
     startAutoRetry();
+    startNumberRequestSummary();
 });
 
 export default app;

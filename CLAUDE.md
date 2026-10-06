@@ -108,6 +108,7 @@ GET  /presales/directory      Presales org snapshot
 POST /telecmi/webhook              TeleCMI CDR webhook (no auth)
 POST /telecmi/sync                 Manual CDR back-fill (admin)
 POST /reports/whatsapp/send        Trigger WhatsApp daily report
+POST /reports/number-requests/send Send the daily number-request summary email now (also sent in-process at 9 pm IST)
 GET  /training                     Training library
 POST /drafts                       Create draft assignment (admin)
 GET  /drafts                       List drafts (employee sees own only)
@@ -143,6 +144,7 @@ WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_RECIPIENT_NUMBER, WHATSAPP_TE
 SCHEDULER_SECRET
 MAIL_PROVIDER (hostinger), MAIL_API_KEY, MAIL_FROM, MAIL_FROM_NAME, HOSTINGER_MAILBOX_ID (optional)
 NUMBER_ALERT_TO (HR recipients for number-request alerts; unset = off), DASHBOARD_URL (optional link in alerts)
+NUMBER_SUMMARY_TO (daily number-request summary recipients; unset = off), NUMBER_SUMMARY_TIME (IST, default 21:00)
 SYNOLOGY_CHAT_WEBHOOK_URL (Synology Chat incoming webhook for number-request alerts; unset = off), SYNOLOGY_CHAT_EXCLUDE (default "pammal": agent/team names not posted to chat)
 CORS_ORIGIN
 PORT (default 3001)
