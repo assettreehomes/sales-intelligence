@@ -59,6 +59,7 @@ sales-intelligence/
 - Adds `lead_qualification` (budget, timeline, purpose, appointment, lead quality)
 - Adds `call_authenticity` (real/fake detection)
 - Adds `mobile_number_alert` (detects if agent asked lead for mobile number — lead theft risk); sets `asked_mobile_number` boolean on ticket for fast filtering
+- When a call is flagged for a number request, `numberRequestAlert.js` emails HR ("Client Phone Number asked by <agent>": summary + transcript quotes) via `mailer.js` (Hostinger Email API); once per call, tracked by `tickets.hr_number_alert_sent_at` (`backend/migrations/2026-10-06_hr_number_alert_sent_at.sql`)
 - Re-analyze (`POST /tickets/:id/analyze`) responds 202 immediately; analysis fires async to avoid request timeout; **Phase 2 cross-visit comparison is skipped** during re-analysis (site visits only)
 - No cross-visit comparison (each call is independent)
 - Sell.Do CRM data reconciled via `selldo_pending_calls` table
@@ -140,6 +141,8 @@ VERTEX_BACKOFF_BASE_MS_PRO / VERTEX_BACKOFF_BASE_MS_FLASH (default 60000), VERTE
 TELECMI_APP_ID, TELECMI_SECRET
 WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_RECIPIENT_NUMBER, WHATSAPP_TEMPLATE_NAME
 SCHEDULER_SECRET
+MAIL_PROVIDER (hostinger), MAIL_API_KEY, MAIL_FROM, MAIL_FROM_NAME, HOSTINGER_MAILBOX_ID (optional)
+NUMBER_ALERT_TO (HR recipients for number-request alerts; unset = off), DASHBOARD_URL (optional link in alerts)
 CORS_ORIGIN
 PORT (default 3001)
 ```
