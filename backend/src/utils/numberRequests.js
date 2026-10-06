@@ -11,11 +11,12 @@ const WHATSAPP = /whats\s?app/i;
 
 // The model's justification for the flag: "..., implying ...", "..., which helps get ...",
 // "so she could save the prospect's number". Removed up to the end of the sentence, but never
-// past a later "asked/requested ..." so a second, real ask survives.
-const ASK_VERB = String.raw`(?:ask(?:ed|s|ing)?|request(?:ed|s|ing)?|told|tells|want(?:ed|s)?|need(?:ed|s)?|collect(?:ed|s)|took|noted|sought|enquired|inquired|demanded|insisted|pressed)`;
+// past a later "and asked ...", "then requested ...", "followed by asking ..." so a second, real ask survives.
+const ASK_VERB = String.raw`(?:ask(?:ed|ing)|request(?:ed|ing)|told|collected|took|noted|sought|enquired|inquired|demanded|insisted|pressed)`;
+const NEXT_ASK = String.raw`\b(?:and|but|then|also|later|before|after|followed by)\b[^.;]{0,20}\b${ASK_VERB}\b`;
 const RATIONALE = new RegExp(
     String.raw`(?:,\s*which\b|\b(?:implying|implies|indicating|thereby|effectively|implicitly|suggesting|meaning|so that|in order to|mentioning that)\b|\bso\s+(?:she|he|they|the agent|agent|we|i)\s+(?:could|can|would|will|may|might)\b)` +
-    String.raw`[^.;]*?(?=\b${ASK_VERB}\b|[.;]|$)`,
+    String.raw`[^.;]*?(?=${NEXT_ASK}|[.;]|$)`,
     'gi'
 );
 
@@ -34,8 +35,10 @@ const SAFE_NUMBER = [
         String.raw`${NUMBER_WORD}${NOT_THIRD_PARTY}`,
         'gi'
     ),
-    // "save/note down her number" — the prospect saving the agent's number
-    new RegExp(String.raw`\b(?:save|saving|note down|noting down)\s+(?:her|his|my|their|the agent's|agent's|the)?\s*(?:own\s+)?(?:whats\s?app\s+|mobile\s+|phone\s+|contact\s+)?${NUMBER_WORD}`, 'gi'),
+    // "send a Hi to a provided/different WhatsApp number" — the agent's other line
+    new RegExp(String.raw`\bto\s+(?:a|an|another)\s+(?:(?:provided|given|different|separate|new|official|office|company)\s+)?(?:whats\s?app\s+)?${NUMBER_WORD}${NOT_THIRD_PARTY}`, 'gi'),
+    // "save/note down her number" — saving a number is not asking for it
+    new RegExp(String.raw`\b(?:save|saving|note down|noting down)\s+(?:her|his|my|their|the agent's|agent's|the prospect's|the customer's|the)?\s*(?:own\s+)?(?:whats\s?app\s+|mobile\s+|phone\s+|contact\s+)?${NUMBER_WORD}`, 'gi'),
     // "the agent's number", "the calling number", "the number she called from", "the number displayed"
     new RegExp(String.raw`\bagent's\s+(?:own\s+)?(?:whats\s?app\s+|mobile\s+|phone\s+)?${NUMBER_WORD}`, 'gi'),
     new RegExp(String.raw`\b(?:calling|same)\s+${NUMBER_WORD}`, 'gi'),
@@ -46,13 +49,15 @@ const SAFE_NUMBER = [
     new RegExp(String.raw`\b(?:confirm(?:ing)?|check(?:ing)?|verify(?:ing)?|whether|if)\s+(?:that\s+|whether\s+|if\s+)?(?:the|this|that|her|his|their)\s+(?:same\s+|current\s+)?${NUMBER_WORD}(?=\s+(?:is|was|they|he|she|works|has)\b)`, 'gi'),
 ];
 const ANY_NUMBER = new RegExp(String.raw`\b${NUMBER_WORD}`, 'i');
+// A Hi from (or a number of) a son, wife, friend... gets someone else's number: always keep
+const THIRD_PARTY = /\b(?:son|daughter|wife|husband|spouse|father|mother|brother|sister|friend|relative|colleague|family member)(?:'s)?\b/i;
 // Asks that capture the number without saying "number": a missed call, "send your contact", "give another one"
 const INDIRECT_ASK = /missed\s*call|\b(?:share|send|give|drop|forward|tell)\s+(?:me\s+)?(?:your|his|her|their|the prospect's|the customer's)\s+contact\b|\b(?:another|other|alternate|alternative|backup|different|second)\s+(?:one|line|contact)\b/i;
 
 export function isWhatsAppGreetingOnly(instance) {
     const reason = String(instance?.reason || '');
     const isGreetingAsk = HI_WORD.test(reason) || (WHATSAPP.test(reason) && GREETING_WORD.test(reason));
-    if (!isGreetingAsk) return false;
+    if (!isGreetingAsk || THIRD_PARTY.test(reason)) return false;
     let ask = reason.replace(RATIONALE, ' ');
     for (const re of SAFE_NUMBER) ask = ask.replace(re, ' ');
     return !ANY_NUMBER.test(ask) && !INDIRECT_ASK.test(ask);

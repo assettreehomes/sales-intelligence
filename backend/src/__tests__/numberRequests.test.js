@@ -18,7 +18,10 @@ const hiOnly = [
     "Agent requested the prospect to send a 'Hi' on WhatsApp to confirm the number they were speaking on is on WhatsApp.",
     "Agent told the prospect she would share her WhatsApp number via SMS and asked the prospect to send a 'Hi' on it.",
     "Agent asked the prospect to send a 'Hi' on WhatsApp from whichever number they use for WhatsApp, implying the number would be obtained.",
-    "Agent asked the prospect to text her a 'Hi' so she could send the floor plans."
+    "Agent asked the prospect to text her a 'Hi' so she could send the floor plans.",
+    "Agent asked the prospect to send a 'Hi' on WhatsApp so she could share project details, implying she needs his WhatsApp number to initiate contact.",
+    "Agent asked prospect to send a 'Hi' message to a provided WhatsApp number to facilitate sending property details.",
+    "Agent reiterated the request for a 'Hi' message on WhatsApp to save the prospect's number."
 ];
 
 const numberAsks = [
@@ -40,7 +43,10 @@ const numberAsks = [
     "Agent asked the prospect to send a Hi from his other number.",
     "Agent asked the prospect to send a Hi from the number his son uses on WhatsApp.",
     "Agent asked the prospect to give a missed call and send a Hi on WhatsApp.",
-    "Agent asked him to send a Hi if WhatsApp is on the same number, otherwise to give another one."
+    "Agent asked him to send a Hi if WhatsApp is on the same number, otherwise to give another one.",
+    "Agent asked the prospect to send a 'Hi' on WhatsApp so she could get the husband's number to share project details.",
+    "Agent asked the prospect to have their son send a 'Hi' message to a WhatsApp number for further communication.",
+    "Agent reiterated the request for the prospect to send a 'Hi' message from his wife's mobile to her number."
 ];
 
 describe('isWhatsAppGreetingOnly', () => {
