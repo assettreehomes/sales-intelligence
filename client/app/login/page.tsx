@@ -163,11 +163,19 @@ export default function LoginPage() {
             <div className="flex justify-center pt-12 pb-6">
                 <Image
                     src="/ATH%20logo/ATH-full-logo.png"
-                    alt="ATH"
+                    alt="Asset Tree Homes"
                     width={280}
-                    height={86}
+                    height={127}
                     priority
-                    className="h-auto w-[240px] object-contain sm:w-[280px]"
+                    className="h-auto w-[240px] object-contain sm:w-[280px] dark:hidden"
+                />
+                <Image
+                    src="/ATH%20logo/ATH-full-logo-light.png"
+                    alt="Asset Tree Homes"
+                    width={280}
+                    height={127}
+                    priority
+                    className="hidden h-auto w-[240px] object-contain sm:w-[280px] dark:block"
                 />
             </div>
 
