@@ -3,7 +3,8 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNumberRequestEmail, buildNumberRequestPush } from '../utils/numberRequestEmail.js';
+import { buildNumberRequestEmail, buildNumberRequestPush, buildNumberRequestChat, parseExcludeList, isExcludedFromChat } from '../utils/numberRequestEmail.js';
+import { postSynologyChat } from '../services/synologyChat.js';
 import { sendEmail } from '../services/mailer.js';
 
 const sample = {
@@ -117,5 +118,46 @@ describe('buildNumberRequestPush', () => {
     it('stays short enough for a phone notification', () => {
         const long = buildNumberRequestPush({ ...sample, instances: [{ transcript_excerpt: 'x'.repeat(500) }] });
         assert.ok(long.body.length <= 230);
+    });
+});
+
+describe('Synology Chat alert', () => {
+    it('carries the same masked content as the email', () => {
+        const msg = buildNumberRequestChat(sample);
+        assert.match(msg, /^🚨 Client Phone Number asked by Priya S\n/);
+        assert.match(msg, /CALL SUMMARY/);
+        assert.match(msg, /PROOF OF SPEECH/);
+        assert.match(msg, /\[1:16\]/);
+        assert.match(msg, /Lead ID: LD-55821/);
+        assert.doesNotMatch(msg.replaceAll(sample.ticket.id, ''), /\d{5}\s?\d{5}/);
+        assert.doesNotMatch(msg, /sent automatically/);
+    });
+
+    it('skips the Pammal team or an agent named Pammal, case-insensitively', () => {
+        const excluded = parseExcludeList('pammal');
+        assert.equal(isExcludedFromChat({ agentName: 'Priya S', teamName: 'PAMMAL Presales' }, excluded), true);
+        assert.equal(isExcludedFromChat({ agentName: 'Pammal Ravi', teamName: null }, excluded), true);
+        assert.equal(isExcludedFromChat({ agentName: 'Priya S', teamName: 'Chennai Presales' }, excluded), false);
+        assert.equal(isExcludedFromChat({ agentName: 'Priya S', teamName: 'Chennai' }, parseExcludeList(' ')), false);
+    });
+});
+
+describe('postSynologyChat', () => {
+    const realFetch = globalThis.fetch;
+    afterEach(() => { globalThis.fetch = realFetch; delete process.env.SYNOLOGY_CHAT_WEBHOOK_URL; });
+
+    it('posts a form-encoded payload to the webhook URL', async () => {
+        process.env.SYNOLOGY_CHAT_WEBHOOK_URL = 'https://nas.example:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=%22abc%22';
+        let seen;
+        globalThis.fetch = async (url, opts) => { seen = { url, opts }; return new Response('{"success":true}', { status: 200 }); };
+        await postSynologyChat('hello');
+        assert.equal(seen.url, process.env.SYNOLOGY_CHAT_WEBHOOK_URL);
+        assert.equal(JSON.parse(new URLSearchParams(seen.opts.body).get('payload')).text, 'hello');
+    });
+
+    it('treats success:false as a failure', async () => {
+        process.env.SYNOLOGY_CHAT_WEBHOOK_URL = 'https://nas.example/webapi/entry.cgi';
+        globalThis.fetch = async () => new Response('{"success":false,"error":{"code":404}}', { status: 200 });
+        await assert.rejects(postSynologyChat('x'), /error 404/);
     });
 });

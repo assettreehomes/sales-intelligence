@@ -108,3 +108,24 @@ export function buildNumberRequestPush({ agentName, ticket = {}, instances = [] 
     if (body.length > 230) body = body.slice(0, 229).trimEnd() + '…';
     return { title: `Client Phone Number asked by ${agent}`, body };
 }
+
+/**
+ * Plain-text Synology Chat message: same masked content as the email.
+ */
+export function buildNumberRequestChat({ agentName, ticket = {}, summary, instances = [], dashboardUrl }) {
+    const { subject, text } = buildNumberRequestEmail({ agentName, ticket, summary, instances, dashboardUrl });
+    // Drop the email's intro and footer lines; keep details, summary and proof
+    const body = text.split('\n').slice(2, -2).join('\n').trim();
+    return `🚨 ${subject}\n\n${body}`;
+}
+
+// "pammal" or "Pammal, Tambaram" -> ['pammal', 'tambaram']
+export function parseExcludeList(value) {
+    return String(value ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
+/** True when the agent's name or team name contains any excluded word (case-insensitive). */
+export function isExcludedFromChat({ agentName, teamName }, excluded) {
+    const hay = `${agentName ?? ''} | ${teamName ?? ''}`.toLowerCase();
+    return excluded.some(word => hay.includes(word));
+}

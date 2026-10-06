@@ -5,11 +5,15 @@
 //
 //   NUMBER_ALERT_TO   email recipients, comma separated (e.g. hr@assettreehomes.com); unset = no email
 //   DASHBOARD_URL     optional, adds an "Open the call" link to the email
+//   SYNOLOGY_CHAT_WEBHOOK_URL  posts the alert to a Synology Chat channel (see synologyChat.js); unset = off
+//   SYNOLOGY_CHAT_EXCLUDE      comma separated; calls whose agent or team name contains one are not
+//                              posted to Synology Chat (default "pammal"); email and push still go
 //   + the MAIL_* settings in mailer.js; the push uses the existing FCM_ENABLED setup in fcm.js
 import { supabaseAdmin } from '../config/supabase.js';
 import { sendEmail, isMailConfigured } from './mailer.js';
 import { isFcmEnabled, notifyAdminsNumberRequest } from './fcm.js';
-import { buildNumberRequestEmail, buildNumberRequestPush } from '../utils/numberRequestEmail.js';
+import { postSynologyChat, isSynologyChatConfigured } from './synologyChat.js';
+import { buildNumberRequestEmail, buildNumberRequestPush, buildNumberRequestChat, parseExcludeList, isExcludedFromChat } from '../utils/numberRequestEmail.js';
 
 const isMissingColumn = err => err && (err.code === '42703' || err.code === 'PGRST204' || /number_alert_claimed_at|hr_email_sent_at/.test(err.message || ''));
 
@@ -24,6 +28,13 @@ async function resolveAgentName(ticket) {
         if (data?.fullname) return data.fullname;
     }
     return ticket.telecmi_user || ticket.telecmi_agent_id || null;
+}
+
+async function resolveTeamName(ticket) {
+    if (ticket.selldo_team_name) return ticket.selldo_team_name;
+    if (!ticket.presales_team_id) return null;
+    const { data } = await supabaseAdmin.from('presales_teams').select('name').eq('id', ticket.presales_team_id).maybeSingle();
+    return data?.name ?? null;
 }
 
 // true = this call is ours to alert on; false = already alerted (or claimed by a parallel run)
@@ -55,7 +66,8 @@ export async function sendNumberRequestAlert({ ticket, summary, instances }) {
         const to = process.env.NUMBER_ALERT_TO;
         const emailOn = Boolean(to) && isMailConfigured();
         const pushOn = isFcmEnabled();
-        if (!emailOn && !pushOn) return;
+        const chatOn = isSynologyChatConfigured();
+        if (!emailOn && !pushOn && !chatOn) return;
 
         const { claimed, tracked } = await claimTicket(ticket);
         if (!claimed) {
@@ -83,6 +95,21 @@ export async function sendNumberRequestAlert({ ticket, summary, instances }) {
                 console.log(`📧 Number-request email sent for ticket ${ticket.id}`);
             } catch (err) {
                 console.error(`⚠️ Number-request email failed for ticket ${ticket.id}:`, err.message);
+            }
+        }
+
+        if (chatOn) {
+            const excluded = parseExcludeList(process.env.SYNOLOGY_CHAT_EXCLUDE ?? 'pammal');
+            if (isExcludedFromChat({ agentName, teamName: await resolveTeamName(ticket) }, excluded)) {
+                console.log(`💬 Synology Chat skipped for ticket ${ticket.id} (excluded agent/team)`);
+            } else {
+                try {
+                    await postSynologyChat(buildNumberRequestChat({ agentName, ticket, summary, instances, dashboardUrl: process.env.DASHBOARD_URL }));
+                    delivered = true;
+                    console.log(`💬 Number-request alert posted to Synology Chat for ticket ${ticket.id}`);
+                } catch (err) {
+                    console.error(`⚠️ Synology Chat post failed for ticket ${ticket.id}:`, err.message);
+                }
             }
         }
 

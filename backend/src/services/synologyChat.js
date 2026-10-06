@@ -1,0 +1,25 @@
+// Posts to a Synology Chat channel through an Incoming Webhook (Synology Chat > Integration >
+// Incoming Webhooks, created for the target channel). The webhook URL carries its own token,
+// so no DSM user or password is needed.
+//
+//   SYNOLOGY_CHAT_WEBHOOK_URL  full webhook URL copied from Synology Chat, e.g.
+//                              https://<nas>.synology.me:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=%22...%22
+
+export function isSynologyChatConfigured() {
+    return Boolean(process.env.SYNOLOGY_CHAT_WEBHOOK_URL);
+}
+
+export async function postSynologyChat(text) {
+    if (!isSynologyChatConfigured()) throw new Error('Synology Chat not configured: set SYNOLOGY_CHAT_WEBHOOK_URL');
+    const res = await fetch(process.env.SYNOLOGY_CHAT_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ payload: JSON.stringify({ text }) }).toString()
+    });
+    // Synology answers 200 with {"success":false,"error":{...}} on a bad token or channel
+    let json = null;
+    try { json = await res.json(); } catch { /* non-JSON body */ }
+    if (!res.ok || json?.success === false) {
+        throw new Error(`Synology Chat post failed: ${res.status}${json?.error?.code ? ` error ${json.error.code}` : ''}`);
+    }
+}
