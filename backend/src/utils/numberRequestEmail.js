@@ -91,3 +91,20 @@ ${link ? `<p><a href="${escapeHtml(link)}" style="color:#27316f">Open the call i
 
     return { subject, text, html };
 }
+
+/**
+ * Short phone notification for admins: same masked content as the email, trimmed.
+ * @returns {{ title: string, body: string }}
+ */
+export function buildNumberRequestPush({ agentName, ticket = {}, instances = [] }) {
+    const agent = clean(agentName) || 'Unknown agent';
+    const first = instances[0] || {};
+    const quote = clean(first.transcript_excerpt);
+    const proof = quote ? `"${quote}"` : clean(first.reason);
+    const when = formatIst(ticket.createdat);
+    const parts = [when, ticket.telecmi_lead_id ? `Lead ${clean(ticket.telecmi_lead_id)}` : null, proof].filter(Boolean);
+    let body = parts.join(' · ');
+    if (instances.length > 1) body += ` (+${instances.length - 1} more)`;
+    if (body.length > 230) body = body.slice(0, 229).trimEnd() + '…';
+    return { title: `Client Phone Number asked by ${agent}`, body };
+}

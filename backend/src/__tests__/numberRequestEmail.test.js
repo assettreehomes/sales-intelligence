@@ -3,7 +3,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNumberRequestEmail } from '../utils/numberRequestEmail.js';
+import { buildNumberRequestEmail, buildNumberRequestPush } from '../utils/numberRequestEmail.js';
 import { sendEmail } from '../services/mailer.js';
 
 const sample = {
@@ -100,5 +100,22 @@ describe('sendEmail (hostinger)', () => {
         process.env.HOSTINGER_MAILBOX_ID = 'ACmis';
         globalThis.fetch = async () => new Response(JSON.stringify({ code: 'ERR_UNAUTHORIZED' }), { status: 401 });
         await assert.rejects(sendEmail({ to: 'hr@assettreehomes.com', subject: 's', text: 't' }), /401 ERR_UNAUTHORIZED/);
+    });
+});
+
+describe('buildNumberRequestPush', () => {
+    it('gives admins the agent, time, lead and first quote, masked', () => {
+        const push = buildNumberRequestPush(sample);
+        assert.equal(push.title, 'Client Phone Number asked by Priya S');
+        assert.match(push.body, /06 Oct 2026, 02:45 pm IST/);
+        assert.match(push.body, /Lead LD-55821/);
+        assert.match(push.body, /வாட்ஸ்அப் நம்பர்/);
+        assert.match(push.body, /\(\+1 more\)$/);
+        assert.doesNotMatch(push.body, /\d{5}\s?\d{5}/);
+    });
+
+    it('stays short enough for a phone notification', () => {
+        const long = buildNumberRequestPush({ ...sample, instances: [{ transcript_excerpt: 'x'.repeat(500) }] });
+        assert.ok(long.body.length <= 230);
     });
 });

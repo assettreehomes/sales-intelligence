@@ -1,13 +1,14 @@
-// Emails HR when a presales call's analysis flags the agent asking the customer for a number.
-// One email per call: the ticket is claimed (hr_number_alert_sent_at) before sending, so a
-// re-analysis of the same call never resends.
+// Alerts HR (email) and admins (Android push) when a presales call's analysis flags the agent
+// asking the customer for a number. One alert per call: the ticket is claimed
+// (hr_number_alert_sent_at) before sending, so a re-analysis of the same call never resends.
 //
-//   NUMBER_ALERT_TO   recipients, comma separated (e.g. hr@assettreehomes.com); unset = alerts off
-//   DASHBOARD_URL     optional, adds an "Open the call" link (e.g. https://one.assettreehomes.com)
-//   + the MAIL_* settings in mailer.js
+//   NUMBER_ALERT_TO   email recipients, comma separated (e.g. hr@assettreehomes.com); unset = no email
+//   DASHBOARD_URL     optional, adds an "Open the call" link to the email
+//   + the MAIL_* settings in mailer.js; the push uses the existing FCM_ENABLED setup in fcm.js
 import { supabaseAdmin } from '../config/supabase.js';
 import { sendEmail, isMailConfigured } from './mailer.js';
-import { buildNumberRequestEmail } from '../utils/numberRequestEmail.js';
+import { isFcmEnabled, notifyAdminsNumberRequest } from './fcm.js';
+import { buildNumberRequestEmail, buildNumberRequestPush } from '../utils/numberRequestEmail.js';
 
 const isMissingColumn = err => err && (err.code === '42703' || err.code === 'PGRST204' || /hr_number_alert_sent_at/.test(err.message || ''));
 
@@ -24,7 +25,7 @@ async function resolveAgentName(ticket) {
     return ticket.telecmi_user || ticket.telecmi_agent_id || null;
 }
 
-// true = this call is ours to send; false = already sent (or claimed by a parallel run)
+// true = this call is ours to alert on; false = already alerted (or claimed by a parallel run)
 async function claimTicket(ticket) {
     const { data, error } = await supabaseAdmin
         .from('tickets')
@@ -44,14 +45,16 @@ async function releaseClaim(ticketId) {
 }
 
 /**
- * Never throws: an email problem must not fail the analysis.
+ * Never throws: an alert problem must not fail the analysis.
  * @param {object} ticket  the ticket row as it was BEFORE this analysis saved its flag
  */
 export async function sendNumberRequestAlert({ ticket, summary, instances }) {
     try {
         if (!instances?.length) return;
         const to = process.env.NUMBER_ALERT_TO;
-        if (!to || !isMailConfigured()) return;
+        const emailOn = Boolean(to) && isMailConfigured();
+        const pushOn = isFcmEnabled();
+        if (!emailOn && !pushOn) return;
 
         const { claimed, tracked } = await claimTicket(ticket);
         if (!claimed) {
@@ -59,21 +62,27 @@ export async function sendNumberRequestAlert({ ticket, summary, instances }) {
             return;
         }
 
-        const email = buildNumberRequestEmail({
-            agentName: await resolveAgentName(ticket),
-            ticket,
-            summary,
-            instances,
-            dashboardUrl: process.env.DASHBOARD_URL
-        });
+        const agentName = await resolveAgentName(ticket);
+        let delivered = false;
 
-        try {
-            await sendEmail({ to, ...email });
-        } catch (sendErr) {
-            if (tracked) await releaseClaim(ticket.id).catch(() => {});
-            throw sendErr;
+        if (pushOn) {
+            const push = await notifyAdminsNumberRequest({ ticketId: ticket.id, ...buildNumberRequestPush({ agentName, ticket, instances }) });
+            delivered = push.sent > 0;
         }
-        console.log(`📧 Number-request alert sent for ticket ${ticket.id}`);
+
+        if (emailOn) {
+            try {
+                const email = buildNumberRequestEmail({ agentName, ticket, summary, instances, dashboardUrl: process.env.DASHBOARD_URL });
+                await sendEmail({ to, ...email });
+                delivered = true;
+                console.log(`📧 Number-request email sent for ticket ${ticket.id}`);
+            } catch (err) {
+                console.error(`⚠️ Number-request email failed for ticket ${ticket.id}:`, err.message);
+            }
+        }
+
+        // Nothing went out: let a later re-analysis try again
+        if (!delivered && tracked) await releaseClaim(ticket.id).catch(() => {});
     } catch (err) {
         console.error(`⚠️ Number-request alert failed for ticket ${ticket?.id}:`, err.message);
     }
