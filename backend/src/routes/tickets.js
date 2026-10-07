@@ -11,6 +11,7 @@ import { getVisitSequence, getPreviousAnalysis, getVisitChain } from '../service
 import { analyzeAudio, runComparisonAnalysis } from '../services/vertexai.js';
 import { analyzePresalesAudio, triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
+import { normalizeBranch, loadBranchDirectory, applyTicketBranchFilter, ticketBranch } from '../services/branches.js';
 
 const router = Router();
 
@@ -1591,6 +1592,11 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             page = 1,
             limit = 12
         } = req.query;
+        const branch = normalizeBranch(req.query.branch);
+        const branchDir = await loadBranchDirectory().catch((err) => {
+            console.warn('Branch directory unavailable:', err.message);
+            return null;
+        });
 
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
@@ -1627,6 +1633,8 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
                 query = query.eq('source', source);
             }
         }
+
+        query = applyTicketBranchFilter(query, branch, branchDir, { presales: source === 'telecmi' });
 
         // Created by filter
         if (createdBy && createdBy !== 'all') {
@@ -1840,6 +1848,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         const enrichedTickets = resultTickets.map((t) => ({
             ...t,
             is_flagged: flaggedIds.has(t.id),
+            branch: ticketBranch(t, branchDir),
         }));
 
         // Apply flaggedOnly filter
@@ -2451,6 +2460,9 @@ router.post('/:id/delete', authMiddleware, requireAdmin, handleTicketDelete);
  */
 router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) => {
     try {
+        const branch = normalizeBranch(req.query.branch);
+        const branchDir = branch ? await loadBranchDirectory() : null;
+
         if (req.query.source === 'telecmi') {
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
@@ -2460,13 +2472,15 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
             let rangeFrom = 0;
             const PAGE = 1000;
             while (true) {
-                const { data: page, error: pageError } = await supabaseAdmin
-                    .from('tickets')
-                    .select('createdat')
-                    .eq('source', 'telecmi')
-                    .is('deletedat', null)
-                    .gte('createdat', oneYearAgo.toISOString())
-                    .range(rangeFrom, rangeFrom + PAGE - 1);
+                const { data: page, error: pageError } = await applyTicketBranchFilter(
+                    supabaseAdmin
+                        .from('tickets')
+                        .select('createdat')
+                        .eq('source', 'telecmi')
+                        .is('deletedat', null)
+                        .gte('createdat', oneYearAgo.toISOString()),
+                    branch, branchDir, { presales: true }
+                ).range(rangeFrom, rangeFrom + PAGE - 1);
                 if (pageError) throw pageError;
                 if (!page || page.length === 0) break;
                 allTickets.push(...page);
@@ -2483,21 +2497,27 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
             return res.json(Object.entries(counts).map(([date, count]) => ({ date, count })));
         }
 
-        const { data, error } = await supabaseAdmin.rpc('get_ticket_heatmap');
+        // The RPC has no branch filter: with a branch picked, count from the tickets table instead
+        const { data, error } = branch
+            ? { data: null, error: new Error('branch filter') }
+            : await supabaseAdmin.rpc('get_ticket_heatmap');
 
         if (error) {
-            console.log('RPC get_ticket_heatmap not found, falling back to raw query');
+            if (!branch) console.log('RPC get_ticket_heatmap not found, falling back to raw query');
 
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-            const { data: tickets, error: queryError } = await supabaseAdmin
-                .from('tickets')
-                .select('createdat')
-                .neq('source', 'telecmi')
-                .neq('visittype', 'telecmi_call')
-                .is('deletedat', null)
-                .gte('createdat', oneYearAgo.toISOString());
+            const { data: tickets, error: queryError } = await applyTicketBranchFilter(
+                supabaseAdmin
+                    .from('tickets')
+                    .select('createdat')
+                    .neq('source', 'telecmi')
+                    .neq('visittype', 'telecmi_call')
+                    .is('deletedat', null)
+                    .gte('createdat', oneYearAgo.toISOString()),
+                branch, branchDir, { presales: false }
+            );
 
             if (queryError) throw queryError;
 

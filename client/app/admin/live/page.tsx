@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { getToken, API_URL } from '@/stores/authStore';
+import { useBranchStore, withBranch } from '@/stores/branchStore';
+import { BranchTag } from '@/components/BranchPicker';
 import {
     BatteryFull,
     BatteryLow,
@@ -37,6 +39,7 @@ interface EmployeeStatus {
     user: {
         id: string;
         fullname: string;
+        branch?: string;
         email: string;
         role: 'employee' /* | 'intern' */ | string;
         avatar_url?: string;
@@ -128,12 +131,14 @@ export default function LiveStatusPage() {
         }, 900);
     };
 
+    const branch = useBranchStore((s) => s.branch);
+
     const fetchStatus = useCallback(async () => {
         try {
             const token = await getToken();
             if (!token) return;
 
-            const response = await fetch(`${API_URL}/employee/status`, {
+            const response = await fetch(`${API_URL}${withBranch('/employee/status', branch)}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -148,7 +153,7 @@ export default function LiveStatusPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [branch]);
 
     useEffect(() => {
         void fetchStatus();
@@ -343,7 +348,7 @@ export default function LiveStatusPage() {
                                                         />
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="truncate font-semibold text-[var(--semantic-text-primary)]">{user.fullname}</p>
+                                                        <p className="flex items-center gap-1.5 truncate font-semibold text-[var(--semantic-text-primary)]">{user.fullname}<BranchTag branch={user.branch} /></p>
                                                         <p className="truncate text-xs text-[var(--semantic-text-muted)]">{user.email}</p>
                                                     </div>
                                                 </div>

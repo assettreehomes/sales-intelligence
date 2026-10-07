@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
+import { normalizeBranch, loadBranchDirectory, ticketBranch } from '../services/branches.js';
 
 const router = Router();
 
@@ -57,8 +58,14 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(500).json({ error: 'Failed to fetch users' });
         }
 
+        const branch = normalizeBranch(req.query.branch);
+        const branchDir = await loadBranchDirectory();
+        const branchUsers = (users || [])
+            .map(user => ({ ...user, branch: branchDir.users.get(user.id) || 'chrompet' }))
+            .filter(user => !branch || user.branch === branch);
+
         // 2. Fetch tickets in period (exclude TeleCMI — those belong to Presales Performance)
-        const { data: tickets, error: ticketsError } = await supabaseAdmin
+        const { data: allTickets, error: ticketsError } = await supabaseAdmin
             .from('tickets')
             .select('id, status, rating, createdby, createdat, istrainingcall, visittype, client_id')
             .neq('source', 'telecmi')
@@ -70,6 +77,9 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
             console.error('Analytics tickets error:', ticketsError);
             return res.status(500).json({ error: 'Failed to fetch tickets' });
         }
+        const tickets = branch
+            ? (allTickets || []).filter(t => ticketBranch(t, branchDir) === branch)
+            : allTickets;
 
         // 3. Fetch analysis results for those tickets
         const ticketIds = (tickets || []).filter(t => t.status === 'analyzed').map(t => t.id);
@@ -109,7 +119,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
         }
 
         // 4. Build per-employee stats
-        const employees = (users || []).map(user => {
+        const employees = branchUsers.map(user => {
             const empTickets = ticketsByCreator.get(user.id) || [];
             const analyzedTickets = empTickets.filter(t => t.status === 'analyzed');
             const totalCount = empTickets.length;
@@ -182,6 +192,7 @@ router.get('/employees', authMiddleware, requireAdmin, async (req, res) => {
                 avatar_url: user.avatar_url,
                 email: user.email,
                 role: user.role,
+                branch: user.branch,
                 total_tickets: totalCount,
                 analyzed_tickets: analyzedCount,
                 failed_tickets: failedCount,
@@ -307,6 +318,9 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
         if (employeesError) throw employeesError;
         if (teamsError) throw teamsError;
 
+        const branch = normalizeBranch(req.query.branch);
+        const branchDir = await loadBranchDirectory();
+
         // Paginate tickets — PostgREST caps at 1000 rows by default; with 1900+ tickets we must page through all
         const tickets = [];
         {
@@ -323,7 +337,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
                     .range(rangeFrom, rangeFrom + PAGE - 1);
                 if (pageError) throw pageError;
                 if (!page || page.length === 0) break;
-                tickets.push(...page);
+                tickets.push(...(branch ? page.filter((ticket) => ticketBranch({ ...ticket, source: 'telecmi' }, branchDir) === branch) : page));
                 if (page.length < PAGE) break;
                 rangeFrom += PAGE;
             }
@@ -462,7 +476,8 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             if (!agentBuckets.has(agentId)) {
                 agentBuckets.set(agentId, buildBucket(agentId, employee?.full_name || ticket.selldo_agent_name || 'Unmapped Agent', {
                     email: employee?.email || ticket.selldo_agent_email || null,
-                    team_id: ticket.presales_team_id || employee?.team_id || null
+                    team_id: ticket.presales_team_id || employee?.team_id || null,
+                    branch: ticketBranch({ ...ticket, source: 'telecmi' }, branchDir)
                 }));
             }
             addToBucket(agentBuckets.get(agentId), ticket, analysis);
@@ -472,7 +487,8 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             const leader = team?.team_leader_id ? employeeMap.get(team.team_leader_id) : null;
             if (!teamBuckets.has(teamId)) {
                 teamBuckets.set(teamId, buildBucket(teamId, team?.name || ticket.selldo_team_name || 'Unmapped Team', {
-                    team_leader: leader ? { id: leader.id, full_name: leader.full_name, email: leader.email } : null
+                    team_leader: leader ? { id: leader.id, full_name: leader.full_name, email: leader.email } : null,
+                    branch: branchDir.teams.get(ticket.presales_team_id) || ticketBranch({ ...ticket, source: 'telecmi' }, branchDir)
                 }));
             }
             addToBucket(teamBuckets.get(teamId), ticket, analysis);
@@ -568,13 +584,19 @@ router.get('/leaderboard', authMiddleware, requireAdmin, async (req, res) => {
             .in('role', ['employee', 'admin', 'superadmin'])
             .eq('status', 'active');
 
-        const { data: tickets } = await supabaseAdmin
+        const branch = normalizeBranch(req.query.branch);
+        const branchDir = await loadBranchDirectory();
+
+        const { data: allTickets } = await supabaseAdmin
             .from('tickets')
             .select('id, status, rating, createdby, istrainingcall')
             .neq('source', 'telecmi')
             .neq('visittype', 'telecmi_call')
             .is('deletedat', null)
             .gte('createdat', fromDate.toISOString());
+        const tickets = branch
+            ? (allTickets || []).filter(t => ticketBranch(t, branchDir) === branch)
+            : allTickets;
 
         const ticketIds = (tickets || []).filter(t => t.status === 'analyzed').map(t => t.id);
         let analysisRows = [];
@@ -601,7 +623,9 @@ router.get('/leaderboard', authMiddleware, requireAdmin, async (req, res) => {
             if (tks.length > maxTickets) maxTickets = tks.length;
         }
 
-        const leaderboard = (users || []).map(user => {
+        const leaderboard = (users || [])
+            .filter(user => !branch || (branchDir.users.get(user.id) || 'chrompet') === branch)
+            .map(user => {
             const empTickets = ticketsByCreator.get(user.id) || [];
             if (empTickets.length === 0) return null;
 

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { getToken, API_URL } from '@/stores/authStore';
 import { notifyError, notifySuccess } from '@/lib/toast';
 import { CalendarClock, CheckCircle2, Loader2, MessageSquareText, UserRoundPlus } from 'lucide-react';
+import { useBranchStore, withBranch } from '@/stores/branchStore';
 
 type VisitType = 'site_visit' | 'follow_up' | 'closing' | 'inquiry' | 'other';
 
@@ -52,6 +53,8 @@ function AssignPageContent() {
     const [expectedRecordingTime, setExpectedRecordingTime] = useState('');
     const [notes, setNotes] = useState('');
 
+    const branch = useBranchStore((s) => s.branch);
+
     useEffect(() => {
         const fetchEmployees = async () => {
             setLoadingEmployees(true);
@@ -63,7 +66,7 @@ function AssignPageContent() {
                     throw new Error('Authentication required');
                 }
 
-                const response = await fetch(`${API_URL}/users?role=employee`, {
+                const response = await fetch(`${API_URL}${withBranch('/users?role=employee', branch)}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 
@@ -73,7 +76,10 @@ function AssignPageContent() {
                 }
 
                 const data = await response.json();
+                const users: { id: string }[] = data.users || [];
                 setEmployees(data.users || []);
+                // Drop a pick that is not in the newly chosen branch
+                setEmployeeId((current) => (current && !users.some((user) => user.id === current) ? '' : current));
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to load employees';
                 setError(message);
@@ -84,7 +90,7 @@ function AssignPageContent() {
         };
 
         void fetchEmployees();
-    }, []);
+    }, [branch]);
 
     const handleAssignDraft = async (event: React.FormEvent) => {
         event.preventDefault();

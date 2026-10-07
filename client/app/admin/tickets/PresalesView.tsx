@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePresalesStore } from '@/stores/presalesStore';
 import {
@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { TicketHeatmap } from '@/components/TicketHeatmap';
+import { useBranchStore } from '@/stores/branchStore';
+import { BranchTag } from '@/components/BranchPicker';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -163,9 +165,20 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
         }
     }
 
+    const branch = useBranchStore((s) => s.branch);
+    const lastBranchRef = useRef(branch);
+
     useEffect(() => {
+        // A new branch starts from page 1 (the page change then triggers the fetch)
+        if (lastBranchRef.current !== branch) {
+            lastBranchRef.current = branch;
+            if (currentPage !== 1) {
+                setPage(1);
+                return;
+            }
+        }
         fetchTickets();
-    }, [filters, currentPage, fetchTickets]);
+    }, [filters, currentPage, fetchTickets, branch, setPage]);
 
     useEffect(() => {
         const normalized = searchInput.trim();
@@ -368,6 +381,7 @@ export default function PresalesView({ searchInput, setSearchInput }: PresalesVi
                                             <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
                                                 <PhoneCall className="w-2.5 h-2.5" /> TeleCMI
                                             </span>
+                                            <BranchTag branch={ticket.branch} />
                                             {ticket.selldo_enriched_at && (
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                                                     <BadgeCheck className="w-2.5 h-2.5" /> Sell.Do

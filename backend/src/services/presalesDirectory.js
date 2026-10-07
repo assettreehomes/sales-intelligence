@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase.js';
+import { loadBranchDirectory, DEFAULT_BRANCH } from './branches.js';
 
 function cleanText(value) {
     if (value === null || value === undefined) return null;
@@ -122,7 +123,8 @@ export async function resolvePresalesOrg({ agent_name, agent_email, team_name } 
     };
 }
 
-export async function getPresalesDirectorySnapshot() {
+/** @param {object} [opts] { branch: 'chrompet' | 'pammal' } limits teams and people to one branch */
+export async function getPresalesDirectorySnapshot({ branch = null } = {}) {
     const [{ data: teams, error: teamsError }, { data: employees, error: employeesError }] = await Promise.all([
         supabaseAdmin
             .from('presales_teams')
@@ -137,15 +139,20 @@ export async function getPresalesDirectorySnapshot() {
     if (teamsError) throw teamsError;
     if (employeesError) throw employeesError;
 
-    const employeeById = new Map((employees || []).map((employee) => [employee.id, employee]));
+    const branchDir = await loadBranchDirectory().catch(() => null);
+    const inBranch = (row) => !branch || row.branch === branch;
+    const branchedEmployees = (employees || [])
+        .map((employee) => ({ ...employee, branch: branchDir?.agents.get(employee.id) || DEFAULT_BRANCH }));
+    const employeeById = new Map(branchedEmployees.map((employee) => [employee.id, employee]));
     const enrichedTeams = (teams || []).map((team) => ({
         ...team,
+        branch: branchDir?.teams.get(team.id) || DEFAULT_BRANCH,
         team_leader: team.team_leader_id ? employeeById.get(team.team_leader_id) || null : null,
-        members: (employees || []).filter((employee) => employee.team_id === team.id && employee.role === 'agent')
+        members: branchedEmployees.filter((employee) => employee.team_id === team.id && employee.role === 'agent' && inBranch(employee))
     }));
 
     return {
-        teams: enrichedTeams,
-        employees: employees || []
+        teams: enrichedTeams.filter((team) => inBranch(team) || team.members.length > 0),
+        employees: branchedEmployees.filter(inBranch)
     };
 }

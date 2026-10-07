@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
+import { normalizeBranch, loadBranchDirectory, DEFAULT_BRANCH } from '../services/branches.js';
 
 const router = Router();
 
@@ -69,12 +70,18 @@ router.post('/heartbeat', authMiddleware, async (req, res) => {
 router.get('/status', authMiddleware, requireAdmin, async (req, res) => {
     try {
         // 1. Get all employees/interns
-        const { data: users, error: usersError } = await supabaseAdmin
+        const { data: allUsers, error: usersError } = await supabaseAdmin
             .from('users')
             .select('id, fullname, email, role, avatar_url')
             .in('role', ['employee', 'intern']);
 
         if (usersError) throw usersError;
+
+        const branch = normalizeBranch(req.query.branch);
+        const branchDir = await loadBranchDirectory().catch(() => null);
+        const users = allUsers
+            .map(u => ({ ...u, branch: branchDir?.users.get(u.id) || DEFAULT_BRANCH }))
+            .filter(u => !branch || u.branch === branch);
 
         // 2. Get their status rows
         const userIds = users.map(u => u.id);

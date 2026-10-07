@@ -64,6 +64,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { useBranchStore, withBranch } from '@/stores/branchStore';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -353,13 +354,15 @@ function PresalesPerformanceContent() {
         });
     }
 
+    const branch = useBranchStore((s) => s.branch);
+
     const loadData = useCallback(
         async (selectedPeriod: string, silent = false) => {
             if (!session?.access_token) return;
             if (!silent) setLoading(true);
             setError('');
             try {
-                const res = await fetch(`${API_URL}/analytics/presales-performance?period=${selectedPeriod}`, {
+                const res = await fetch(`${API_URL}${withBranch(`/analytics/presales-performance?period=${selectedPeriod}`, branch)}`, {
                     headers: { Authorization: `Bearer ${session.access_token}` },
                 });
                 const payload = (await res.json()) as PresalesPerformance & { error?: string };
@@ -372,7 +375,7 @@ function PresalesPerformanceContent() {
                 if (!silent) setLoading(false);
             }
         },
-        [session?.access_token]
+        [session?.access_token, branch]
     );
 
     useEffect(() => {

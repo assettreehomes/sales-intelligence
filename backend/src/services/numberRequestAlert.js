@@ -6,13 +6,15 @@
 //   NUMBER_ALERT_TO   email recipients, comma separated (e.g. hr@assettreehomes.com); unset = no email
 //   DASHBOARD_URL     optional, adds an "Open the call" link to the email
 //   SYNOLOGY_CHAT_WEBHOOK_URL  posts the alert to a Synology Chat channel (see synologyChat.js); unset = off
-//   SYNOLOGY_CHAT_EXCLUDE      comma separated; calls whose agent or team name contains one are not
-//                              posted to Synology Chat (default "pammal"); email and push still go
+//   SYNOLOGY_CHAT_EXCLUDE      comma separated; calls from a branch named here (default "pammal" =
+//                              Asset Tree Homes Pammal), or whose agent or team name contains one, are
+//                              not posted to Synology Chat; email and push still go
 //   + the MAIL_* settings in mailer.js; the push uses the existing FCM_ENABLED setup in fcm.js
 import { supabaseAdmin } from '../config/supabase.js';
 import { sendEmail, isMailConfigured } from './mailer.js';
 import { isFcmEnabled, notifyAdminsNumberRequest } from './fcm.js';
 import { postSynologyChat, isSynologyChatConfigured } from './synologyChat.js';
+import { loadBranchDirectory, ticketBranch } from './branches.js';
 import { buildNumberRequestEmail, buildNumberRequestPush, buildNumberRequestChat, parseExcludeList, isExcludedFromChat } from '../utils/numberRequestEmail.js';
 
 const isMissingColumn = err => err && (err.code === '42703' || err.code === 'PGRST204' || /number_alert_claimed_at|hr_email_sent_at/.test(err.message || ''));
@@ -100,7 +102,9 @@ export async function sendNumberRequestAlert({ ticket, summary, instances }) {
 
         if (chatOn) {
             const excluded = parseExcludeList(process.env.SYNOLOGY_CHAT_EXCLUDE ?? 'pammal');
-            if (isExcludedFromChat({ agentName, teamName: await resolveTeamName(ticket) }, excluded)) {
+            const branchDir = await loadBranchDirectory().catch(() => null);
+            const branch = branchDir ? ticketBranch(ticket, branchDir) : null;
+            if (isExcludedFromChat({ agentName, teamName: await resolveTeamName(ticket), branch }, excluded)) {
                 console.log(`💬 Synology Chat skipped for ticket ${ticket.id} (excluded agent/team)`);
             } else {
                 try {

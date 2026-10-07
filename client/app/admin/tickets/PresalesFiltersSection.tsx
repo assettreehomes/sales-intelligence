@@ -13,6 +13,7 @@ import {
     filterValueClass,
 } from '@/components/filter-ui';
 import { ticketsClearFiltersClass } from './components/tickets-ui';
+import { useBranchStore } from '@/stores/branchStore';
 
 const STATUS_OPTIONS = [
     { value: 'all', label: 'All Status' },
@@ -78,9 +79,21 @@ export function PresalesFiltersSection({ setSearchInput }: PresalesFiltersSectio
     const selectedAgent = employees.find((e) => e.id === filters.agentFilter);
     const teamLeaders = employees.filter((e) => e.role === 'team_leader');
 
+    const branch = useBranchStore((s) => s.branch);
+    const lastBranchRef = useRef(branch);
+
     useEffect(() => {
+        // Another branch has other people: reload the list and drop a person picked from the old one
+        if (lastBranchRef.current !== branch) {
+            lastBranchRef.current = branch;
+            if (filters.agentFilter !== 'all') setFilter('agentFilter', 'all');
+            if (filters.teamFilter !== 'all') setFilter('teamFilter', 'all');
+            if (filters.teamLeaderFilter !== 'all') setFilter('teamLeaderFilter', 'all');
+            fetchEmployees();
+            return;
+        }
         if (!employeesLoaded) fetchEmployees();
-    }, [employeesLoaded, fetchEmployees]);
+    }, [employeesLoaded, fetchEmployees, branch, filters, setFilter]);
 
     useEffect(() => {
         function handle(e: MouseEvent) {

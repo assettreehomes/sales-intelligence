@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { logActivity } from '../services/activityLog.js';
+import { normalizeBranch, loadBranchDirectory, clearBranchCache, DEFAULT_BRANCH } from '../services/branches.js';
 import multer from 'multer';
 
 const upload = multer({
@@ -19,6 +20,7 @@ const router = Router();
 router.get('/', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { role } = req.query;
+        const branch = normalizeBranch(req.query.branch);
         let query = supabaseAdmin
             .from('users')
             .select('id, email, fullname, role, status, avatar_url')
@@ -26,7 +28,11 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         if (role) query = query.eq('role', role);
         const { data: users, error } = await query;
         if (error) return res.status(500).json({ error: 'Failed to fetch users' });
-        res.json({ users });
+        const branchDir = await loadBranchDirectory().catch(() => null);
+        const withBranch = (users || [])
+            .map(user => ({ ...user, branch: branchDir?.users.get(user.id) || DEFAULT_BRANCH }))
+            .filter(user => !branch || user.branch === branch);
+        res.json({ users: withBranch });
     } catch (error) {
         res.status(500).json({ error: 'Failed to list users' });
     }
@@ -41,6 +47,10 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { fullname, email, password, role: requestedRole } = req.body;
         const role = requestedRole || 'employee';
+        const branch = req.body.branch === undefined ? null : normalizeBranch(req.body.branch);
+        if (req.body.branch !== undefined && req.body.branch !== null && req.body.branch !== '' && !branch) {
+            return res.status(400).json({ error: 'branch must be chrompet or pammal' });
+        }
 
         if (!fullname?.trim() || !email?.trim() || !password?.trim()) {
             return res.status(400).json({ error: 'fullname, email and password are required' });
@@ -84,7 +94,8 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             email: normalizedEmail,
             fullname: fullname.trim(),
             role,
-            status: 'active'
+            status: 'active',
+            ...(branch ? { branch } : {})
         };
 
         const { data: user, error: insertError } = await supabaseAdmin
@@ -100,6 +111,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(500).json({ error: 'Failed to create user profile' });
         }
 
+        clearBranchCache();
         await logActivity(req, 'user.created', { email: normalizedEmail, fullname: fullname.trim() });
 
         return res.status(201).json({ success: true, user });
@@ -157,14 +169,19 @@ router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
 /**
  * PATCH /users/:id
  * Edit employee profile — admin only
- * Body: { fullname?, email?, role?, telecmi_agent_id? }
+ * Body: { fullname?, email?, role?, telecmi_agent_id?, branch? ('chrompet' | 'pammal') }
  */
 router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         const { fullname, email, role, telecmi_agent_id } = req.body;
+        const hasBranch = req.body.branch !== undefined;
+        const branch = hasBranch ? normalizeBranch(req.body.branch) : null;
+        if (hasBranch && req.body.branch !== null && req.body.branch !== '' && !branch) {
+            return res.status(400).json({ error: 'branch must be chrompet or pammal' });
+        }
 
-        if (!fullname?.trim() && !email?.trim() && !role?.trim() && telecmi_agent_id === undefined) {
+        if (!fullname?.trim() && !email?.trim() && !role?.trim() && telecmi_agent_id === undefined && !hasBranch) {
             return res.status(400).json({ error: 'Provide at least one field to update' });
         }
 
@@ -205,6 +222,8 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
             updates.telecmi_agent_id = telecmi_agent_id?.trim() || null;
         }
 
+        if (hasBranch) updates.branch = branch;
+
         // Update users table
         const { data: updatedUser, error: updateError } = await supabaseAdmin
             .from('users')
@@ -216,6 +235,10 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
         if (updateError) {
             console.error('User profile update error:', updateError);
             return res.status(500).json({ error: 'Failed to update profile' });
+        }
+        if (hasBranch) {
+            clearBranchCache();
+            updatedUser.branch = branch || DEFAULT_BRANCH;
         }
 
         // Sync email to Supabase Auth if changed

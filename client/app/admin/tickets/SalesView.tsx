@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTicketsStore } from '@/stores/ticketsStore';
 import {
@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { TicketHeatmap } from '@/components/TicketHeatmap';
+import { useBranchStore } from '@/stores/branchStore';
+import { BranchTag } from '@/components/BranchPicker';
 
 function getOutcomeBadge(outcome?: string | null) {
     const map: Record<string, { label: string; className: string }> = {
@@ -49,9 +51,20 @@ export default function SalesView({ searchInput, setSearchInput }: SalesViewProp
     } = useTicketsStore();
     const [deletingTicketIds, setDeletingTicketIds] = useState<Set<string>>(new Set());
 
+    const branch = useBranchStore((s) => s.branch);
+    const lastBranchRef = useRef(branch);
+
     useEffect(() => {
+        // A new branch starts from page 1 (the page change then triggers the fetch)
+        if (lastBranchRef.current !== branch) {
+            lastBranchRef.current = branch;
+            if (currentPage !== 1) {
+                setPage(1);
+                return;
+            }
+        }
         fetchTickets();
-    }, [filters, currentPage, fetchTickets]);
+    }, [filters, currentPage, fetchTickets, branch, setPage]);
 
     useEffect(() => {
         const normalized = searchInput.trim();
@@ -272,6 +285,7 @@ export default function SalesView({ searchInput, setSearchInput }: SalesViewProp
                                                     <span className="text-xs font-medium text-gray-600 truncate max-w-[100px]">
                                                         {ticket.creator_details?.fullname?.split(' ')[0] || 'Agent'}
                                                     </span>
+                                                    <BranchTag branch={ticket.branch} />
                                                 </div>
 
                                                 {/* Date */}

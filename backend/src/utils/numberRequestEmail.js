@@ -124,8 +124,12 @@ export function parseExcludeList(value) {
     return String(value ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
-/** True when the agent's name or team name contains any excluded word (case-insensitive). */
-export function isExcludedFromChat({ agentName, teamName }, excluded) {
+/**
+ * True when the call's branch is an excluded word (e.g. "pammal" -> Asset Tree Homes Pammal), or,
+ * as a fallback for calls without a branch, the agent's name or team name contains one (case-insensitive).
+ */
+export function isExcludedFromChat({ agentName, teamName, branch }, excluded) {
+    if (branch && excluded.includes(String(branch).toLowerCase())) return true;
     const hay = `${agentName ?? ''} | ${teamName ?? ''}`.toLowerCase();
     return excluded.some(word => hay.includes(word));
 }

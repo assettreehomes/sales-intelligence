@@ -19,6 +19,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { getToken, API_URL } from '@/stores/authStore';
+import { BRANCH_OPTIONS, branchName, useBranchStore, withBranch, type Branch } from '@/stores/branchStore';
 import {
     AlertCircle,
     CheckCircle2,
@@ -45,6 +46,7 @@ interface Employee {
     status: 'active' | 'inactive';
     last_login?: string;
     telecmi_agent_id?: string | null;
+    branch?: Branch;
 }
 
 interface PresalesEmployee {
@@ -56,6 +58,7 @@ interface PresalesEmployee {
     status: 'active' | 'inactive';
     selldo_agent_name?: string | null;
     telecmi_agent_id?: string | null;
+    branch?: Branch;
 }
 
 interface PresalesTeam {
@@ -66,6 +69,8 @@ interface PresalesTeam {
     team_leader?: PresalesEmployee | null;
     members?: PresalesEmployee[];
 }
+
+const BRANCH_CHOICES = BRANCH_OPTIONS.filter((option) => option.value !== 'all').map((option) => ({ value: option.value, label: option.short }));
 
 function generatePassword(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
@@ -117,11 +122,13 @@ function EmployeesPageContent() {
         setTimeout(() => setToast(null), 4000);
     }, []);
 
+    const branch = useBranchStore((s) => s.branch);
+
     const fetchEmployees = useCallback(async () => {
         setLoading(true);
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/users`, {
+            const response = await fetch(`${API_URL}${withBranch('/users', branch)}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await response.json();
@@ -135,13 +142,13 @@ function EmployeesPageContent() {
         } finally {
             setLoading(false);
         }
-    }, [showToast]);
+    }, [showToast, branch]);
 
     const fetchPresalesDirectory = useCallback(async () => {
         setPresalesLoading(true);
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/presales/directory`, {
+            const response = await fetch(`${API_URL}${withBranch('/presales/directory', branch)}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await response.json();
@@ -156,7 +163,7 @@ function EmployeesPageContent() {
         } finally {
             setPresalesLoading(false);
         }
-    }, [showToast]);
+    }, [showToast, branch]);
 
     useEffect(() => {
         void fetchEmployees();
@@ -263,6 +270,8 @@ function EmployeesPageContent() {
                     email: email.trim(),
                     password: password.trim(),
                     role: newRole,
+                    // New staff join the branch picked in the sidebar
+                    ...(branch !== 'all' ? { branch } : {}),
                 }),
             });
             const data = await response.json();
@@ -344,6 +353,7 @@ function EmployeesPageContent() {
                     email: presalesEmail.trim() || null,
                     role: presalesRole,
                     team_id: presalesRole === 'agent' ? presalesTeamId || null : null,
+                    ...(branch !== 'all' ? { branch } : {}),
                 }),
             });
             const data = await response.json();
@@ -372,6 +382,7 @@ function EmployeesPageContent() {
                 body: JSON.stringify({
                     name: teamName.trim(),
                     team_leader_id: teamLeaderId || null,
+                    ...(branch !== 'all' ? { branch } : {}),
                 }),
             });
             const data = await response.json();
@@ -400,6 +411,42 @@ function EmployeesPageContent() {
             await fetchPresalesDirectory();
         } catch (error) {
             showToast('error', error instanceof Error ? error.message : 'Failed to update team assignment');
+        }
+    };
+
+    const updateUserBranch = async (employee: Employee, next: string) => {
+        if (next === (employee.branch || 'chrompet')) return;
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/users/${employee.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ branch: next }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to change branch');
+            showToast('success', `${employee.fullname} moved to ${branchName(next)}`);
+            await fetchEmployees();
+        } catch (error) {
+            showToast('error', error instanceof Error ? error.message : 'Failed to change branch');
+        }
+    };
+
+    const updatePresalesBranch = async (employee: PresalesEmployee, next: string) => {
+        if (next === (employee.branch || 'chrompet')) return;
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/presales/employees/${employee.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ branch: next }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to change branch');
+            showToast('success', `${employee.full_name} moved to ${branchName(next)}`);
+            await fetchPresalesDirectory();
+        } catch (error) {
+            showToast('error', error instanceof Error ? error.message : 'Failed to change branch');
         }
     };
 
@@ -798,6 +845,7 @@ function EmployeesPageContent() {
                                             <TableRow>
                                                 <TableHead>Name</TableHead>
                                                 <TableHead>Email</TableHead>
+                                                <TableHead>Branch</TableHead>
                                                 <TableHead>Status</TableHead>
                                                 <TableHead>Role</TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
@@ -808,6 +856,15 @@ function EmployeesPageContent() {
                                                 <TableRow key={employee.id}>
                                                     <TableCell><p className="font-semibold text-[var(--semantic-text-primary)]">{employee.fullname}</p></TableCell>
                                                     <TableCell className="text-[var(--semantic-text-secondary)]">{employee.email}</TableCell>
+                                                    <TableCell>
+                                                        <FilterDropdown
+                                                            variant="bare"
+                                                            value={employee.branch || 'chrompet'}
+                                                            onChange={(value) => { void updateUserBranch(employee, value); }}
+                                                            className="min-w-[8rem]"
+                                                            options={BRANCH_CHOICES}
+                                                        />
+                                                    </TableCell>
                                                     <TableCell><Badge variant={employee.status === 'active' ? 'success' : 'secondary'} className="capitalize">{employee.status}</Badge></TableCell>
                                                     <TableCell>
                                                         {employee.role !== 'employee' ? (
@@ -945,6 +1002,7 @@ function EmployeesPageContent() {
                                                     <TableHead>Name</TableHead>
                                                     <TableHead>Role</TableHead>
                                                     <TableHead>Team</TableHead>
+                                                    <TableHead>Branch</TableHead>
                                                     <TableHead>Email</TableHead>
                                                 </TableRow>
                                             </TableHeader>
@@ -966,6 +1024,15 @@ function EmployeesPageContent() {
                                                             ) : (
                                                                 <span className="text-sm text-[var(--semantic-text-muted)]">Can lead teams</span>
                                                             )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <FilterDropdown
+                                                                variant="bare"
+                                                                value={employee.branch || 'chrompet'}
+                                                                onChange={(value) => { void updatePresalesBranch(employee, value); }}
+                                                                className="min-w-[8rem]"
+                                                                options={BRANCH_CHOICES}
+                                                            />
                                                         </TableCell>
                                                         <TableCell className="text-[var(--semantic-text-secondary)]">{employee.email || '-'}</TableCell>
                                                     </TableRow>
