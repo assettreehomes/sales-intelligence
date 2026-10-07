@@ -75,6 +75,78 @@ async function deactivateInvalidTokens(deviceIds, supabase) {
     }
 }
 
+async function sendToDevices(devices, message, { supabase, messagingFactory, timeoutMs }) {
+    const messaging = messagingFactory();
+    const invalidDeviceIds = [];
+    let sent = 0;
+
+    for (let index = 0; index < devices.length; index += MAX_MULTICAST_TOKENS) {
+        const batch = devices.slice(index, index + MAX_MULTICAST_TOKENS);
+        const response = await withTimeout(
+            messaging.sendEachForMulticast({ ...message, tokens: batch.map((device) => device.fcm_token) }),
+            timeoutMs
+        );
+
+        sent += response.successCount;
+        response.responses.forEach((result, responseIndex) => {
+            if (!result.success && isInvalidFcmTokenError(result.error)) {
+                invalidDeviceIds.push(batch[responseIndex].id);
+            }
+        });
+    }
+
+    await deactivateInvalidTokens(invalidDeviceIds, supabase);
+    return { sent, invalid: invalidDeviceIds.length };
+}
+
+/**
+ * Pushes a "number request" alert to every active admin/superadmin Android device.
+ * Uses a notification payload so Android shows it even when the app is closed.
+ * Never throws.
+ */
+export async function notifyAdminsNumberRequest({ ticketId, title, body }, {
+    supabase = supabaseAdmin,
+    messagingFactory = getFirebaseMessaging,
+    timeoutMs = getFcmTimeoutMs()
+} = {}) {
+    if (!isFcmEnabled()) return { status: 'disabled', sent: 0 };
+
+    try {
+        const { data: admins, error: adminError } = await supabase
+            .from('users')
+            .select('id')
+            .in('role', ['admin', 'superadmin'])
+            .eq('status', 'active');
+        if (adminError) throw adminError;
+        if (!admins?.length) return { status: 'no_devices', sent: 0 };
+
+        const { data: devices, error: deviceError } = await supabase
+            .from('push_devices')
+            .select('id, fcm_token')
+            .in('user_id', admins.map((admin) => admin.id))
+            .eq('platform', 'android')
+            .eq('is_active', true);
+        if (deviceError) throw deviceError;
+        if (!devices?.length) {
+            console.info(`FCM: no admin devices for number-request alert on ticket ${ticketId}`);
+            return { status: 'no_devices', sent: 0 };
+        }
+
+        const message = {
+            notification: { title, body },
+            // title/body repeated in data so the app can show it itself while it is open (data reaches onMessageReceived)
+            data: { ticket_id: String(ticketId), action: 'view_ticket', event_type: 'number_request', title, body },
+            android: { priority: 'high', notification: { tag: `number_request_${ticketId}` } }
+        };
+        const { sent, invalid } = await sendToDevices(devices, message, { supabase, messagingFactory, timeoutMs });
+        console.info(`FCM: sent ${sent}/${devices.length} number-request alert(s) for ticket ${ticketId}`);
+        return { status: 'sent', sent, invalid };
+    } catch (error) {
+        console.error(`FCM: number-request alert failed for ticket ${ticketId}:`, error.message || error);
+        return { status: 'failed', sent: 0 };
+    }
+}
+
 /**
  * Sends a non-blocking-for-business notification after a draft assignment has
  * already been committed. This function always contains FCM failures so callers
@@ -112,29 +184,10 @@ export async function notifyDraftAssignment({
             return { status: 'no_devices', sent: 0 };
         }
 
-        const messaging = messagingFactory();
         const message = buildDraftAssignmentMessage({ draftId, clientId, clientName, visitNumber, source, eventType });
-        const invalidDeviceIds = [];
-        let sent = 0;
-
-        for (let index = 0; index < devices.length; index += MAX_MULTICAST_TOKENS) {
-            const batch = devices.slice(index, index + MAX_MULTICAST_TOKENS);
-            const response = await withTimeout(
-                messaging.sendEachForMulticast({ ...message, tokens: batch.map((device) => device.fcm_token) }),
-                timeoutMs
-            );
-
-            sent += response.successCount;
-            response.responses.forEach((result, responseIndex) => {
-                if (!result.success && isInvalidFcmTokenError(result.error)) {
-                    invalidDeviceIds.push(batch[responseIndex].id);
-                }
-            });
-        }
-
-        await deactivateInvalidTokens(invalidDeviceIds, supabase);
+        const { sent, invalid } = await sendToDevices(devices, message, { supabase, messagingFactory, timeoutMs });
         console.info(`FCM: sent ${sent}/${devices.length} ${eventType} notification(s) for draft ${draftId}`);
-        return { status: 'sent', sent, invalid: invalidDeviceIds.length };
+        return { status: 'sent', sent, invalid };
     } catch (error) {
         console.error(`FCM: ${eventType} notification failed for draft ${draftId}:`, error.message || error);
         return { status: 'failed', sent: 0 };

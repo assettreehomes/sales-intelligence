@@ -6,6 +6,7 @@ import { getPresalesAnalysisPrompt } from '../prompts/analysis.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { maskNumbersDeep } from '../utils/maskPhone.js';
 import { dropWhatsAppGreetings } from '../utils/numberRequests.js';
+import { sendNumberRequestAlert } from './numberRequestAlert.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -395,6 +396,13 @@ export async function triggerPresalesAnalysis(ticketId, ticket) {
                 mobile_number_reason: numberRequests.instances[0]?.reason ?? null
             })
             .eq('id', ticketId);
+
+        // Email HR when the agent asked the customer for a number (once per call)
+        await sendNumberRequestAlert({
+            ticket: { ...enrichedTicket, id: ticketId },
+            summary: analysis.summary,
+            instances: numberRequests.instances
+        });
 
         // Delete the GCS file — it was only needed for Vertex AI analysis.
         // Audio playback is served via TeleCMI proxy using telecmi_filename.

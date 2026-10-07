@@ -59,6 +59,7 @@ sales-intelligence/
 - Adds `lead_qualification` (budget, timeline, purpose, appointment, lead quality)
 - Adds `call_authenticity` (real/fake detection)
 - Adds `mobile_number_alert` (detects if agent asked lead for mobile number — lead theft risk); sets `asked_mobile_number` boolean on ticket for fast filtering
+- When a call is flagged for a number request, `numberRequestAlert.js` emails HR ("Client Phone Number asked by <agent>": summary + transcript quotes) via `mailer.js` (Hostinger Email API) pushes the same alert to admin/superadmin Android devices (`notifyAdminsNumberRequest` in `fcm.js`) and posts it to a Synology Chat channel via incoming webhook (`synologyChat.js`, skipping agents/teams matching `SYNOLOGY_CHAT_EXCLUDE`); once per call via `tickets.number_alert_claimed_at`; `tickets.hr_email_sent_at` drives the Mail badge on presales ticket cards (`backend/migrations/2026-10-06_number_request_alerts.sql`)
 - Re-analyze (`POST /tickets/:id/analyze`) responds 202 immediately; analysis fires async to avoid request timeout; **Phase 2 cross-visit comparison is skipped** during re-analysis (site visits only)
 - No cross-visit comparison (each call is independent)
 - Sell.Do CRM data reconciled via `selldo_pending_calls` table
@@ -107,6 +108,7 @@ GET  /presales/directory      Presales org snapshot
 POST /telecmi/webhook              TeleCMI CDR webhook (no auth)
 POST /telecmi/sync                 Manual CDR back-fill (admin)
 POST /reports/whatsapp/send        Trigger WhatsApp daily report
+POST /reports/number-requests/send Send the daily number-request summary email now (also sent in-process at 9 pm IST)
 GET  /training                     Training library
 POST /drafts                       Create draft assignment (admin)
 GET  /drafts                       List drafts (employee sees own only)
@@ -140,6 +142,10 @@ VERTEX_BACKOFF_BASE_MS_PRO / VERTEX_BACKOFF_BASE_MS_FLASH (default 60000), VERTE
 TELECMI_APP_ID, TELECMI_SECRET
 WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_RECIPIENT_NUMBER, WHATSAPP_TEMPLATE_NAME
 SCHEDULER_SECRET
+MAIL_PROVIDER (hostinger), MAIL_API_KEY, MAIL_FROM, MAIL_FROM_NAME, HOSTINGER_MAILBOX_ID (optional)
+NUMBER_ALERT_TO (HR recipients for number-request alerts; unset = off), DASHBOARD_URL (optional link in alerts)
+NUMBER_SUMMARY_TO (daily number-request summary recipients; unset = off), NUMBER_SUMMARY_TIME (IST, default 21:00)
+SYNOLOGY_CHAT_WEBHOOK_URL (Synology Chat incoming webhook for number-request alerts; unset = off), SYNOLOGY_CHAT_EXCLUDE (default "pammal": agent/team names not posted to chat)
 CORS_ORIGIN
 PORT (default 3001)
 ```

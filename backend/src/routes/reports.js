@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { buildDailyReport, sendWhatsAppMessage, sendWhatsAppTemplate } from '../services/whatsapp.js';
 import { logActivity } from '../services/activityLog.js';
+import { sendNumberRequestSummary } from '../services/numberRequestSummary.js';
 
 const router = Router();
 
@@ -16,10 +17,11 @@ const router = Router();
  *  - If WHATSAPP_TEMPLATE_NAME is set → use template (works anytime, no 24h window needed)
  *  - Otherwise → free-form text (requires conversation window to be open)
  */
-router.post('/whatsapp/send', async (req, res) => {
+// Admin JWT or x-scheduler-secret; returns false (after responding 401) when neither is valid
+async function authorizeSchedulerOrAdmin(req, res) {
     const schedulerSecret = req.headers['x-scheduler-secret'];
     const expectedSecret  = process.env.SCHEDULER_SECRET;
-    const isScheduler = expectedSecret && schedulerSecret === expectedSecret;
+    const isScheduler = Boolean(expectedSecret && schedulerSecret === expectedSecret);
 
     if (!isScheduler) {
         try {
@@ -30,9 +32,17 @@ router.post('/whatsapp/send', async (req, res) => {
                 requireAdmin(req, res, (err) => err ? reject(err) : resolve());
             });
         } catch {
-            return res.status(401).json({ error: 'Unauthorized' });
+            res.status(401).json({ error: 'Unauthorized' });
+            return null;
         }
     }
+    return { isScheduler };
+}
+
+router.post('/whatsapp/send', async (req, res) => {
+    const auth = await authorizeSchedulerOrAdmin(req, res);
+    if (!auth) return;
+    const { isScheduler } = auth;
 
     try {
         console.log(`📲 WhatsApp report triggered by: ${isScheduler ? 'Cloud Scheduler' : req.user?.fullname || 'admin'}`);
@@ -62,6 +72,23 @@ router.post('/whatsapp/send', async (req, res) => {
     } catch (error) {
         console.error('❌ WhatsApp report error:', error);
         return res.status(500).json({ error: error.message || 'Failed to send report' });
+    }
+});
+
+/**
+ * POST /reports/number-requests/send
+ * Sends the daily number-request summary email now (the backend also sends it itself at 9 pm IST).
+ * Auth: admin JWT OR x-scheduler-secret header.
+ */
+router.post('/number-requests/send', async (req, res) => {
+    const auth = await authorizeSchedulerOrAdmin(req, res);
+    if (!auth) return;
+    try {
+        const result = await sendNumberRequestSummary();
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        console.error('❌ Number-request summary error:', error);
+        return res.status(500).json({ error: error.message || 'Failed to send summary' });
     }
 });
 
