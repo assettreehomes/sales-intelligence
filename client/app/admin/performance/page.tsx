@@ -46,6 +46,7 @@ import { KpiCard } from '@/components/dashboard/kpi-card';
 import { SectionCard } from '@/components/dashboard/section-card';
 import { StatusBadge } from '@/components/dashboard/status-badge';
 import { EmployeeDetailSheet, type EmployeeInsight } from '@/components/dashboard/employee-detail-sheet';
+import { useBranchStore, withBranch } from '@/stores/branchStore';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -200,6 +201,8 @@ export default function PerformancePage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isSuperAdmin = profile?.role === 'superadmin';
 
+    const branch = useBranchStore((s) => s.branch);
+
     const fetchData = useCallback(async () => {
         if (!session?.access_token) return;
         setLoading(true);
@@ -212,9 +215,9 @@ export default function PerformancePage() {
             };
 
             const [empRes, lbRes, statusRes] = await Promise.all([
-                fetch(`${API_URL}/analytics/employees?period=${period}`, { headers }),
-                fetch(`${API_URL}/analytics/leaderboard?period=${period}`, { headers }),
-                fetch(`${API_URL}/employee/status`, { headers })
+                fetch(`${API_URL}${withBranch(`/analytics/employees?period=${period}`, branch)}`, { headers }),
+                fetch(`${API_URL}${withBranch(`/analytics/leaderboard?period=${period}`, branch)}`, { headers }),
+                fetch(`${API_URL}${withBranch('/employee/status', branch)}`, { headers })
             ]);
 
             if (!empRes.ok || !lbRes.ok) {
@@ -246,7 +249,7 @@ export default function PerformancePage() {
         } finally {
             setLoading(false);
         }
-    }, [session, period]);
+    }, [session, period, branch]);
 
     useEffect(() => {
         void fetchData();

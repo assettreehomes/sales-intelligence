@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { getPresalesDirectorySnapshot } from '../services/presalesDirectory.js';
+import { normalizeBranch, clearBranchCache } from '../services/branches.js';
 
 const router = Router();
 
@@ -17,15 +18,23 @@ function cleanEmail(value) {
     return text ? text.toLowerCase() : null;
 }
 
+// '' / null clears the branch (agent follows the team, team follows its name); anything else must be a branch
+function branchUpdate(body) {
+    if (!('branch' in body)) return { skip: true };
+    if (body.branch === null || body.branch === '') return { value: null };
+    const value = normalizeBranch(body.branch);
+    return value ? { value } : { invalid: true };
+}
+
 function requireRole(value) {
     return value === 'team_leader' ? 'team_leader' : 'agent';
 }
 
 router.use(authMiddleware, requireAdmin);
 
-router.get('/directory', async (_req, res) => {
+router.get('/directory', async (req, res) => {
     try {
-        const snapshot = await getPresalesDirectorySnapshot();
+        const snapshot = await getPresalesDirectorySnapshot({ branch: normalizeBranch(req.query.branch) });
         res.json(snapshot);
     } catch (error) {
         console.error('Presales directory fetch error:', error);
@@ -68,6 +77,9 @@ router.post('/employees', async (req, res) => {
             selldo_agent_name: cleanText(req.body.selldo_agent_name) || (role === 'agent' ? fullName : null),
             telecmi_agent_id: cleanText(req.body.telecmi_agent_id)
         };
+        const branch = branchUpdate(req.body);
+        if (branch.invalid) return res.status(400).json({ error: 'branch must be chrompet or pammal' });
+        if (branch.value) payload.branch = branch.value;
 
         const { data, error } = await supabaseAdmin
             .from('presales_employees')
@@ -76,6 +88,7 @@ router.post('/employees', async (req, res) => {
             .single();
 
         if (error) throw error;
+        clearBranchCache();
         res.status(201).json({ success: true, employee: data });
     } catch (error) {
         console.error('Presales employee create error:', error);
@@ -97,6 +110,9 @@ router.patch('/employees/:id', async (req, res) => {
         if ('status' in req.body) updates.status = cleanText(req.body.status) || 'active';
         if ('selldo_agent_name' in req.body) updates.selldo_agent_name = cleanText(req.body.selldo_agent_name);
         if ('telecmi_agent_id' in req.body) updates.telecmi_agent_id = cleanText(req.body.telecmi_agent_id);
+        const branch = branchUpdate(req.body);
+        if (branch.invalid) return res.status(400).json({ error: 'branch must be chrompet or pammal' });
+        if (!branch.skip) updates.branch = branch.value;
 
         updates.updated_at = new Date().toISOString();
 
@@ -108,6 +124,7 @@ router.patch('/employees/:id', async (req, res) => {
             .single();
 
         if (error) throw error;
+        clearBranchCache();
         res.json({ success: true, employee: data });
     } catch (error) {
         console.error('Presales employee update error:', error);
@@ -129,18 +146,22 @@ router.post('/teams', async (req, res) => {
     try {
         const name = cleanText(req.body.name);
         if (!name) return res.status(400).json({ error: 'name is required' });
+        const branch = branchUpdate(req.body);
+        if (branch.invalid) return res.status(400).json({ error: 'branch must be chrompet or pammal' });
 
         const { data, error } = await supabaseAdmin
             .from('presales_teams')
             .insert({
                 name,
                 team_leader_id: cleanText(req.body.team_leader_id),
-                status: cleanText(req.body.status) || 'active'
+                status: cleanText(req.body.status) || 'active',
+                ...(branch.value ? { branch: branch.value } : {})
             })
             .select('id, name, team_leader_id, status, created_at, updated_at')
             .single();
 
         if (error) throw error;
+        clearBranchCache();
         res.status(201).json({ success: true, team: data });
     } catch (error) {
         console.error('Presales team create error:', error);
@@ -158,6 +179,9 @@ router.patch('/teams/:id', async (req, res) => {
         }
         if ('team_leader_id' in req.body) updates.team_leader_id = cleanText(req.body.team_leader_id);
         if ('status' in req.body) updates.status = cleanText(req.body.status) || 'active';
+        const branch = branchUpdate(req.body);
+        if (branch.invalid) return res.status(400).json({ error: 'branch must be chrompet or pammal' });
+        if (!branch.skip) updates.branch = branch.value;
         updates.updated_at = new Date().toISOString();
 
         const { data, error } = await supabaseAdmin
@@ -168,6 +192,7 @@ router.patch('/teams/:id', async (req, res) => {
             .single();
 
         if (error) throw error;
+        clearBranchCache();
         res.json({ success: true, team: data });
     } catch (error) {
         console.error('Presales team update error:', error);
@@ -192,6 +217,7 @@ router.post('/teams/:teamId/members', async (req, res) => {
             .single();
 
         if (error) throw error;
+        clearBranchCache();
         res.json({ success: true, employee: data });
     } catch (error) {
         console.error('Presales team member add error:', error);
@@ -213,6 +239,7 @@ router.delete('/teams/:teamId/members/:employeeId', async (req, res) => {
             .maybeSingle();
 
         if (error) throw error;
+        clearBranchCache();
         res.json({ success: true, employee: data || null });
     } catch (error) {
         console.error('Presales team member remove error:', error);

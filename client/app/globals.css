@@ -727,6 +727,56 @@ html.space-dark .admin-shell-sidebar {
     color: var(--shell-panel-muted);
 }
 
+.admin-shell-branch-picker {
+    border: 1px solid var(--shell-theme-toggle-border);
+    background: var(--shell-theme-toggle-bg);
+}
+
+.admin-shell-branch-option {
+    color: var(--shell-theme-toggle-text);
+}
+
+.admin-shell-branch-option:hover {
+    background: var(--shell-theme-toggle-hover);
+}
+
+.admin-shell-branch-option.is-active {
+    background: var(--shell-nav-active-bg);
+    color: var(--shell-nav-active-text);
+    box-shadow: inset 0 -2px 0 #f5aa1d;
+}
+
+.admin-shell-branch-collapsed {
+    border: 1px solid var(--shell-theme-toggle-border);
+    background: var(--shell-theme-toggle-bg);
+    color: var(--shell-theme-toggle-text);
+}
+
+/* Branch tag on ticket cards and staff rows */
+.branch-tag {
+    border: 1px solid color-mix(in srgb, #27316f, transparent 70%);
+    background: color-mix(in srgb, #27316f, transparent 90%);
+    color: #27316f;
+}
+
+.branch-tag--pammal {
+    border-color: color-mix(in srgb, #f5aa1d, transparent 40%);
+    background: color-mix(in srgb, #f5aa1d, transparent 82%);
+    color: #8a5a00;
+}
+
+html.space-dark .branch-tag {
+    color: #c7cdf5;
+    border-color: rgba(199, 205, 245, 0.35);
+    background: rgba(199, 205, 245, 0.1);
+}
+
+html.space-dark .branch-tag--pammal {
+    color: #f5c867;
+    border-color: rgba(245, 170, 29, 0.45);
+    background: rgba(245, 170, 29, 0.14);
+}
+
 .admin-shell-nav-separator {
     margin: 0.35rem 0.45rem 0.55rem;
     border-top: 1px solid var(--shell-sidebar-border);

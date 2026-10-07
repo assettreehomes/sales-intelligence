@@ -6,6 +6,7 @@ import { useTicketsStore } from '@/stores/ticketsStore';
 import { Avatar } from '@/components/Avatar';
 import { TicketsFilterSelect } from './components/TicketsFilterSelect';
 import { TicketsSortButtons } from './components/TicketsSortButtons';
+import { useBranchStore } from '@/stores/branchStore';
 import {
     filterLabelClass,
     filterOptionClass,
@@ -59,9 +60,19 @@ export function SalesFiltersSection({ setSearchInput }: SalesFiltersSectionProps
 
     const { employees, filters, setFilter, clearFilters, fetchEmployees, employeesLoaded } = useTicketsStore();
 
+    const branch = useBranchStore((s) => s.branch);
+    const lastBranchRef = useRef(branch);
+
     useEffect(() => {
+        // Another branch has other people: reload the list and drop a person picked from the old one
+        if (lastBranchRef.current !== branch) {
+            lastBranchRef.current = branch;
+            if (filters.agentFilter !== 'all') setFilter('agentFilter', 'all');
+            fetchEmployees();
+            return;
+        }
         if (!employeesLoaded) fetchEmployees();
-    }, [employeesLoaded, fetchEmployees]);
+    }, [employeesLoaded, fetchEmployees, branch, filters, setFilter]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {

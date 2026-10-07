@@ -1,4 +1,5 @@
-// Daily summary of presales number requests, emailed to operations + HR at 9 pm IST.
+// Daily summary of presales number requests, emailed to operations + HR at 9 pm IST,
+// grouped by branch (Chrompet, Pammal) and then team.
 //
 //   NUMBER_SUMMARY_TO    recipients, comma separated (e.g. operations@assettreehomes.com,hr@assettreehomes.com); unset = off
 //   NUMBER_SUMMARY_TIME  HH:MM in IST (default 21:00)
@@ -12,6 +13,7 @@ import { sendEmail, isMailConfigured } from './mailer.js';
 import { buildNumberRequestSummary, latestRunAt } from '../utils/numberRequestSummary.js';
 import { parseExcludeList } from '../utils/numberRequestEmail.js';
 import { dropWhatsAppGreetings } from '../utils/numberRequests.js';
+import { loadBranchDirectory, ticketBranch } from './branches.js';
 
 async function nameMap(table, column, ids) {
     const unique = [...new Set(ids.filter(Boolean))];
@@ -43,6 +45,7 @@ async function loadFlaggedCalls(from, to) {
     const agents = await nameMap('presales_employees', 'full_name', tickets.map(t => t.presales_agent_id));
     const teams = await nameMap('presales_teams', 'name', tickets.map(t => t.presales_team_id));
     const users = await nameMap('users', 'fullname', tickets.map(t => t.createdby));
+    const branchDir = await loadBranchDirectory().catch(() => null);
 
     return tickets
         .map(t => {
@@ -52,6 +55,7 @@ async function loadFlaggedCalls(from, to) {
                 ticket: t,
                 agentName: t.selldo_agent_name || agents.get(t.presales_agent_id) || users.get(t.createdby) || t.telecmi_user || null,
                 teamName: t.selldo_team_name || teams.get(t.presales_team_id) || null,
+                branch: ticketBranch(t, branchDir),
                 summary: a.summary,
                 instances,
                 emailSentAt: t.hr_email_sent_at || null

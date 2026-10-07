@@ -1,6 +1,7 @@
 // Daily "number request" summary email for operations + HR. Pure function (no I/O).
 import { maskNumbersInText } from './maskPhone.js';
 import { isExcludedFromChat } from './numberRequestEmail.js';
+import { BRANCHES, BRANCH_KEYS, DEFAULT_BRANCH, normalizeBranch } from './branches.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clean = s => maskNumbersInText(String(s ?? '').trim());
@@ -49,7 +50,7 @@ function countBy(rows, key) {
 
 /**
  * @param {object} p
- * @param {Array}  p.calls  [{ ticket, agentName, teamName, summary, instances, emailSentAt }]
+ * @param {Array}  p.calls  [{ ticket, agentName, teamName, branch, summary, instances, emailSentAt }]
  * @param {Date|string} p.from  window start
  * @param {Date|string} p.to    window end (the report day is taken from this)
  * @param {string[]} [p.chatExcluded]  SYNOLOGY_CHAT_EXCLUDE words, to show which calls skipped chat
@@ -60,8 +61,11 @@ export function buildNumberRequestSummary({ calls = [], from, to, chatExcluded =
     const day = fmtDay(to);
     const window = `${fmtDateTime(from)} to ${fmtDateTime(to)} IST`;
     const rows = calls
-        .map(c => ({ ...c, agentName: clean(c.agentName) || 'Unknown agent', teamName: clean(c.teamName) || 'No team', instances: c.instances || [] }))
-        .sort((a, b) => a.teamName.localeCompare(b.teamName) || a.agentName.localeCompare(b.agentName) || String(a.ticket.createdat).localeCompare(String(b.ticket.createdat)));
+        .map(c => {
+            const branch = normalizeBranch(c.branch) || DEFAULT_BRANCH;
+            return { ...c, branch, branchName: BRANCHES[branch], agentName: clean(c.agentName) || 'Unknown agent', teamName: clean(c.teamName) || 'No team', instances: c.instances || [] };
+        })
+        .sort((a, b) => BRANCH_KEYS.indexOf(a.branch) - BRANCH_KEYS.indexOf(b.branch) || a.teamName.localeCompare(b.teamName) || a.agentName.localeCompare(b.agentName) || String(a.ticket.createdat).localeCompare(String(b.ticket.createdat)));
     const base = dashboardUrl ? dashboardUrl.replace(/\/+$/, '') : null;
     const link = id => (base && id ? `${base}/admin/tickets/${id}` : null);
 
@@ -77,14 +81,17 @@ export function buildNumberRequestSummary({ calls = [], from, to, chatExcluded =
     }
 
     const totalRequests = rows.reduce((n, r) => n + r.instances.length, 0);
-    const byTeam = countBy(rows, r => r.teamName);
+    const branchesUsed = BRANCH_KEYS.filter(key => rows.some(r => r.branch === key));
+    const byBranch = branchesUsed.map(key => [BRANCHES[key], countBy(rows.filter(r => r.branch === key), () => key)[0][1]]);
+    const teamsIn = key => countBy(rows.filter(r => r.branch === key), r => r.teamName);
+    const byTeam = countBy(rows, r => `${r.branch}\u0000${r.teamName}`);
     const byAgent = countBy(rows, r => `${r.agentName}\u0000${r.teamName}`);
     const agentCount = byAgent.length;
     const subject = `Number Request Summary – ${day}: ${rows.length} call${rows.length === 1 ? '' : 's'} by ${agentCount} agent${agentCount === 1 ? '' : 's'}`;
 
     const alertsFor = r => {
         const email = r.emailSentAt ? `HR email sent ${fmtTime(r.emailSentAt)}` : 'HR email not recorded';
-        const chat = isExcludedFromChat({ agentName: r.agentName, teamName: r.teamName }, chatExcluded) ? 'Synology Chat skipped (excluded team/agent)' : 'Synology Chat eligible';
+        const chat = isExcludedFromChat({ agentName: r.agentName, teamName: r.teamName, branch: r.branch }, chatExcluded) ? 'Synology Chat skipped (excluded branch/team/agent)' : 'Synology Chat eligible';
         return `${email} · ${chat}`;
     };
 
@@ -92,8 +99,13 @@ export function buildNumberRequestSummary({ calls = [], from, to, chatExcluded =
     const t = [];
     t.push(`NUMBER REQUEST SUMMARY – ${day}`, `Window: ${window}`, '');
     t.push('OVERVIEW', `Flagged calls: ${rows.length}`, `Number requests (instances): ${totalRequests}`, `Agents involved: ${agentCount}`, `Teams involved: ${byTeam.length}`, '');
-    t.push('BY TEAM');
-    for (const [team, v] of byTeam) t.push(`- ${team}: ${v.calls} call(s), ${v.requests} request(s), ${v.agents.size} agent(s)`);
+    t.push('BY BRANCH');
+    for (const [branchName, v] of byBranch) t.push(`- ${branchName}: ${v.calls} call(s), ${v.requests} request(s), ${v.agents.size} agent(s)`);
+    t.push('', 'BY TEAM');
+    for (const key of branchesUsed) {
+        t.push(`${BRANCHES[key]}`);
+        for (const [team, v] of teamsIn(key)) t.push(`- ${team}: ${v.calls} call(s), ${v.requests} request(s), ${v.agents.size} agent(s)`);
+    }
     t.push('', 'BY AGENT');
     for (const [key, v] of byAgent) {
         const [agent, team] = key.split('\u0000');
@@ -101,7 +113,7 @@ export function buildNumberRequestSummary({ calls = [], from, to, chatExcluded =
     }
     t.push('', 'CALL DETAILS');
     rows.forEach((r, i) => {
-        t.push('', `${i + 1}. ${r.agentName} · ${r.teamName} · ${fmtDateTime(r.ticket.createdat)} · ${fmtDuration(r.ticket.durationseconds)}`);
+        t.push('', `${i + 1}. ${r.agentName} · ${r.teamName} · ${r.branchName} · ${fmtDateTime(r.ticket.createdat)} · ${fmtDuration(r.ticket.durationseconds)}`);
         if (r.ticket.telecmi_lead_id) t.push(`   Lead ID: ${clean(r.ticket.telecmi_lead_id)}`);
         t.push(`   Ticket: ${link(r.ticket.id) || r.ticket.id}`);
         t.push(`   Summary: ${clean(r.summary) || 'No summary available.'}`);
@@ -123,15 +135,18 @@ export function buildNumberRequestSummary({ calls = [], from, to, chatExcluded =
 <div style="border:1px solid #ddd;border-top:0;padding:16px">
 <p style="margin-top:0;color:#555">${esc(window)}</p>
 <table style="border-collapse:collapse;margin-bottom:16px"><tr>${stat(rows.length, 'Flagged calls')}${stat(totalRequests, 'Number requests')}${stat(agentCount, 'Agents')}${stat(byTeam.length, 'Teams')}</tr></table>
+<h3 style="color:#27316f;margin:16px 0 6px">By branch</h3>
+<table style="border-collapse:collapse;width:100%"><tr>${th('Branch')}${th('Calls')}${th('Requests')}${th('Agents')}</tr>
+${byBranch.map(([branchName, v]) => `<tr>${td(`<strong>${esc(branchName)}</strong>`)}${td(v.calls)}${td(v.requests)}${td(v.agents.size)}</tr>`).join('')}</table>
 <h3 style="color:#27316f;margin:16px 0 6px">By team</h3>
-<table style="border-collapse:collapse;width:100%"><tr>${th('Team')}${th('Calls')}${th('Requests')}${th('Agents')}</tr>
-${byTeam.map(([team, v]) => `<tr>${td(esc(team))}${td(v.calls)}${td(v.requests)}${td(v.agents.size)}</tr>`).join('')}</table>
+<table style="border-collapse:collapse;width:100%"><tr>${th('Branch')}${th('Team')}${th('Calls')}${th('Requests')}${th('Agents')}</tr>
+${branchesUsed.map(key => teamsIn(key).map(([team, v]) => `<tr>${td(esc(BRANCHES[key]))}${td(esc(team))}${td(v.calls)}${td(v.requests)}${td(v.agents.size)}</tr>`).join('')).join('')}</table>
 <h3 style="color:#27316f;margin:16px 0 6px">By agent</h3>
 <table style="border-collapse:collapse;width:100%"><tr>${th('Agent')}${th('Team')}${th('Calls')}${th('Requests')}${th('First – last call')}</tr>
 ${byAgent.map(([key, v]) => { const [agent, team] = key.split('\u0000'); return `<tr>${td(`<strong>${esc(agent)}</strong>`)}${td(esc(team))}${td(v.calls)}${td(v.requests)}${td(`${esc(fmtTime(v.first))} – ${esc(fmtTime(v.last))}`)}</tr>`; }).join('')}</table>
 <h3 style="color:#27316f;margin:20px 0 6px">Call details</h3>
 ${rows.map((r, i) => `<div style="border:1px solid #e3e5f0;border-left:4px solid #27316f;padding:10px 12px;margin-bottom:10px">
-<div><strong>${i + 1}. ${esc(r.agentName)}</strong> · ${esc(r.teamName)} · ${esc(fmtDateTime(r.ticket.createdat))} · ${esc(fmtDuration(r.ticket.durationseconds))}</div>
+<div><strong>${i + 1}. ${esc(r.agentName)}</strong> · ${esc(r.teamName)} · ${esc(r.branchName)} · ${esc(fmtDateTime(r.ticket.createdat))} · ${esc(fmtDuration(r.ticket.durationseconds))}</div>
 <div style="color:#555;font-size:12px;margin-top:2px">${r.ticket.telecmi_lead_id ? `Lead ID ${esc(clean(r.ticket.telecmi_lead_id))} · ` : ''}${link(r.ticket.id) ? `<a href="${esc(link(r.ticket.id))}" style="color:#27316f">Open the call</a>` : `Ticket ${esc(r.ticket.id)}`}</div>
 <p style="margin:8px 0"><strong>Summary:</strong> ${esc(clean(r.summary) || 'No summary available.')}</p>
 <div style="font-weight:bold;margin-bottom:4px">Proof of speech</div>

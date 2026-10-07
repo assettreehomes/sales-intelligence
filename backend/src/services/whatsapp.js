@@ -1,5 +1,6 @@
 import { VertexAI } from '@google-cloud/vertexai';
 import { supabaseAdmin } from '../config/supabase.js';
+import { loadBranchDirectory, ticketBranch, BRANCHES, BRANCH_KEYS } from './branches.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -28,7 +29,7 @@ async function fetchTodayData() {
 
     const { data: tickets, error: ticketErr } = await supabaseAdmin
         .from('tickets')
-        .select('id, status, rating, createdby, clientname, visittype, createdat, istrainingcall')
+        .select('id, status, rating, createdby, clientname, visittype, createdat, istrainingcall, source, presales_agent_id, presales_team_id')
         .is('deletedat', null)
         .eq('istrainingcall', false)
         .gte('createdat', since);
@@ -56,7 +57,9 @@ async function fetchTodayData() {
         if (data) data.forEach(a => analysisByTicket.set(a.ticketid, a));
     }
 
-    return { tickets: tickets || [], analysisByTicket, userMap };
+    const branchDir = await loadBranchDirectory().catch(() => null);
+
+    return { tickets: tickets || [], analysisByTicket, userMap, branchDir };
 }
 
 /**
@@ -91,7 +94,7 @@ ${summaries.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
  * Returns { text, today, tomorrow, total, analyzed, pending, avgRating5, agentLines, overallSummary }
  */
 export async function buildDailyReport() {
-    const { tickets, analysisByTicket, userMap } = await fetchTodayData();
+    const { tickets, analysisByTicket, userMap, branchDir } = await fetchTodayData();
 
     const today = new Date().toLocaleDateString('en-GB', {
         day: '2-digit', month: 'short', year: 'numeric'
@@ -117,10 +120,11 @@ export async function buildDailyReport() {
         : null;
     const avgRating5 = avgRating10 ? (avgRating10 / 2).toFixed(1) : null;
 
-    // Per-agent breakdown
-    const agentMap = new Map();
+    // Per-agent breakdown, grouped by branch (Chrompet, then Pammal)
+    const branchAgents = new Map(BRANCH_KEYS.map(key => [key, new Map()]));
     for (const ticket of tickets) {
         const name = userMap.get(ticket.createdby) || 'Unknown';
+        const agentMap = branchAgents.get(ticketBranch(ticket, branchDir));
         const entry = agentMap.get(name) || { total: 0, ratingSum: 0, ratingCount: 0 };
         entry.total++;
         if (ticket.status === 'analyzed') {
@@ -130,15 +134,20 @@ export async function buildDailyReport() {
         agentMap.set(name, entry);
     }
 
-    const agentLines = [...agentMap.entries()]
-        .sort((a, b) => b[1].total - a[1].total)
-        .map(([name, stats]) => {
-            const ar = stats.ratingCount > 0
-                ? ` | ${(stats.ratingSum / stats.ratingCount / 2).toFixed(1)}/5`
-                : '';
-            return `${name}: ${stats.total} ticket${stats.total !== 1 ? 's' : ''}${ar}`;
+    const agentLines = BRANCH_KEYS
+        .filter(key => branchAgents.get(key).size > 0)
+        .map(key => {
+            const lines = [...branchAgents.get(key).entries()]
+                .sort((a, b) => b[1].total - a[1].total)
+                .map(([name, stats]) => {
+                    const ar = stats.ratingCount > 0
+                        ? ` | ${(stats.ratingSum / stats.ratingCount / 2).toFixed(1)}/5`
+                        : '';
+                    return `${name}: ${stats.total} ticket${stats.total !== 1 ? 's' : ''}${ar}`;
+                });
+            return [`🏢 ${BRANCHES[key]}`, ...lines].join('\n');
         })
-        .join('\n') || 'No tickets today.';
+        .join('\n\n') || 'No tickets today.';
 
     const summaries = tickets
         .filter(t => t.status === 'analyzed')

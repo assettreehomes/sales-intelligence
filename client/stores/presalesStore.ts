@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getToken, API_URL } from './authStore';
+import { useBranchStore, withBranch } from './branchStore';
 import { notifyError, notifySuccess } from '@/lib/toast';
 
 export interface PresalesTicket {
@@ -36,6 +37,7 @@ export interface PresalesTicket {
     mobile_number_count?: number | null;
     mobile_number_reason?: string | null;
     is_flagged?: boolean;
+    branch?: 'chrompet' | 'pammal';
     creator_details?: {
         fullname: string;
         avatar_url: string | null;
@@ -152,6 +154,8 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
             if (filters.authenticityFilter !== 'all') params.append('callAuthenticity', filters.authenticityFilter);
             if (filters.numberRequestsFilter === 'true') params.append('askedMobileNumber', 'true');
             if (filters.searchQuery)            params.append('search', filters.searchQuery);
+            const branch = useBranchStore.getState().branch;
+            if (branch !== 'all') params.append('branch', branch);
             params.append('page',  currentPage.toString());
             params.append('limit', ticketsPerPage.toString());
 
@@ -194,7 +198,7 @@ export const usePresalesStore = create<PresalesState>((set, get) => ({
     fetchDirectory: async () => {
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/presales/directory`, {
+            const response = await fetch(`${API_URL}${withBranch('/presales/directory')}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {

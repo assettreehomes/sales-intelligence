@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getToken, API_URL } from './authStore';
+import { useBranchStore, withBranch } from './branchStore';
 import { notifyError, notifySuccess } from '@/lib/toast';
 
 interface Ticket {
@@ -16,6 +17,7 @@ interface Ticket {
     createdby: string;
     call_outcome?: string | null;
     is_flagged?: boolean;
+    branch?: 'chrompet' | 'pammal';
     creator_details?: {
         fullname: string;
         avatar_url: string | null;
@@ -112,6 +114,8 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
             if (filters.showLiveOnly) params.append('liveOnly', 'true');
             if (filters.showFlaggedOnly) params.append('flaggedOnly', 'true');
             if (filters.searchQuery) params.append('search', filters.searchQuery);
+            const branch = useBranchStore.getState().branch;
+            if (branch !== 'all') params.append('branch', branch);
             params.append('page', currentPage.toString());
             params.append('limit', ticketsPerPage.toString());
 
@@ -152,7 +156,7 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
     fetchEmployees: async () => {
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/users?role=employee`, {
+            const response = await fetch(`${API_URL}${withBranch('/users?role=employee')}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 

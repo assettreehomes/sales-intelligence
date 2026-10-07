@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { BranchPicker } from '@/components/BranchPicker';
 
 import {
     type LucideIcon,
@@ -433,6 +434,8 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
                         </button>
                     </div>
+
+                    <BranchPicker collapsed={collapsed} />
 
                     <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
                         {groupedNavItems.map(({ group, items }, groupIndex) => (

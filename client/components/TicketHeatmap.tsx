@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { useBranchStore, withBranch } from '@/stores/branchStore';
 
 interface HeatmapData {
     date: string;
@@ -188,6 +189,7 @@ export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', titl
     const [data, setData] = useState<HeatmapData[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentMonth, setCurrentMonth] = useState(new Date());
+    const branch = useBranchStore((s) => s.branch);
 
     useEffect(() => {
         const accessToken = session?.access_token;
@@ -196,7 +198,7 @@ export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', titl
         async function fetchHeatmap(silent = false) {
             try {
                 const params = source === 'telecmi' ? '?source=telecmi' : '';
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/tickets/calendar-heatmap${params}`, {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${withBranch(`/tickets/calendar-heatmap${params}`, branch)}`, {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
                     },
@@ -216,7 +218,7 @@ export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', titl
         // Auto-refresh every 60s — picks up new calls without page reload
         const interval = setInterval(() => void fetchHeatmap(true), 60_000);
         return () => clearInterval(interval);
-    }, [session, source]);
+    }, [session, source, branch]);
 
     const dataMap = useMemo(() => {
         const map = new Map<string, number>();
