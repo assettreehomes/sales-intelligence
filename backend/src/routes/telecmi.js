@@ -6,6 +6,7 @@ import { requireAdmin } from '../middleware/rbac.js';
 import { triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
+import { maskPhone } from '../utils/maskPhone.js';
 
 const router = Router();
 
@@ -16,12 +17,13 @@ const SYNC_STAGGER_MS    = Number(process.env.VERTEX_SYNC_STAGGER_MS) || 1500;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// Mask phone number — keep first 5 + last 2 digits, hide the rest with X
-// e.g. 919840912567 → 91984XXXXX67, 9876543210 → 98765XXXX10
-function maskPhone(number) {
-    const s = String(number);
-    if (s === 'unknown' || s.length < 7) return s;
-    return s.slice(0, 5) + 'X'.repeat(Math.max(0, s.length - 7)) + s.slice(-2);
+// Copy of a CDR that is safe to log: customer numbers and name masked
+function redactCdr(cdr) {
+    const out = { ...cdr };
+    for (const key of ['from', 'to', 'name']) {
+        if (out[key] != null) out[key] = maskPhone(String(out[key]).replace(/\D/g, '') || out[key]);
+    }
+    return out;
 }
 
 /**
@@ -46,7 +48,11 @@ async function processCdr(cdr, skipInitialDelay = false) {
     const duration  = Number(cdr.duration || cdr.dur || cdr.answeredsec || 0);
     const filename  = cdr.filename || cdr.file    || null;
     const recorded  = String(cdr.record || cdr.recording || '').toLowerCase();
-    const name      = (cdr.name && cdr.name !== 'unknown') ? cdr.name : from;
+    // TeleCMI puts the raw caller number in 'name' when the contact is unsaved — mask it
+    const rawName   = (cdr.name && cdr.name !== 'unknown') ? String(cdr.name) : null;
+    const name      = rawName
+        ? (/^\+?[\d\s-]{7,}$/.test(rawName) ? maskPhone(rawName.replace(/\D/g, '')) : rawName)
+        : from;
     const callTime  = cdr.time ? new Date(cdr.time).toISOString() : new Date().toISOString();
 
     // Parse lead/CRM ID from custom field (JSON string from Click-to-Call API)
@@ -293,7 +299,7 @@ router.post('/webhook', async (req, res) => {
 
     console.log('📞 TeleCMI webhook received:', JSON.stringify({
         timestamp: new Date().toISOString(),
-        body: payload
+        body: redactCdr(payload)
     }));
 
     try {
@@ -355,7 +361,7 @@ router.post('/sync', authMiddleware, requireAdmin, async (req, res) => {
         cdrs = telecmiData.cdr || [];
         console.log(`📋 TeleCMI sync: fetched ${cdrs.length} CDRs (total available: ${telecmiData.count})`);
         if (cdrs.length > 0) {
-            console.log('📋 TeleCMI sync CDR sample:', JSON.stringify(cdrs[0]));
+            console.log('📋 TeleCMI sync CDR sample:', JSON.stringify(redactCdr(cdrs[0])));
         }
     } catch (fetchErr) {
         return res.status(502).json({ error: `Failed to reach TeleCMI API: ${fetchErr.message}` });
