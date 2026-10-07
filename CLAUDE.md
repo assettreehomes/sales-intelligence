@@ -119,6 +119,8 @@ POST /webhooks/selldo/call         Sell.Do call enrichment → writes lead_id on
 GET  /admin/queue/status           Queue stats for both proQueue + flashQueue, ticket counts by status, stuck tickets
 POST /admin/queue/reset            Drain/clear waiting jobs in both queues; reset stuck processing tickets → analysis_failed
 PATCH /admin/queue/ticket/:id/reset  Reset a single stuck/failed ticket back to pending
+GET  /integrations/mail|chat        Mail / Synology Chat integration setup (no secrets) + recent number-request alerts (admin)
+POST /integrations/mail|chat/test   Send a test email / chat post through the configured integration (admin)
 ```
 
 ## Analysis Schema (Vertex AI Output)
