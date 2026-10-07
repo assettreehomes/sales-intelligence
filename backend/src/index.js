@@ -26,6 +26,7 @@ import telecmiRoutes from './routes/telecmi.js';
 import presalesRoutes from './routes/presales.js';
 import queueRoutes from './routes/queue.js';
 import deviceRoutes from './routes/devices.js';
+import integrationRoutes from './routes/integrations.js';
 
 // Load environment variables
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -100,6 +101,7 @@ app.use('/telecmi', telecmiRoutes);
 app.use('/presales', presalesRoutes);
 app.use('/admin/queue', queueRoutes);
 app.use('/devices', deviceRoutes);
+app.use('/integrations', integrationRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

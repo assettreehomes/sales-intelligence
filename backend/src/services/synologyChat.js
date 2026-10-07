@@ -15,7 +15,35 @@ export function webhookUrl() {
     return String(process.env.SYNOLOGY_CHAT_WEBHOOK_URL || '').trim().replace(/&amp;/g, '&');
 }
 
-export async function postSynologyChat(text) {
+// Last posts and their outcome, newest first, for the dashboard's Chat Integration page.
+// In memory only (one Cloud Run instance): it starts empty after a redeploy or restart.
+const RECENT_LIMIT = 50;
+const recentPosts = [];
+
+function recordPost(entry) {
+    recentPosts.unshift({ at: new Date().toISOString(), ...entry });
+    recentPosts.length = Math.min(recentPosts.length, RECENT_LIMIT);
+}
+
+export function recentSynologyPosts() {
+    return recentPosts.slice();
+}
+
+/**
+ * @param {string} text
+ * @param {object} [meta]  { ticketId, test } kept with the outcome in recentSynologyPosts()
+ */
+export async function postSynologyChat(text, meta = {}) {
+    try {
+        await sendToSynology(text);
+        recordPost({ ...meta, ok: true });
+    } catch (err) {
+        recordPost({ ...meta, ok: false, error: err.message });
+        throw err;
+    }
+}
+
+async function sendToSynology(text) {
     if (!isSynologyChatConfigured()) throw new Error('Synology Chat not configured: set SYNOLOGY_CHAT_WEBHOOK_URL');
     const res = await fetch(webhookUrl(), {
         method: 'POST',

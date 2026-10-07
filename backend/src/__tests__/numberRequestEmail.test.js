@@ -4,7 +4,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildNumberRequestEmail, buildNumberRequestPush, buildNumberRequestChat, parseExcludeList, isExcludedFromChat } from '../utils/numberRequestEmail.js';
-import { postSynologyChat } from '../services/synologyChat.js';
+import { postSynologyChat, recentSynologyPosts } from '../services/synologyChat.js';
 import { sendEmail } from '../services/mailer.js';
 
 const sample = {
@@ -168,5 +168,19 @@ describe('postSynologyChat', () => {
         process.env.SYNOLOGY_CHAT_WEBHOOK_URL = 'https://nas.example/webapi/entry.cgi';
         globalThis.fetch = async () => new Response('{"success":false,"error":{"code":404}}', { status: 200 });
         await assert.rejects(postSynologyChat('x'), /error 404/);
+    });
+
+    it('records each post and its outcome, newest first', async () => {
+        process.env.SYNOLOGY_CHAT_WEBHOOK_URL = 'https://nas.example/webapi/entry.cgi';
+        globalThis.fetch = async () => new Response('{"success":true}', { status: 200 });
+        await postSynologyChat('ok', { ticketId: 't-1' });
+        globalThis.fetch = async () => new Response('{"success":false,"error":{"code":117}}', { status: 200 });
+        await assert.rejects(postSynologyChat('bad', { test: true }));
+        const [latest, previous] = recentSynologyPosts();
+        assert.equal(latest.test, true);
+        assert.equal(latest.ok, false);
+        assert.match(latest.error, /error 117/);
+        assert.equal(previous.ticketId, 't-1');
+        assert.equal(previous.ok, true);
     });
 });

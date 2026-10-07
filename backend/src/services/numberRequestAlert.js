@@ -104,7 +104,7 @@ export async function sendNumberRequestAlert({ ticket, summary, instances }) {
                 console.log(`💬 Synology Chat skipped for ticket ${ticket.id} (excluded agent/team)`);
             } else {
                 try {
-                    await postSynologyChat(buildNumberRequestChat({ agentName, ticket, summary, instances, dashboardUrl: process.env.DASHBOARD_URL }));
+                    await postSynologyChat(buildNumberRequestChat({ agentName, ticket, summary, instances, dashboardUrl: process.env.DASHBOARD_URL }), { ticketId: ticket.id });
                     delivered = true;
                     console.log(`💬 Number-request alert posted to Synology Chat for ticket ${ticket.id}`);
                 } catch (err) {

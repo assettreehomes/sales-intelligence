@@ -11,16 +11,20 @@ import {
     type LucideIcon,
     AlertCircle,
     BarChart3,
+    ChevronDown,
     Building2,
     Camera,
     ClipboardList,
     Layers,
     GraduationCap,
     LogOut,
+    Mail,
     Menu,
+    MessageSquare,
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
+    Plug,
     Radio,
     Shield,
     Sun,
@@ -44,7 +48,9 @@ type AdminSection =
     | 'queue'
     | 'imou'
     | 'sellDo'
-    | 'antivirus';
+    | 'antivirus'
+    | 'integrationsMail'
+    | 'integrationsChat';
 
 type AdminNavGroup = 'analytics' | 'operations' | 'people' | 'tools';
 
@@ -53,13 +59,21 @@ interface AdminShellProps {
     children: ReactNode;
 }
 
-type AdminNavItem = {
+type AdminNavChild = {
     id: AdminSection;
+    label: string;
+    icon: LucideIcon;
+    href: string;
+};
+
+type AdminNavItem = {
+    id: AdminSection | 'integrations';
     label: string;
     icon: LucideIcon;
     group: AdminNavGroup;
     href?: string;
     onClick?: () => void;
+    children?: AdminNavChild[];
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed';
@@ -110,6 +124,9 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
     });
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [integrationsOpen, setIntegrationsOpen] = useState(
+        activeSection === 'integrationsMail' || activeSection === 'integrationsChat'
+    );
     const [imouSetupOpen, setImouSetupOpen] = useState(false);
     const [imouCmdCopied, setImouCmdCopied] = useState(false);
     const [mobileMenuButtonPos, setMobileMenuButtonPos] = useState<FloatingButtonPosition>(() => {
@@ -266,6 +283,16 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, group: 'operations', href: '/admin/excuses' },
             { id: 'assign' as const, label: 'Assign', icon: Users, group: 'operations', href: '/admin/assign' },
             { id: 'activity' as const, label: 'Activity Log', icon: ClipboardList, group: 'operations', href: '/admin/activity' },
+            {
+                id: 'integrations' as const,
+                label: 'Integrations',
+                icon: Plug,
+                group: 'operations',
+                children: [
+                    { id: 'integrationsMail' as const, label: 'Mail Integration', icon: Mail, href: '/admin/integrations/mail' },
+                    { id: 'integrationsChat' as const, label: 'Chat Integration', icon: MessageSquare, href: '/admin/integrations/chat' }
+                ]
+            },
             { id: 'employees' as const, label: 'Employees', icon: UserPlus, group: 'people', href: '/admin/employees' },
             { id: 'live' as const, label: 'Live Status', icon: Radio, group: 'people', href: '/admin/live' },
             // { id: 'sellDo' as const, label: 'Sell.Do CRM', icon: Building2, group: 'tools', onClick: openSellDo },
@@ -419,6 +446,44 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
                                         }`;
                                         const activeClass = active ? 'is-active' : 'is-inactive';
                                         const iconClass = active ? 'is-active' : 'is-inactive';
+
+                                        if (item.children) {
+                                            const childActive = item.children.some((child) => child.id === activeSection);
+                                            const open = collapsed || integrationsOpen || childActive;
+                                            return (
+                                                <div key={item.id} className="space-y-1">
+                                                    {!collapsed && (
+                                                        <button
+                                                            type="button"
+                                                            className={`${baseClass} is-inactive`}
+                                                            onClick={() => setIntegrationsOpen((prev) => !prev)}
+                                                            aria-expanded={open}
+                                                        >
+                                                            <item.icon className="admin-shell-nav-icon is-inactive h-[18px] w-[18px]" />
+                                                            <span className="flex-1 text-left">{item.label}</span>
+                                                            <ChevronDown className={`admin-shell-nav-icon is-inactive h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                    )}
+                                                    {open && item.children.map((child) => {
+                                                        const isActive = child.id === activeSection;
+                                                        return (
+                                                            <Link
+                                                                key={child.id}
+                                                                href={child.href}
+                                                                title={collapsed ? child.label : undefined}
+                                                                className={`admin-shell-nav-link group flex w-full items-center py-2 text-sm font-medium transition-all ${
+                                                                    collapsed ? 'justify-center px-3' : 'gap-3 pl-9 pr-3'
+                                                                } ${isActive ? 'is-active' : 'is-inactive'}`}
+                                                                onClick={() => setMobileOpen(false)}
+                                                            >
+                                                                <child.icon className={`admin-shell-nav-icon h-4 w-4 ${isActive ? 'is-active' : 'is-inactive'}`} />
+                                                                {!collapsed && <span>{child.label}</span>}
+                                                            </Link>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        }
 
                                         return item.onClick ? (
                                             <button
