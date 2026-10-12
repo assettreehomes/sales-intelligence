@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { createClient } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { API_URL } from '@/lib/endpoints';
 
 export interface UserProfile {
     id: string;
