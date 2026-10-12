@@ -48,7 +48,7 @@ import { StatusBadge } from '@/components/dashboard/status-badge';
 import { EmployeeDetailSheet, type EmployeeInsight } from '@/components/dashboard/employee-detail-sheet';
 import { useBranchStore, withBranch } from '@/stores/branchStore';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { API_URL } from '@/lib/endpoints';
 
 interface EmployeeSkills {
     politeness: number;

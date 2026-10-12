@@ -16,7 +16,7 @@ export async function getToken(): Promise<string | null> {
 /**
  * Base URL for the backend API.
  */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export { API_URL } from '@/lib/endpoints';
 
 interface UserProfile {
     id: string;

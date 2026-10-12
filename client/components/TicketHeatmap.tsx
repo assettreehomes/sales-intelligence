@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useBranchStore, withBranch } from '@/stores/branchStore';
+import { API_URL } from '@/lib/endpoints';
 
 interface HeatmapData {
     date: string;
@@ -198,7 +199,7 @@ export function TicketHeatmap({ onDateSelect, selectedDate, source = 'all', titl
         async function fetchHeatmap(silent = false) {
             try {
                 const params = source === 'telecmi' ? '?source=telecmi' : '';
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${withBranch(`/tickets/calendar-heatmap${params}`, branch)}`, {
+                const res = await fetch(`${API_URL}${withBranch(`/tickets/calendar-heatmap${params}`, branch)}`, {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
                     },
