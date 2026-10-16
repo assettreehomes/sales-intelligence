@@ -1,45 +1,16 @@
 #!/bin/bash
-
-# Exit on error
-set -e
-
-# Configuration
-SERVICE_NAME="sales-intelligence"
-REGION="asia-south1"
-
-# Check for required tools
-if ! command -v gcloud &> /dev/null; then
-    echo "Error: gcloud CLI is not installed."
-    exit 1
-fi
-
-echo "🚀 Deploying $SERVICE_NAME to Google Cloud Run..."
-
-# Set project context if provided
-if [ -n "$GCP_PROJECT_ID" ]; then
-    echo "Setting project to $GCP_PROJECT_ID..."
-    gcloud config set project "$GCP_PROJECT_ID"
-fi
-
-# Parse .env file and format for gcloud (key=value,key=value)
-# Ignores comments and empty lines
-if [ -f .env ]; then
-    echo "📦 Reading configuration from .env..."
-    # Filter out PORT and NODE_ENV as they are handled by Cloud Run or build args
-    ENV_VARS=$(grep -v '^#' .env | grep -v '^$' | grep -v '^PORT=' | grep -v '^NODE_ENV=' | tr '\n' ',' | sed 's/,$//')
-else
-    echo "❌ Error: .env file not found!"
-    exit 1
-fi
-
-# Deploy command
-echo "🚀 Deploying $SERVICE_NAME to region $REGION..."
-gcloud run deploy "$SERVICE_NAME" \
-    --source . \
-    --region "$REGION" \
-    --platform managed \
-    --allow-unauthenticated \
-    --set-env-vars "$ENV_VARS"
-
-echo "✅ Deployment successful!"
-echo "Your service URL is available in the output above."
+# Retired. This script used `gcloud run deploy --set-env-vars` with the local
+# .env, which REPLACES every variable set in the Cloud Run console (HCAPTCHA,
+# TOTP key, mail and alert settings...) with whatever is in that file.
+#
+# Rebuild and deploy the backend from the repository root instead; variables set
+# in the console are kept:
+#
+#   gcloud builds submit --config cloudbuild.yaml
+#
+# Change a single variable without touching the others:
+#
+#   gcloud run services update sales-intelligence --region asia-south1 \
+#     --update-env-vars KEY=value
+echo "deploy.sh is retired: run 'gcloud builds submit --config cloudbuild.yaml' from the repository root." >&2
+exit 1

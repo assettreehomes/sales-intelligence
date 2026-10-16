@@ -43,7 +43,6 @@ const ANALYTICS_PERIOD_DAYS = {
 };
 
 const REPORT_SHARE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const REPORT_FALLBACK_SECRET = 'ticketintel-report-share-fallback';
 const REPORT_PDF_PAGE_WIDTH = 612;
 const REPORT_PDF_PAGE_HEIGHT = 792;
 const REPORT_PDF_MARGIN = 42;
@@ -661,8 +660,7 @@ function fromBase64Url(value) {
 function getReportShareSecret() {
     return process.env.REPORT_SHARE_SECRET
         || process.env.JWT_SECRET
-        || process.env.SUPABASE_SERVICE_KEY
-        || REPORT_FALLBACK_SECRET;
+        || process.env.SUPABASE_SERVICE_KEY;
 }
 
 function createReportShareToken(ticketId, expiresAtMs) {

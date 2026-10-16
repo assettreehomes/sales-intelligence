@@ -15,10 +15,17 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function fixUser() {
-    const email = 'superadmin@assettree.com';
-    const password = 'SuperAdmin2024!';
-    const fullname = 'Super Administrator';
-    const role = 'superadmin';
+    // Pass the account details at run time; never write a password into this file.
+    //   USER_EMAIL=... USER_PASSWORD=... node create-user.js
+    const email = process.env.USER_EMAIL;
+    const password = process.env.USER_PASSWORD;
+    const fullname = process.env.USER_FULLNAME || 'Super Administrator';
+    const role = process.env.USER_ROLE || 'superadmin';
+    if (!email || !password) {
+        console.error('Set USER_EMAIL and USER_PASSWORD first.');
+        process.exitCode = 1;
+        return;
+    }
 
     console.log(`\n🔧 Fixing user: ${email}\n`);
 
@@ -69,7 +76,6 @@ async function fixUser() {
 
     console.log('\n🎉 User ready to login!');
     console.log(`   Email: ${email}`);
-    console.log(`   Password: ${password}`);
     console.log(`   Role: ${role}\n`);
 }
 
