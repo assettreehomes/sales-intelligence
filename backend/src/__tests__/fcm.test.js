@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildDraftAssignmentMessage, isInvalidFcmTokenError, notifyDraftAssignment } from '../services/fcm.js';
 
 describe('FCM draft assignment payload', () => {
-    it('uses the existing Android assignment action and notification channel', () => {
+    it('sends a data-only message with the Android assignment action', () => {
         const message = buildDraftAssignmentMessage({
             draftId: 'draft-123',
             clientName: 'Test Client',
@@ -12,16 +12,19 @@ describe('FCM draft assignment payload', () => {
             eventType: 'draft_assigned'
         });
 
-        assert.equal(message.notification.title, 'New task assigned');
-        assert.equal(message.notification.body, 'Test Client - Visit #2');
+        // Data-only payload: the Android app builds its own notification with buttons,
+        // so there must be no `notification` block.
+        assert.equal(message.notification, undefined);
         assert.deepEqual(message.data, {
             draft_id: 'draft-123',
+            client_id: 'Test Client',
+            client_name: 'Test Client',
+            visit_number: '2',
             action: 'view_new_assignment',
             event_type: 'draft_assigned',
             assignment_source: 'admin'
         });
         assert.equal(message.android.priority, 'high');
-        assert.equal(message.android.notification.channelId, 'draft_reminders');
     });
 
     it('identifies only permanently invalid Firebase tokens for deactivation', () => {
