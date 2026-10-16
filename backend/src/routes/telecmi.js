@@ -7,6 +7,7 @@ import { triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 import { maskPhone } from '../utils/maskPhone.js';
+import { telecmiWebhookAllowed } from '../utils/webhookSecret.js';
 
 const router = Router();
 
@@ -291,6 +292,13 @@ async function processCdr(cdr, skipInitialDelay = false) {
 // Returns 200 immediately; processing is fully async.
 // ============================================================
 router.post('/webhook', async (req, res) => {
+    // Optional shared secret (TELECMI_WEBHOOK_SECRET): rejects forged CDRs that
+    // would otherwise create tickets and spend Vertex quota.
+    if (!telecmiWebhookAllowed(req)) {
+        console.warn('⚠️ TeleCMI webhook: invalid or missing secret');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     // Always respond 200 immediately — TeleCMI retries on anything else
     res.status(200).json({ received: true });
 

@@ -6,6 +6,7 @@ import { getVisitSequence } from '../services/visitSequencing.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 import { notifyDraftAssignment } from '../services/fcm.js';
 import { maskPhone } from '../utils/maskPhone.js';
+import { secretMatches } from '../utils/webhookSecret.js';
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.post('/selldo/lead', async (req, res) => {
         const secret = req.headers['x-webhook-secret'];
         const expectedSecret = process.env.SELLDO_WEBHOOK_SECRET;
 
-        if (!expectedSecret || secret !== expectedSecret) {
+        if (!secretMatches(secret, expectedSecret)) {
             console.warn('⚠️ Sell.do webhook: invalid or missing secret');
             return res.status(401).json({ error: 'Unauthorized' });
         }
@@ -242,7 +243,7 @@ router.post('/selldo/call', async (req, res) => {
         const secret = req.headers['x-webhook-secret'];
         const expectedSecret = process.env.SELLDO_WEBHOOK_SECRET;
 
-        if (!expectedSecret || secret !== expectedSecret) {
+        if (!secretMatches(secret, expectedSecret)) {
             console.warn('⚠️ Sell.do call webhook: invalid or missing secret');
             return res.status(401).json({ error: 'Unauthorized' });
         }
