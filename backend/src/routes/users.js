@@ -14,6 +14,35 @@ const upload = multer({
 const router = Router();
 
 /**
+ * Only a superadmin may create, edit, deactivate, reset or delete a superadmin
+ * account, or hand out the superadmin role. Without this an admin (who has no
+ * authenticator code) could make themselves superadmin or take one over.
+ */
+async function guardSuperadminTarget(req, res, next) {
+    try {
+        if (req.user?.role === 'superadmin') return next();
+        if (req.body?.role === 'superadmin') {
+            return res.status(403).json({ error: 'Only a superadmin can grant the superadmin role' });
+        }
+        if (req.params?.id) {
+            const { data: target, error } = await supabaseAdmin
+                .from('users')
+                .select('role')
+                .eq('id', req.params.id)
+                .maybeSingle();
+            if (error) return res.status(500).json({ error: 'Failed to check the account' });
+            if (target?.role === 'superadmin') {
+                return res.status(403).json({ error: 'Only a superadmin can change a superadmin account' });
+            }
+        }
+        return next();
+    } catch (err) {
+        console.error('guardSuperadminTarget error:', err);
+        return res.status(500).json({ error: 'Failed to check the account' });
+    }
+}
+
+/**
  * GET /users
  * List users with optional role filter — admin only
  */
@@ -43,7 +72,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
  * Create a new employee account — admin only
  * Body: { fullname, email, password, sales_email? }
  */
-router.post('/', authMiddleware, requireAdmin, async (req, res) => {
+router.post('/', authMiddleware, requireAdmin, guardSuperadminTarget, async (req, res) => {
     try {
         const { fullname, email, password, role: requestedRole } = req.body;
         const role = requestedRole || 'employee';
@@ -127,7 +156,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
  * Toggle employee active/inactive — admin only
  * Body: { status: 'active' | 'inactive' }
  */
-router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
+router.patch('/:id/status', authMiddleware, requireAdmin, guardSuperadminTarget, async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -171,7 +200,7 @@ router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
  * Edit employee profile — admin only
  * Body: { fullname?, email?, role?, telecmi_agent_id?, branch? ('chrompet' | 'pammal') }
  */
-router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
+router.patch('/:id', authMiddleware, requireAdmin, guardSuperadminTarget, async (req, res) => {
     try {
         const { id } = req.params;
         const { fullname, email, role, telecmi_agent_id } = req.body;
@@ -267,7 +296,7 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
  * Reset employee password — admin only
  * Body: { password }
  */
-router.patch('/:id/password', authMiddleware, requireAdmin, async (req, res) => {
+router.patch('/:id/password', authMiddleware, requireAdmin, guardSuperadminTarget, async (req, res) => {
     try {
         const { id } = req.params;
         const { password } = req.body;
@@ -300,7 +329,7 @@ router.patch('/:id/password', authMiddleware, requireAdmin, async (req, res) => 
  * Force-remove employee — admin only.
  * If the employee has tickets, their createdby is nullified (tickets preserved).
  */
-router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
+router.delete('/:id', authMiddleware, requireAdmin, guardSuperadminTarget, async (req, res) => {
     try {
         const { id } = req.params;
 

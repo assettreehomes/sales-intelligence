@@ -19,6 +19,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { getToken, API_URL } from '@/stores/authStore';
+import { useAuth } from '@/contexts/AuthContext';
 import { BRANCH_OPTIONS, branchName, useBranchStore, withBranch, type Branch } from '@/stores/branchStore';
 import {
     AlertCircle,
@@ -98,6 +99,9 @@ function EmployeesPageContent() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [newRole, setNewRole] = useState<'employee' | 'admin' | 'superadmin' /*| 'intern'*/>('employee');
+    // Only a superadmin may create another superadmin (the backend enforces this too).
+    const { profile: currentProfile } = useAuth();
+    const canGrantSuperadmin = currentProfile?.role === 'superadmin';
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [createdEmployee, setCreatedEmployee] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -729,7 +733,7 @@ function EmployeesPageContent() {
                                             { value: 'employee', label: 'Employee' },
                                             // { value: 'intern', label: 'Intern' },
                                             { value: 'admin', label: 'Admin' },
-                                            { value: 'superadmin', label: 'Superadmin' },
+                                            ...(canGrantSuperadmin ? [{ value: 'superadmin', label: 'Superadmin' }] : []),
                                         ]}
                                     />
 

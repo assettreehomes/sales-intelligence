@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase.js';
+import { isTotpSessionValid, serverTotpEnabled, sessionIdFromJwt } from '../services/loginGuard.js';
 
 /**
  * Authentication middleware
@@ -44,18 +45,15 @@ export async function authMiddleware(req, res, next) {
             });
         }
 
-        // 24h Session Limit for Superadmin
-        if (profile.role === 'superadmin' && profile.lastlogin) {
-            const lastLogin = new Date(profile.lastlogin).getTime();
-            const now = Date.now();
-            const limit = 24 * 60 * 60 * 1000; // 24 hours
-
-            if (now - lastLogin > limit) {
-                return res.status(401).json({
-                    error: 'Session expired. Please login again.',
-                    code: 'SESSION_EXPIRED'
-                });
-            }
+        // Superadmin: the session must have passed the authenticator code on this
+        // backend within the last 24 hours. A token made by calling Supabase directly
+        // with the password alone is refused. (Also enforces the 24h session limit.)
+        if (profile.role === 'superadmin' && serverTotpEnabled()
+            && !isTotpSessionValid(user.app_metadata, sessionIdFromJwt(token))) {
+            return res.status(401).json({
+                error: 'Session expired. Please login again.',
+                code: 'SESSION_EXPIRED'
+            });
         }
 
         // Attach user info to request
