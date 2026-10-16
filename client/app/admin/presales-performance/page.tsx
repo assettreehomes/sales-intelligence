@@ -437,7 +437,7 @@ function PresalesPerformanceContent() {
         const totals = { total_calls: 0, real: 0, fake: 0, interested: 0, follow_up: 0, number_requests: 0 } as Record<ChartKey, number>;
         for (const p of trendSeries) {
             for (const { key } of CHART_LINES) {
-                totals[key] += (p as Record<string, number>)[key] ?? 0;
+                totals[key] += Number((p as unknown as Record<string, number>)[key]) || 0;
             }
         }
         return totals;

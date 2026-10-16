@@ -8,7 +8,7 @@ import { dirname, join } from 'path';
 import { proQueue, flashQueue } from './services/queues.js';
 import { startAutoRetry } from './services/autoRetry.js';
 import { startNumberRequestSummary } from './services/numberRequestSummary.js';
-import { supabaseAdmin } from './config/supabase.js';
+import { resetStuckTickets } from './services/stuckTickets.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -107,10 +107,22 @@ app.use('/integrations', integrationRoutes);
 // Error handler
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
-    res.status(500).json({
-        error: err.message || 'Internal server error',
+    // Keep the right status for client mistakes: bad JSON (400), body too large
+    // or an upload over the size limit (413), a blocked browser origin (403).
+    let status = Number(err.status || err.statusCode) || 500;
+    if (err.name === 'MulterError') status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    if (err.message === 'Not allowed by CORS') status = 403;
+    if (status < 400 || status > 599) status = 500;
+    res.status(status).json({
+        error: status >= 500 ? 'Internal server error' : (err.message || 'Bad request'),
         ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
+});
+
+// Last line of defence for the single instance: log instead of exiting, so one
+// stray rejection cannot drop both in-memory analysis queues.
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason);
 });
 
 // 404 handler
@@ -133,18 +145,14 @@ app.listen(PORT, () => {
 ╚═══════════════════════════════════════════════════╝
     `);
 
-    // On every startup, reset any tickets left stuck at 'processing' from a previous
-    // revision or crash. They will be picked up by autoRetry on the next cycle.
-    supabaseAdmin
-        .from('tickets')
-        .update({ status: 'analysis_failed', analysiserror: 'Reset on startup: previous revision left ticket in-flight' })
-        .eq('status', 'processing')
-        .eq('source', 'telecmi')
-        .lt('analysis_started_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
-        .then(({ data, error }) => {
-            if (error) console.warn('Startup cleanup: failed to reset stuck tickets:', error.message);
-            else if (data?.length) console.log(`Startup cleanup: reset ${data.length} stuck processing ticket(s) → analysis_failed`);
-        });
+    // On every startup, reset tickets a previous revision or crash left in flight
+    // (presales calls and site visits, plus TeleCMI calls whose recording download
+    // never finished). autoRetry picks the presales ones up on its next cycle;
+    // failed site visits can be re-analysed from the dashboard.
+    resetStuckTickets('Reset on startup: previous revision left ticket in-flight', {
+        olderThanMs: 5 * 60 * 1000,
+        includeTelecmiUploads: true
+    }).catch(err => console.warn('Startup cleanup failed:', err.message));
 
     startAutoRetry();
     startNumberRequestSummary();

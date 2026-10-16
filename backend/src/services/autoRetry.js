@@ -12,7 +12,7 @@
  *   4. After MAX_ATTEMPTS failures → marks permanent_failed: max retries exceeded
  *
  * Env vars:
- *   RETRY_BATCH_SIZE    Tickets processed per cycle         (default: 3)
+ *   RETRY_BATCH_SIZE    Tickets processed per cycle         (default: 1)
  *   RETRY_INTERVAL_MS   Milliseconds between cycles        (default: 20 min)
  *   RETRY_MAX_ATTEMPTS  Max retries per ticket per session  (default: 10)
  */
@@ -20,6 +20,8 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { storeTelecmiRecordingForAnalysis } from './telecmiRecording.js';
 import { triggerPresalesAnalysis } from './presalesAnalysis.js';
+import { isInFlight } from './inFlight.js';
+import { resetStuckTickets } from './stuckTickets.js';
 
 const BATCH_SIZE    = Number(process.env.RETRY_BATCH_SIZE)   || 1;
 const INTERVAL_MS   = Number(process.env.RETRY_INTERVAL_MS)  || 20 * 60 * 1000;
@@ -32,6 +34,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // In-memory retry counter — resets on server restart (intentional:
 // a new deploy means quota may have been increased or code was fixed)
 const retryAttempts = new Map();
+// When each ticket was last tried, so one ticket that keeps failing to download
+// cannot take the only batch slot every cycle and starve all the others.
+const lastAttemptAt = new Map();
+const CANDIDATE_POOL = 50;
 
 // Returns true if the download error means TeleCMI permanently lost the recording
 function isTelecmiPermanentFailure(err) {
@@ -48,28 +54,19 @@ async function markPermanentFailed(ticketId, reason) {
         .from('tickets')
         .update({ status: 'analysis_failed', analysiserror: `permanent_failed: ${reason}` })
         .eq('id', ticketId);
+    lastAttemptAt.delete(ticketId);
     console.warn(`Auto-retry: permanently failed ${ticketId} — ${reason}`);
 }
 
 async function runRetryBatch() {
     try {
-        // Reset any tickets stuck at 'processing' for more than 10 minutes.
-        // These are orphaned mid-analysis (crash, timeout, etc.) — drop them back
-        // to analysis_failed so the retry loop below picks them up.
-        const stuckCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const { data: stuckTickets } = await supabaseAdmin
-            .from('tickets')
-            .update({ status: 'analysis_failed', analysiserror: 'Reset by autoRetry: stuck in processing > 10 min' })
-            .eq('status', 'processing')
-            .eq('source', 'telecmi')
-            .lt('analysis_started_at', stuckCutoff)
-            .select('id');
-        if (stuckTickets?.length) {
-            console.log(`Auto-retry: reset ${stuckTickets.length} stuck processing ticket(s) → analysis_failed`);
-        }
+        // Reset tickets orphaned mid-analysis (crash, redeploy, lost queue job) back to
+        // analysis_failed so the retry loop below picks them up. Tickets still waiting
+        // in this instance's queue are skipped: slow is not stuck.
+        await resetStuckTickets('Reset by autoRetry: stuck in processing > 10 min', { olderThanMs: 10 * 60 * 1000 });
 
         // Blacklist approach: retry everything that isn't permanently failed
-        const { data: tickets, error } = await supabaseAdmin
+        const { data: candidates, error } = await supabaseAdmin
             .from('tickets')
             .select('id, telecmi_filename, client_id, clientname, createdby, durationseconds, selldo_agent_name, selldo_agent_email, telecmi_lead_id, selldo_team_name')
             .eq('status', 'analysis_failed')
@@ -77,12 +74,20 @@ async function runRetryBatch() {
             .not('telecmi_filename', 'is', null)
             .not('analysiserror', 'ilike', 'permanent_failed%')
             .order('createdat', { ascending: true })
-            .limit(BATCH_SIZE);
+            .limit(CANDIDATE_POOL);
 
         if (error) {
             console.warn('Auto-retry: DB query failed:', error.message);
             return;
         }
+
+        // Oldest first, but tickets never tried in this run go before ones tried recently.
+        const tickets = (candidates || [])
+            .filter(t => !isInFlight(t.id))
+            .map((t, i) => ({ t, i, last: lastAttemptAt.get(t.id) || 0 }))
+            .sort((a, b) => (a.last - b.last) || (a.i - b.i))
+            .slice(0, BATCH_SIZE)
+            .map(x => x.t);
 
         if (!tickets || tickets.length === 0) return;
 
@@ -90,6 +95,7 @@ async function runRetryBatch() {
 
         for (const ticket of tickets) {
             const attempts = retryAttempts.get(ticket.id) || 0;
+            lastAttemptAt.set(ticket.id, Date.now());
 
             if (attempts >= MAX_ATTEMPTS) {
                 await markPermanentFailed(ticket.id, 'max retries exceeded');
@@ -107,6 +113,8 @@ async function runRetryBatch() {
                     retryAttempts.delete(ticket.id);
                 } else {
                     // Transient network/timeout error — skip this cycle, try next time
+                    // Counts as an attempt, so a recording that never downloads ends at the cap.
+                    retryAttempts.set(ticket.id, attempts + 1);
                     console.warn(`Auto-retry: re-download failed for ${ticket.id} (transient):`, downloadErr.message);
                 }
                 continue;
@@ -119,7 +127,13 @@ async function runRetryBatch() {
                 .eq('id', ticket.id);
 
             // Fire analysis — no await, triggerPresalesAnalysis handles all status updates
-            triggerPresalesAnalysis(ticket.id, ticket).catch(err => {
+            triggerPresalesAnalysis(ticket.id, ticket).then(async () => {
+                const { data } = await supabaseAdmin.from('tickets').select('status').eq('id', ticket.id).maybeSingle();
+                if (data?.status === 'analyzed') {
+                    retryAttempts.delete(ticket.id);
+                    lastAttemptAt.delete(ticket.id);
+                }
+            }).catch(err => {
                 console.error(`Auto-retry: analysis failed for ${ticket.id}:`, err.message);
             });
 

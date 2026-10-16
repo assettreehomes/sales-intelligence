@@ -11,6 +11,12 @@ import {
     encryptSecret,
     decryptSecret
 } from '../services/totp.js';
+import {
+    loginFailures,
+    MAX_FAILURES_PER_EMAIL,
+    MAX_FAILURES_PER_IP,
+    markSessionTotpVerified
+} from '../services/loginGuard.js';
 
 const router = Router();
 
@@ -46,11 +52,21 @@ function createTempToken(userId, sessionData) {
  */
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body || {};
 
-        if (!email || !password) {
+        if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
             return res.status(400).json({ error: 'Email and password are required' });
         }
+
+        const emailKey = `email:${email.trim().toLowerCase()}`;
+        const ipKey = `ip:${req.ip}`;
+        if (loginFailures.isBlocked(emailKey, MAX_FAILURES_PER_EMAIL) || loginFailures.isBlocked(ipKey, MAX_FAILURES_PER_IP)) {
+            return res.status(429).json({ error: 'Too many failed sign-in attempts. Please wait 15 minutes and try again.' });
+        }
+        const failLogin = () => {
+            loginFailures.recordFailure(emailKey);
+            loginFailures.recordFailure(ipKey);
+        };
 
         // 1. Check user exists and is active
 
@@ -63,6 +79,7 @@ router.post('/login', async (req, res) => {
 
         if (userError || !existingUser) {
             console.error('🔍 Login lookup failed:', { email: email.toLowerCase(), error: userError?.message, code: userError?.code, details: userError?.details });
+            failLogin();
             return res.status(404).json({
                 error: 'User not found. Please contact your administrator.'
             });
@@ -84,6 +101,7 @@ router.post('/login', async (req, res) => {
 
         if (authError) {
             console.error('Password auth error:', authError.message);
+            failLogin();
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
@@ -97,6 +115,8 @@ router.post('/login', async (req, res) => {
         if (profileError) {
             return res.status(500).json({ error: 'Failed to fetch user profile' });
         }
+
+        loginFailures.reset(emailKey);
 
         const sessionData = {
             access_token: authData.session.access_token,
@@ -115,7 +135,7 @@ router.post('/login', async (req, res) => {
         if (!isSuperadmin) {
             await supabaseAdmin
                 .from('users')
-                .update({ last_login: new Date().toISOString() })
+                .update({ lastlogin: new Date().toISOString() })
                 .eq('id', authData.user.id);
 
             req.user = { id: profile.id, fullname: profile.fullname, email: profile.email };
@@ -246,10 +266,14 @@ router.post('/totp/verify', async (req, res) => {
         // Success — clean up temp token and return session
         tempTokenStore.delete(tempToken);
 
+        // Record server-side that this Supabase session passed TOTP; the auth
+        // middleware refuses superadmin sessions that did not.
+        await markSessionTotpVerified(supabaseAdmin, stored.userId, stored.sessionData.access_token);
+
         // Update last login
         await supabaseAdmin
             .from('users')
-            .update({ last_login: new Date().toISOString() })
+            .update({ lastlogin: new Date().toISOString() })
             .eq('id', stored.userId);
 
         // Get fresh profile
@@ -308,12 +332,29 @@ router.post('/totp/confirm-setup', async (req, res) => {
             return res.status(400).json({ error: 'TOTP setup not initiated' });
         }
 
+        // Setup is only for accounts without an active authenticator; otherwise this
+        // route would be an unlimited side door around /totp/verify's attempt limit.
+        if (totpRecord.enabled) {
+            return res.status(400).json({ error: 'Authenticator already set up. Please login again.' });
+        }
+
+        if (stored.attempts >= 5) {
+            tempTokenStore.delete(tempToken);
+            return res.status(429).json({ error: 'Too many attempts. Please login again.' });
+        }
+        stored.attempts++;
+
         const base32Secret = decryptSecret(totpRecord.encrypted_secret);
         const isValid = verifyTOTPCode(base32Secret, totpCode);
 
         if (!isValid) {
-            return res.status(401).json({ error: 'Invalid code. Please scan the QR code and try again.' });
+            return res.status(401).json({
+                error: 'Invalid code. Please scan the QR code and try again.',
+                attemptsRemaining: 5 - stored.attempts,
+            });
         }
+
+        await markSessionTotpVerified(supabaseAdmin, stored.userId, stored.sessionData.access_token);
 
         // Activate TOTP
         await supabaseAdmin
@@ -327,7 +368,7 @@ router.post('/totp/confirm-setup', async (req, res) => {
         // Update last login
         await supabaseAdmin
             .from('users')
-            .update({ last_login: new Date().toISOString() })
+            .update({ lastlogin: new Date().toISOString() })
             .eq('id', stored.userId);
 
         // Get fresh profile

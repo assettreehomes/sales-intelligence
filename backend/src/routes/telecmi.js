@@ -7,6 +7,7 @@ import { triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 import { maskPhone } from '../utils/maskPhone.js';
+import { telecmiWebhookAllowed } from '../utils/webhookSecret.js';
 
 const router = Router();
 
@@ -88,14 +89,17 @@ async function processCdr(cdr, skipInitialDelay = false) {
     }
 
     // ── Idempotency ─────────────────────────────────────────────────────────
-    const { data: existing } = await supabaseAdmin
+    const { data: existingRows, error: existingError } = await supabaseAdmin
         .from('tickets')
         .select('id')
         .eq('telecmi_cmiuid', cmiuid)
-        .maybeSingle();
+        .limit(1);
 
-    if (existing) {
-        return { skipped: true, reason: 'duplicate', ticketId: existing.id };
+    if (existingError) {
+        throw new Error(`Duplicate check failed: ${existingError.message}`);
+    }
+    if (existingRows?.length) {
+        return { skipped: true, reason: 'duplicate', ticketId: existingRows[0].id };
     }
 
     // ── Agent mapping ────────────────────────────────────────────────────────
@@ -142,6 +146,11 @@ async function processCdr(cdr, skipInitialDelay = false) {
         });
 
     if (insertError) {
+        // telecmi_cmiuid is unique: a webhook retry or an overlapping /sync that
+        // raced past the check above lands here. Not an error.
+        if (insertError.code === '23505') {
+            return { skipped: true, reason: 'duplicate' };
+        }
         throw new Error(`Failed to insert ticket: ${insertError.message}`);
     }
 
@@ -291,6 +300,13 @@ async function processCdr(cdr, skipInitialDelay = false) {
 // Returns 200 immediately; processing is fully async.
 // ============================================================
 router.post('/webhook', async (req, res) => {
+    // Optional shared secret (TELECMI_WEBHOOK_SECRET): rejects forged CDRs that
+    // would otherwise create tickets and spend Vertex quota.
+    if (!telecmiWebhookAllowed(req)) {
+        console.warn('⚠️ TeleCMI webhook: invalid or missing secret');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     // Always respond 200 immediately — TeleCMI retries on anything else
     res.status(200).json({ received: true });
 

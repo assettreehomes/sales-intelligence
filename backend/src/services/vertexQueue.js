@@ -18,11 +18,14 @@
  * Returns true if the error is a Vertex AI 429 / RESOURCE_EXHAUSTED or 503 / SERVICE_UNAVAILABLE.
  */
 export function is429(error) {
+    const code = Number(error?.code ?? error?.status ?? error?.statusCode);
+    if (code === 429 || code === 503) return true;
     const msg = String(error?.message || '');
+    // Whole-number match only: "Unterminated string in JSON at position 31429"
+    // is a bad model response, not a quota error, and must reach the repair retry.
     return (
-        msg.includes('429') ||
+        /(^|[^0-9])(429|503)([^0-9]|$)/.test(msg) ||
         msg.includes('RESOURCE_EXHAUSTED') ||
-        msg.includes('503') ||
         msg.includes('SERVICE_UNAVAILABLE')
     );
 }
@@ -46,12 +49,12 @@ export function createVertexQueue({ maxConcurrent, maxRpm, backoffBaseMs, maxRet
     const waitQueue = [];
 
     function acquireSlot() {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             if (activeSlots < maxConcurrent) {
                 activeSlots++;
                 resolve();
             } else {
-                waitQueue.push(resolve);
+                waitQueue.push({ resolve, reject });
             }
         });
     }
@@ -59,7 +62,7 @@ export function createVertexQueue({ maxConcurrent, maxRpm, backoffBaseMs, maxRet
     function releaseSlot() {
         const next = waitQueue.shift();
         if (next) {
-            next();
+            next.resolve(); // hand our slot straight to the next waiter
         } else {
             activeSlots--;
         }
@@ -79,7 +82,12 @@ export function createVertexQueue({ maxConcurrent, maxRpm, backoffBaseMs, maxRet
             while (callTimestamps.length > 0 && callTimestamps[0] <= now - 60_000) {
                 callTimestamps.shift();
             }
-            if (callTimestamps.length < maxRpm) break;
+            if (callTimestamps.length < maxRpm) {
+                // Claim the slot in the same tick as the check, so concurrent jobs
+                // cannot all pass the check before any of them is recorded.
+                recordCall();
+                break;
+            }
             const waitMs = callTimestamps[0] + 60_000 - now + 100;
             console.log(`[${label}] RPM limit (${callTimestamps.length}/${maxRpm}/min) — waiting ${Math.round(waitMs / 1000)}s`);
             await new Promise(r => setTimeout(r, waitMs));
@@ -104,7 +112,6 @@ export function createVertexQueue({ maxConcurrent, maxRpm, backoffBaseMs, maxRet
             await waitForRpmSlot();
 
             try {
-                recordCall();
                 const result = await fn();
                 releaseSlot();
                 return result;
@@ -141,12 +148,13 @@ export function createVertexQueue({ maxConcurrent, maxRpm, backoffBaseMs, maxRet
         };
     }
 
+    // Cancels every job still waiting for a slot (their callVertex rejects with
+    // "Queue cleared by admin"). Running jobs are left alone. Previously this
+    // granted every waiter a slot at once, so "clear" actually started them all.
     function clearQueue() {
         const count = waitQueue.length;
         while (waitQueue.length > 0) {
-            const resolve = waitQueue.shift();
-            activeSlots++;
-            resolve();
+            waitQueue.shift().reject(new Error('Queue cleared by admin'));
         }
         return count;
     }

@@ -122,7 +122,9 @@ function AssignPageContent() {
                     client_id: clientId.trim() || undefined,
                     client_name: clientName.trim(),
                     visit_type: visitType,
-                    expected_recording_time: expectedRecordingTime || undefined,
+                    // datetime-local has no time zone; send the exact instant (the
+                    // database would otherwise read 3 PM IST as 3 PM UTC = 8:30 PM IST)
+                    expected_recording_time: expectedRecordingTime ? new Date(expectedRecordingTime).toISOString() : undefined,
                     notes: notes.trim() || undefined,
                 }),
             });

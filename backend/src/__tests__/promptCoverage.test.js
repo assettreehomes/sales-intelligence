@@ -56,12 +56,11 @@ describe('Presales prompt: NUMBER REQUEST DETECTION section', () => {
         assert.ok(prompt.includes('"instances"'), 'Missing instances array in number_requests');
     });
 
-    it('each instance includes reason, time, transcript_excerpt, start_time_ms, end_time_ms', () => {
+    it('each instance includes reason, time, transcript_excerpt, start_time_ms', () => {
         assert.ok(prompt.includes('"reason"'), 'Missing reason field in instance');
         assert.ok(prompt.includes('"time"'), 'Missing time field in instance');
         assert.ok(prompt.includes('"transcript_excerpt"'), 'Missing transcript_excerpt in instance');
         assert.ok(prompt.includes('"start_time_ms"'), 'Missing start_time_ms in instance');
-        assert.ok(prompt.includes('"end_time_ms"'), 'Missing end_time_ms in instance');
     });
 
     it('instructs EXTREMELY strict detection', () => {

@@ -196,12 +196,16 @@ function maskIp(ip: string | null): string {
     return ip;
 }
 
+// IST calendar day as YYYY-MM-DD. toISOString() gives the UTC date, which made
+// "Today" include yesterday (and miss today before 05:30 IST).
+function istDay(date: Date) {
+    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
 function presetDates(days: number) {
     const to = new Date();
-    const from = new Date();
-    if (days === 0) from.setHours(0, 0, 0, 0);
-    else from.setDate(from.getDate() - days);
-    return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+    const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+    return { from: istDay(from), to: istDay(to) };
 }
 
 function ActivityLogPageContent() {

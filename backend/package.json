@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --dns-result-order=ipv4first --watch src/index.js",
     "start": "node --dns-result-order=ipv4first src/index.js",
-    "test": "node --test 'src/__tests__/*.test.js'"
+    "test": "SUPABASE_URL=${SUPABASE_URL:-http://127.0.0.1:54321} SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:-test-service-key} SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-test-anon-key} node --test 'src/__tests__/*.test.js'"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.14.0",

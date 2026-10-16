@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { normalizeBranch, loadBranchDirectory, ticketBranch } from '../services/branches.js';
+import { istDayStart, istDateKey } from '../utils/istDate.js';
 
 const router = Router();
 
@@ -297,8 +298,8 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
         const now = new Date();
         let fromDate;
         if (periodKey === TODAY_KEY) {
-            // Start of current calendar day in local server time
-            fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            // Start of the current IST calendar day (the server runs in UTC)
+            fromDate = istDayStart();
         } else {
             fromDate = new Date(now.getTime() - PERIOD_DAYS[periodKey] * 86400000);
         }
@@ -358,6 +359,8 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
         // For rows missing call_outcome/call_authenticity (historical data before columns were added),
         // infer from available signals. Priority: lead_quality > interest level.
         let inferredCount = 0;
+        // Lookup map: a .find() per row was O(n²) over a month of calls
+        const ticketById = new Map((tickets || []).map(t => [t.id, t]));
         for (const row of analysisRows) {
             if (!row.call_outcome) {
                 const lq  = row.scores?.lead_qualification?.lead_quality?.toLowerCase?.() || '';
@@ -375,7 +378,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             if (!row.call_authenticity) {
                 // Use speakers count as the primary signal — 1 speaker = no customer, likely fake/unanswered
                 // Fall back to rating + duration heuristic when speakers data is absent
-                const ticket = (tickets || []).find(t => t.id === row.ticketid);
+                const ticket = ticketById.get(row.ticketid);
                 const dur    = toNumber(ticket?.durationseconds) || 0;
                 const score  = toNumber(row.rating) ?? 10;
                 const spk    = toNumber(row.scores?.speakers);
@@ -446,7 +449,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             }
             if (ticket.asked_mobile_number) bucket.number_requests += 1;
 
-            const date = ticket.createdat?.slice(0, 10) || 'unknown';
+            const date = istDateKey(ticket.createdat) || 'unknown';
             bucket.daily[date] = (bucket.daily[date] || 0) + 1;
 
             const d = new Date(ticket.createdat);
@@ -493,7 +496,7 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
             }
             addToBucket(teamBuckets.get(teamId), ticket, analysis);
 
-            const date = ticket.createdat?.slice(0, 10);
+            const date = istDateKey(ticket.createdat);
             if (date) {
                 const dayBucket = daily.get(date) || { count: 0, fake: 0, interested: 0, follow_up: 0, number_requests: 0 };
                 dayBucket.count += 1;

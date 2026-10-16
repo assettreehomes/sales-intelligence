@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -58,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const profileRef = useRef<UserProfile | null>(null);
+    useEffect(() => { profileRef.current = profile; }, [profile]);
     const [loading, setLoading] = useState(true);
     const [profileLoading, setProfileLoading] = useState(false);
 
@@ -174,15 +176,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(newSession?.user ?? null);
 
                 if (newSession?.user) {
-                    setProfileLoading(true);
+                    // Supabase fires SIGNED_IN every time the tab becomes visible again
+                    // and TOKEN_REFRESHED every hour. For the same user, refresh the
+                    // profile quietly: showing the loading state unmounted the whole
+                    // admin page (stopping audio, losing filters), and a failed re-fetch
+                    // signed a still-valid session out.
+                    const sameUser = profileRef.current?.id === newSession.user.id;
+                    if (!sameUser) setProfileLoading(true);
 
-                    // Fetch profile in background
                     fetchProfile(newSession.user.id)
                         .then((userProfile) => {
-                            if (mounted) setProfile(userProfile);
+                            if (!mounted) return;
+                            if (userProfile || !sameUser) setProfile(userProfile);
                         })
                         .finally(() => {
-                            if (mounted) setProfileLoading(false);
+                            if (mounted && !sameUser) setProfileLoading(false);
                         });
                 } else {
                     setProfile(null);
@@ -211,7 +219,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ email, password }),
             });
 
-            const data = await response.json();
+            // A gateway error page (502/504 from the proxy) is HTML, not JSON
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok && !data.error) {
+                return { error: `Sign-in service is not responding (error ${response.status}). Please try again in a minute.` };
+            }
 
             if (!response.ok) {
                 return { error: data.error || 'Login failed' };
@@ -234,7 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 await hydrateSession(data.session);
             }
 
-            return {};
+            return { user: data.user };
         } catch (err) {
             console.error('SignIn error:', err);
             return { error: 'An unexpected error occurred' };
@@ -252,7 +264,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ tempToken, totpCode }),
             });
 
-            const data = await response.json();
+            // A gateway error page (502/504 from the proxy) is HTML, not JSON
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok && !data.error) {
+                return { error: `Sign-in service is not responding (error ${response.status}). Please try again in a minute.` };
+            }
 
             if (!response.ok) {
                 return { error: data.error || 'Verification failed' };
@@ -281,7 +297,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ tempToken, totpCode }),
             });
 
-            const data = await response.json();
+            // A gateway error page (502/504 from the proxy) is HTML, not JSON
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok && !data.error) {
+                return { error: `Sign-in service is not responding (error ${response.status}). Please try again in a minute.` };
+            }
 
             if (!response.ok) {
                 return { error: data.error || 'Setup failed' };

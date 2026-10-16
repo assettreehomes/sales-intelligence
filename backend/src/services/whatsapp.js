@@ -31,7 +31,9 @@ async function fetchTodayData() {
         .from('tickets')
         .select('id, status, rating, createdby, clientname, visittype, createdat, istrainingcall, source, presales_agent_id, presales_team_id')
         .is('deletedat', null)
-        .eq('istrainingcall', false)
+        // No istrainingcall filter: that flag is set automatically on every good
+        // call (site visits >= 4.0, presales >= 8.0), so filtering on it dropped
+        // the best calls from the totals and the average.
         .gte('createdat', since);
 
     if (ticketErr) throw new Error('Failed to fetch tickets: ' + ticketErr.message);
@@ -186,8 +188,11 @@ export async function sendWhatsAppTemplate(report) {
         throw new Error('WHATSAPP_TEMPLATE_NAME not set — template sending unavailable');
     }
 
-    const combinedBreakdown =
-        `${report.agentLines}\n\nToday Summary: ${report.overallSummary}`;
+    // Meta rejects template parameters containing new lines or tabs (error
+    // 132018), so the per-agent lines are joined on one line.
+    const combinedBreakdown = `${report.agentLines} || Today Summary: ${report.overallSummary}`
+        .replace(/[\n\t]+/g, ' | ')
+        .replace(/ {4,}/g, '   ');
 
     const body = {
         messaging_product: 'whatsapp',

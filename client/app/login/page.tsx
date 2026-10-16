@@ -96,6 +96,18 @@ export default function LoginPage() {
             return;
         }
 
+        // Staff and intern accounts have no dashboard pages; without this the
+        // button kept spinning on "Verifying..." forever.
+        const role = result.user?.role;
+        if (role && role !== 'admin' && role !== 'superadmin') {
+            await signOut();
+            const message = 'This dashboard is for admins. Staff please use the Ai Voice Analysis app.';
+            setError(message);
+            notifyError(message);
+            setLoading(false);
+            return;
+        }
+
         // Direct login (no TOTP) — redirect will happen via useEffect
     };
 

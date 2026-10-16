@@ -4,6 +4,7 @@ export type TicketKeyMoment = {
     label?: string;
     description?: string;
     category?: string;
+    importance?: string;
     start_time_ms?: number;
 };
 
