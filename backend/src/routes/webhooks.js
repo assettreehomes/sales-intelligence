@@ -5,7 +5,7 @@ import { logActivity } from '../services/activityLog.js';
 import { getVisitSequence } from '../services/visitSequencing.js';
 import { resolvePresalesOrg } from '../services/presalesDirectory.js';
 import { notifyDraftAssignment } from '../services/fcm.js';
-import { maskPhone } from '../utils/maskPhone.js';
+import { maskPhone, maskNumbersDeep } from '../utils/maskPhone.js';
 import { secretMatches } from '../utils/webhookSecret.js';
 
 const router = Router();
@@ -268,6 +268,12 @@ router.post('/selldo/call', async (req, res) => {
             console.warn('⚠️ Sell.do call webhook: missing call_id');
             return res.status(200).json({ success: false, reason: 'missing_call_id' });
         }
+        // call_id goes into a PostgREST .or() filter below; anything but a plain id
+        // (commas, brackets) could add filter terms and enrich the wrong ticket.
+        if (!/^[\w.-]{1,128}$/.test(callId)) {
+            console.warn('⚠️ Sell.do call webhook: malformed call_id');
+            return res.status(200).json({ success: false, reason: 'invalid_call_id' });
+        }
 
         const normalizedDuration = Number(duration);
         const durationSeconds = Number.isFinite(normalizedDuration) ? normalizedDuration : null;
@@ -366,7 +372,7 @@ router.post('/selldo/call', async (req, res) => {
                 call_status: call_status || null,
                 direction: direction || null,
                 duration: durationSeconds,
-                raw_payload: req.body || {},
+                raw_payload: maskNumbersDeep(req.body || {}),
                 presales_agent_id: org.agentId || null,
                 presales_team_id: org.teamId || null,
                 matched: false

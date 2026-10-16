@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
+import { istDayStart, istDayEnd } from '../utils/istDate.js';
 
 const router = Router();
 
@@ -31,15 +32,11 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             .order('created_at', { ascending: false })
             .range(offset, offset + pageSize - 1);
 
-        if (dateFrom) {
-            query = query.gte('created_at', new Date(dateFrom).toISOString());
-        }
-        if (dateTo) {
-            // End of the selected day
-            const end = new Date(dateTo);
-            end.setHours(23, 59, 59, 999);
-            query = query.lte('created_at', end.toISOString());
-        }
+        // Dates are IST calendar days (YYYY-MM-DD); invalid values are ignored
+        const fromDay = dateFrom ? istDayStart(dateFrom) : null;
+        const toDay = dateTo ? istDayEnd(dateTo) : null;
+        if (fromDay) query = query.gte('created_at', fromDay.toISOString());
+        if (toDay) query = query.lte('created_at', toDay.toISOString());
         if (action && action !== 'all') {
             query = query.eq('action', action);
         }
@@ -82,14 +79,10 @@ router.get('/export', authMiddleware, requireAdmin, async (req, res) => {
             .order('created_at', { ascending: false })
             .limit(5000);
 
-        if (dateFrom) {
-            query = query.gte('created_at', new Date(dateFrom).toISOString());
-        }
-        if (dateTo) {
-            const end = new Date(dateTo);
-            end.setHours(23, 59, 59, 999);
-            query = query.lte('created_at', end.toISOString());
-        }
+        const fromDay = dateFrom ? istDayStart(dateFrom) : null;
+        const toDay = dateTo ? istDayEnd(dateTo) : null;
+        if (fromDay) query = query.gte('created_at', fromDay.toISOString());
+        if (toDay) query = query.lte('created_at', toDay.toISOString());
         if (action && action !== 'all') {
             query = query.eq('action', action);
         }

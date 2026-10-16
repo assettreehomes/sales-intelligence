@@ -13,6 +13,7 @@ import { analyzePresalesAudio, triggerPresalesAnalysis } from '../services/presa
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 import { normalizeBranch, loadBranchDirectory, applyTicketBranchFilter, ticketBranch } from '../services/branches.js';
 import { maskNumbersDeep } from '../utils/maskPhone.js';
+import { istDateKey, istMonthKey, istDayStart, istDayEnd } from '../utils/istDate.js';
 import { claimInFlight, releaseInFlight, isInFlight } from '../services/inFlight.js';
 
 const router = Router();
@@ -1637,8 +1638,8 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             return null;
         });
 
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
+        const pageNum = Math.max(1, parseInt(page, 10) || 1);
+        const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 12));
         const offset = (pageNum - 1) * limitNum;
         const rawSearch = typeof search === 'string' ? search.trim() : '';
         const hasSearch = rawSearch.length > 0;
@@ -1651,6 +1652,20 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
             .select('*', { count: 'exact' })
             .is('deletedat', null)
             .order('createdat', { ascending: sortAscending });
+
+        // Flagged-only is applied in the query, before paging; filtering the page
+        // afterwards showed near-empty pages and a wrong total.
+        if (String(flaggedOnly) === 'true') {
+            const { data: flagRows, error: flagError } = await supabaseAdmin
+                .from('flagged_tickets')
+                .select('ticket_id');
+            if (flagError) throw flagError;
+            const flaggedTicketIds = [...new Set((flagRows || []).map((f) => f.ticket_id))];
+            if (flaggedTicketIds.length === 0) {
+                return res.json({ tickets: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
+            }
+            query = query.in('id', flaggedTicketIds);
+        }
 
         // Status filter
         if (status && status !== 'all') {
@@ -1798,7 +1813,7 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
 
             switch (dateRange) {
                 case 'today':
-                    fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    fromDate = istDayStart();
                     break;
                 case '7days':
                     fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1823,14 +1838,14 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
 
         // Manual date filter (works with dateRange=custom or alongside other filters)
         if (dateFrom) {
-            const from = new Date(`${String(dateFrom)}T00:00:00`);
-            if (Number.isFinite(from.getTime())) {
+            const from = istDayStart(dateFrom);
+            if (from) {
                 query = query.gte('createdat', from.toISOString());
             }
         }
         if (dateTo) {
-            const to = new Date(`${String(dateTo)}T23:59:59.999`);
-            if (Number.isFinite(to.getTime())) {
+            const to = istDayEnd(dateTo);
+            if (to) {
                 query = query.lte('createdat', to.toISOString());
             }
         }
@@ -1891,12 +1906,8 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
         }));
 
         // Apply flaggedOnly filter
-        let finalTickets = enrichedTickets;
-        let finalTotal = total;
-        if (String(flaggedOnly) === 'true') {
-            finalTickets = enrichedTickets.filter((t) => t.is_flagged);
-            finalTotal = finalTickets.length;
-        }
+        const finalTickets = enrichedTickets;
+        const finalTotal = total;
 
         // Enrich tickets with creator details (fullname, avatar_url)
         const userIds = [...new Set(finalTickets.map((t) => t.createdby).filter(Boolean))];
@@ -2085,12 +2096,10 @@ router.get('/analytics/overview', authMiddleware, requireAdmin, async (req, res)
             projectMap.set(clientId, existingProject);
 
             if (createdAt && Number.isFinite(createdAt.getTime())) {
-                const key = useDailyBuckets
-                    ? createdAt.toISOString().slice(0, 10)
-                    : `${createdAt.getUTCFullYear()}-${String(createdAt.getUTCMonth() + 1).padStart(2, '0')}`;
+                const key = useDailyBuckets ? istDateKey(createdAt) : istMonthKey(createdAt);
                 const label = useDailyBuckets
-                    ? createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                    : createdAt.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                    ? createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })
+                    : createdAt.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'Asia/Kolkata' });
 
                 const bucket = trendMap.get(key) || {
                     key,
@@ -2226,7 +2235,8 @@ router.get('/report/shared/:token', async (req, res) => {
         }
 
         const context = await fetchTicketReportContext(tokenPayload.ticketId);
-        if (!context) {
+        // A shared link stops working once the ticket is deleted.
+        if (!context || context.ticket.deletedat) {
             return res.status(404).json({ error: 'Ticket not found' });
         }
 
@@ -2547,7 +2557,7 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
 
             const counts = {};
             allTickets.forEach((ticket) => {
-                const date = (ticket.createdat || '').split('T')[0];
+                const date = ticket.createdat ? istDateKey(ticket.createdat) : null;
                 if (date) counts[date] = (counts[date] || 0) + 1;
             });
 
@@ -2580,7 +2590,7 @@ router.get('/calendar-heatmap', authMiddleware, requireAdmin, async (req, res) =
 
             const counts = {};
             tickets.forEach(t => {
-                const date = (t.createdat || '').split('T')[0];
+                const date = t.createdat ? istDateKey(t.createdat) : null;
                 if (date) {
                     counts[date] = (counts[date] || 0) + 1;
                 }

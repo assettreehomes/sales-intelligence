@@ -89,14 +89,17 @@ async function processCdr(cdr, skipInitialDelay = false) {
     }
 
     // ── Idempotency ─────────────────────────────────────────────────────────
-    const { data: existing } = await supabaseAdmin
+    const { data: existingRows, error: existingError } = await supabaseAdmin
         .from('tickets')
         .select('id')
         .eq('telecmi_cmiuid', cmiuid)
-        .maybeSingle();
+        .limit(1);
 
-    if (existing) {
-        return { skipped: true, reason: 'duplicate', ticketId: existing.id };
+    if (existingError) {
+        throw new Error(`Duplicate check failed: ${existingError.message}`);
+    }
+    if (existingRows?.length) {
+        return { skipped: true, reason: 'duplicate', ticketId: existingRows[0].id };
     }
 
     // ── Agent mapping ────────────────────────────────────────────────────────
@@ -143,6 +146,11 @@ async function processCdr(cdr, skipInitialDelay = false) {
         });
 
     if (insertError) {
+        // telecmi_cmiuid is unique: a webhook retry or an overlapping /sync that
+        // raced past the check above lands here. Not an error.
+        if (insertError.code === '23505') {
+            return { skipped: true, reason: 'duplicate' };
+        }
         throw new Error(`Failed to insert ticket: ${insertError.message}`);
     }
 

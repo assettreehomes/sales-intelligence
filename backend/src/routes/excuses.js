@@ -370,11 +370,20 @@ router.post('/:id/reject', authMiddleware, requireAdmin, async (req, res) => {
             return res.status(500).json({ error: 'Failed to reject excuse' });
         }
 
-        // Flag ticket for escalation
-        await supabaseAdmin
+        // Flag ticket for escalation. Append, don't overwrite: notes also hold the
+        // admin's own notes and the Sell.Do lead details.
+        const { data: flaggedTicket } = await supabaseAdmin
             .from('tickets')
-            .update({ notes: 'FLAGGED: Excuse rejected' })
-            .eq('id', excuse.ticketid);
+            .select('notes')
+            .eq('id', excuse.ticketid)
+            .maybeSingle();
+        const existingNotes = flaggedTicket?.notes || '';
+        if (!existingNotes.includes('FLAGGED: Excuse rejected')) {
+            await supabaseAdmin
+                .from('tickets')
+                .update({ notes: existingNotes ? `FLAGGED: Excuse rejected\n\n${existingNotes}` : 'FLAGGED: Excuse rejected' })
+                .eq('id', excuse.ticketid);
+        }
 
         console.log(`❌ Excuse ${id} rejected by ${req.user.fullname}`);
         await logActivity(req, 'excuse.reject', { excuse_id: id, ticket_id: excuse.ticketid });

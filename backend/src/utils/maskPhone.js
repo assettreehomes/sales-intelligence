@@ -10,7 +10,10 @@ const PHONE_PATTERNS = [
     // 12-digit Indian with 91 country code (optional +, space or hyphen after 91)
     /(?<![0-9A-Za-z])\+?91[ -]?[6-9]\d{9}(?![0-9A-Za-z])/g,
     // 10-digit Indian mobile (optional leading 0, optional space/hyphen in the middle)
-    /(?<![0-9A-Za-z])0?[6-9]\d{4}[ -]?\d{5}(?![0-9A-Za-z])/g
+    /(?<![0-9A-Za-z])0?[6-9]\d{4}[ -]?\d{5}(?![0-9A-Za-z])/g,
+    // The same mobile written in other groupings, as the model often transcribes a
+    // spoken number: "984 001 2345", "98400-123-45", "98 40 01 23 45", "+91 984 001 2345"
+    /(?<![0-9A-Za-z])(?:\+?91[ .-]?)?0?[6-9](?:[ .-]?\d){9}(?![0-9A-Za-z])/g
 ];
 
 // Mask phone numbers anywhere inside free text (AI summaries, notes, quotes).

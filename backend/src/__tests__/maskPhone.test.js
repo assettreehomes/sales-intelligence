@@ -38,3 +38,18 @@ describe('maskNumbersDeep', () => {
         );
     });
 });
+
+describe('maskNumbersInText: spoken groupings', () => {
+    it('masks mobiles written in 3-3-4, 5-3-2 and 2-2-2-2-2 groups', () => {
+        for (const n of ['984 001 2345', '98400-123-45', '9840 012345', '98 40 01 23 45', '+91 984 001 2345']) {
+            const out = maskNumbersInText(`call me on ${n} today`);
+            assert.ok(!/\d/.test(out), `${n} -> ${out}`);
+        }
+    });
+
+    it('leaves prices, timestamps and short numbers alone', () => {
+        assert.equal(maskNumbersInText('Budget is 75,00,000 for 1200 sq ft'), 'Budget is 75,00,000 for 1200 sq ft');
+        assert.equal(maskNumbersInText('At 76000 ms on 2026-10-16'), 'At 76000 ms on 2026-10-16');
+        assert.equal(maskNumbersInText('Plot 45 in phase 2'), 'Plot 45 in phase 2');
+    });
+});
