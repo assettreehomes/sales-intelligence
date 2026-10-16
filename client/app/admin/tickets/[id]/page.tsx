@@ -56,6 +56,18 @@ import { TicketDetailWorkspace } from './TicketDetailWorkspace';
 import { TicketStickyPlayer } from './TicketStickyPlayer';
 import { ConversationComparisonChart } from '@/components/ui/charts';
 
+// audio.currentSrc is always absolute, while presales recordings use a relative
+// /proxy/api/... link. Comparing the two directly always differed, so every
+// play, pause or seek reloaded the recording from 0:00.
+function toAbsoluteUrl(url: string | null | undefined): string {
+    if (!url) return '';
+    try {
+        return new URL(url, window.location.href).href;
+    } catch {
+        return url;
+    }
+}
+
 
 
 const AUDIO_VOLUME_STORAGE_KEY = 'ticketintel-audio-volume';
@@ -741,7 +753,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return parts[0] ?? 0;
     };
 
-    const effectiveDuration = duration > 0 ? duration : (Number((ticket as Record<string, unknown>)?.duration) || 0);
+    const effectiveDuration = duration > 0 ? duration : (Number((ticket as unknown as Record<string, unknown> | null)?.duration) || 0);
     const safeMaxTimestamp = Math.max(0, effectiveDuration - 30);
 
     const sortedMoments = analysis?.keymoments
@@ -782,7 +794,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         let active = true;
 
         const loadTicket = async () => {
-            await fetchTicket(id);
+            // Always ask the server: a ticket opened earlier may have been
+            // re-analysed or edited since (the store keeps the last one).
+            await fetchTicket(id, { force: true });
             if (!active) return;
             await fetchAudioUrl(id, true);
         };
@@ -975,7 +989,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
             notifySuccess('Avatar uploaded successfully');
             // Refresh ticket to show new avatar
-            fetchTicket(id);
+            fetchTicket(id, { force: true });
         } catch (err) {
             notifyError('Failed to upload avatar');
             console.error(err);
@@ -1126,7 +1140,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             return;
         }
 
-        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+        if (!audio.currentSrc || audio.currentSrc !== toAbsoluteUrl(signedUrl)) {
             audio.src = signedUrl;
             audio.load();
         }
@@ -1187,7 +1201,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         const audio = audioRef.current;
         if (!audio) return;
 
-        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+        if (!audio.currentSrc || audio.currentSrc !== toAbsoluteUrl(signedUrl)) {
             audio.src = signedUrl;
             audio.load();
         }
@@ -1204,7 +1218,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         const audio = audioRef.current;
         if (!audio) return;
 
-        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+        if (!audio.currentSrc || audio.currentSrc !== toAbsoluteUrl(signedUrl)) {
             audio.src = signedUrl;
             audio.load();
         }
@@ -1256,7 +1270,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
         if (!audio) return;
 
-        if (!audio.currentSrc || audio.currentSrc !== signedUrl) {
+        if (!audio.currentSrc || audio.currentSrc !== toAbsoluteUrl(signedUrl)) {
             audio.src = signedUrl;
             audio.load();
         }
@@ -1626,7 +1640,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         () =>
             comparison?.labels?.map((label, i) => ({
                 label,
-                Current: comparison.current[i] ?? 0
+                Current: comparison.current[i] ?? 0,
+                // The chart draws a Previous series; it was never passed, so visit 2+
+                // showed no previous-visit line.
+                Previous: comparison.previous?.[i] ?? 0
             })) ?? [],
         [comparison]
     );

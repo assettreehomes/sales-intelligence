@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 
 interface ProtectedRouteProps {
     children: ReactNode;
-    allowedRoles?: ('superadmin' | 'admin' | 'employee' /*| 'intern'*/)[];
+    allowedRoles?: ('superadmin' | 'admin' | 'employee' | 'intern')[];
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
@@ -26,7 +26,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
                 return;
             }
 
-            if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+            if (allowedRoles && profile && !(allowedRoles as string[]).includes(profile.role)) {
                 // Redirect to appropriate dashboard based on role
                 if (profile.role === 'superadmin' || profile.role === 'admin') {
                     router.replace('/admin/performance');

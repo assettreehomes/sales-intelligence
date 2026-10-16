@@ -146,7 +146,7 @@ interface TicketDetailState {
     currentTicketId: string | null;
 
     // Actions
-    fetchTicket: (id: string) => Promise<void>;
+    fetchTicket: (id: string, options?: { force?: boolean }) => Promise<void>;
     fetchAudioUrl: (id: string, forceRefresh?: boolean) => Promise<string | null>;
     reanalyze: (id: string) => Promise<void>;
     setReanalyzeModalOpen: (open: boolean) => void;
@@ -190,14 +190,19 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
     duration: 0,
     currentTicketId: null,
 
-    fetchTicket: async (id: string) => {
-        // If we already have this ticket loaded, skip the fetch
-        if (get().currentTicketId === id && get().ticket) {
+    fetchTicket: async (id: string, options?: { force?: boolean }) => {
+        const force = options?.force === true;
+        // If we already have this ticket loaded, skip the fetch (unless forced:
+        // re-analyze polling and refresh-after-change need the server's copy)
+        const alreadyLoaded = get().currentTicketId === id && !!get().ticket;
+        if (!force && alreadyLoaded) {
             set({ loading: false });
             return;
         }
 
-        set({ loading: true, currentTicketId: id });
+        // Refreshing the ticket already on screen keeps it visible (no spinner)
+        if (alreadyLoaded) set({ currentTicketId: id });
+        else set({ loading: true, currentTicketId: id });
         try {
             const token = await getToken();
             const response = await fetch(`${API_URL}/tickets/${id}`, {
@@ -317,7 +322,9 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
             const MAX_POLLS = 24; // 24 × 5s = 2 minutes max
             for (let i = 0; i < MAX_POLLS; i++) {
                 await new Promise(r => setTimeout(r, 5000));
-                await get().fetchTicket(id);
+                // Stop polling if the user has opened another ticket meanwhile
+                if (get().currentTicketId !== id) return;
+                await get().fetchTicket(id, { force: true });
                 const status = get().ticket?.status;
                 if (status === 'analyzed') {
                     set({ reanalyzeStatus: 'analyzed' });
