@@ -156,6 +156,23 @@ interface TicketDetailState {
     reset: () => void;
 }
 
+// TeleCMI recordings are streamed by the backend at /tickets/:id/audio?token=...
+// The backend builds that link from the request host, which since the dashboard
+// proxies backend calls is the dashboard's own address (no such route there) or
+// the Cloud Run address (blocked on some office networks). Point it back at
+// API_URL so it goes through the same route as every other backend call.
+function toPlayableAudioUrl(id: string, audioUrl: string): string {
+    try {
+        const parsed = new URL(audioUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+        if (parsed.pathname.endsWith(`/tickets/${id}/audio`)) {
+            return `${API_URL}/tickets/${id}/audio${parsed.search}`;
+        }
+    } catch {
+        // fall through to the URL as given
+    }
+    return audioUrl;
+}
+
 export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
     // Initial state
     ticket: null,
@@ -259,7 +276,7 @@ export const useTicketDetailStore = create<TicketDetailState>((set, get) => ({
             }
 
             const data = await response.json();
-            const url = typeof data.audio_url === 'string' ? data.audio_url : null;
+            const url = typeof data.audio_url === 'string' ? toPlayableAudioUrl(id, data.audio_url) : null;
             set({ audioUrl: url });
             return url;
         } catch (error) {
