@@ -4,6 +4,14 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { istDayStart, istDayEnd } from '../utils/istDate.js';
 
+// Quote every cell (names and locations can contain commas) and neutralise
+// values Excel would run as a formula (=, +, -, @ at the start).
+function csvCell(value) {
+    let text = String(value ?? '');
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
 const router = Router();
 
 /**
@@ -108,16 +116,17 @@ router.get('/export', authMiddleware, requireAdmin, async (req, res) => {
                 ts,
                 log.user_name || '',
                 log.action || '',
-                `"${detailsStr.replace(/"/g, '""')}"`,
+                detailsStr,
                 device,
                 os,
                 browser,
                 log.location || '',
                 log.ip_address || '',
-            ].join(',');
+            ].map(csvCell).join(',');
         });
 
-        const csv = [headers.join(','), ...rows].join('\n');
+        // BOM so Excel reads non-English names correctly
+        const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
 
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename=activity_log_${new Date().toISOString().slice(0, 10)}.csv`);
