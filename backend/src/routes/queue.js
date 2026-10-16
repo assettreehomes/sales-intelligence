@@ -3,6 +3,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { proQueue, flashQueue } from '../services/queues.js';
 import { supabaseAdmin } from '../config/supabase.js';
+import { resetStuckTickets } from '../services/stuckTickets.js';
+import { isInFlight } from '../services/inFlight.js';
 
 const router = express.Router();
 
@@ -82,7 +84,7 @@ router.get('/status', async (req, res) => {
                 stuck_min:  Math.round((now - new Date(t.analysis_started_at).getTime()) / 60000),
             })),
             autoRetry: {
-                batchSize:       Number(process.env.RETRY_BATCH_SIZE) || 3,
+                batchSize:       Number(process.env.RETRY_BATCH_SIZE) || 1,
                 intervalMinutes: Math.round((Number(process.env.RETRY_INTERVAL_MS) || 1200000) / 60000),
             },
         });
@@ -102,18 +104,9 @@ router.post('/reset', async (req, res) => {
     try {
         const cleared = proQueue.clearQueue() + flashQueue.clearQueue();
 
-        const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        const { data: resetTickets, error } = await supabaseAdmin
-            .from('tickets')
-            .update({ status: 'analysis_failed', analysiserror: 'Reset: manually cleared via queue reset' })
-            .eq('status', 'processing')
-            .eq('source', 'telecmi')
-            .lt('analysis_started_at', cutoff)
-            .select('id');
-
-        if (error) throw error;
-
-        const ticketsReset = resetTickets?.length || 0;
+        // Tickets still running on this instance are left alone.
+        const resetTickets = await resetStuckTickets('Reset: manually cleared via queue reset', { olderThanMs: 5 * 60 * 1000 });
+        const ticketsReset = resetTickets.length;
         console.log(`Queue reset: cleared ${cleared} waiting jobs, reset ${ticketsReset} stuck tickets`);
 
         res.json({
@@ -139,14 +132,9 @@ router.post('/restart', async (req, res) => {
     try {
         const cleared = proQueue.clearQueue() + flashQueue.clearQueue();
 
-        const { data: procReset, error: procErr } = await supabaseAdmin
-            .from('tickets')
-            .update({ status: 'analysis_failed', analysiserror: 'Queue restart: reset by admin' })
-            .eq('status', 'processing')
-            .eq('source', 'telecmi')
-            .select('id');
-
-        if (procErr) throw procErr;
+        // Waiting jobs were cancelled above (and mark their own tickets failed);
+        // anything still running on this instance is left to finish.
+        const procReset = await resetStuckTickets('Queue restart: reset by admin', { olderThanMs: 0 });
 
         const { data: failReset, error: failErr } = await supabaseAdmin
             .from('tickets')
@@ -177,6 +165,9 @@ router.post('/restart', async (req, res) => {
 router.patch('/ticket/:id/reset', async (req, res) => {
     try {
         const { id } = req.params;
+        if (isInFlight(id)) {
+            return res.status(409).json({ error: 'This ticket is being analysed right now. Wait for it to finish.' });
+        }
         const { error } = await supabaseAdmin
             .from('tickets')
             .update({ status: 'analysis_failed', analysiserror: 'Reset: manually reset via queue monitor' })

@@ -12,6 +12,8 @@ import { analyzeAudio, runComparisonAnalysis } from '../services/vertexai.js';
 import { analyzePresalesAudio, triggerPresalesAnalysis } from '../services/presalesAnalysis.js';
 import { storeTelecmiRecordingForAnalysis } from '../services/telecmiRecording.js';
 import { normalizeBranch, loadBranchDirectory, applyTicketBranchFilter, ticketBranch } from '../services/branches.js';
+import { maskNumbersDeep } from '../utils/maskPhone.js';
+import { claimInFlight, releaseInFlight, isInFlight } from '../services/inFlight.js';
 
 const router = Router();
 
@@ -1063,7 +1065,9 @@ router.post('/upload', authMiddleware, requireEmployee, upload.single('audio'), 
         let previousTicketId = null;
         let resolvedClientId = client_id?.trim() || null;
         let resolvedClientName = client_name?.trim() || null;
-        let resolvedVisitType = visit_type || 'site_visit';
+        // 'telecmi_call' is reserved for presales calls; an upload tagged with it
+        // would vanish from every site-visit list and report.
+        let resolvedVisitType = (visit_type && visit_type !== 'telecmi_call') ? visit_type : 'site_visit';
 
         if (isDraftUpload) {
             const { data: draftTicket, error: draftError } = await supabaseAdmin
@@ -1215,7 +1219,8 @@ router.post('/emergency-upload', authMiddleware, requireEmployee, async (req, re
     try {
         const clientId = String(req.body.client_id || '').trim();
         const clientName = String(req.body.client_name || '').trim() || null;
-        const visitType = String(req.body.visit_type || 'emergency_recording').trim();
+        let visitType = String(req.body.visit_type || 'emergency_recording').trim();
+        if (visitType === 'telecmi_call') visitType = 'emergency_recording';
         const notes = String(req.body.notes || '').trim() || null;
 
         if (!clientId) {
@@ -1268,6 +1273,18 @@ router.post('/emergency-upload', authMiddleware, requireEmployee, async (req, re
 
 // Background analysis trigger
 async function triggerAnalysis(ticketId, ticket) {
+    if (!claimInFlight(ticketId)) {
+        console.warn(`⏭️  Analysis already running for ${ticketId} — not starting a second one`);
+        return;
+    }
+    try {
+        await runSiteVisitAnalysis(ticketId, ticket);
+    } finally {
+        releaseInFlight(ticketId);
+    }
+}
+
+async function runSiteVisitAnalysis(ticketId, ticket) {
     try {
         // Update status to processing
         await supabaseAdmin
@@ -1286,6 +1303,7 @@ async function triggerAnalysis(ticketId, ticket) {
                 .from('tickets')
                 .select('id')
                 .eq('client_id', ticket.client_id)
+                .neq('source', 'telecmi') // presales phone calls are not site visits
                 .order('createdat', { ascending: true });
             if (clientTickets && clientTickets.length > 0) {
                 const idx = clientTickets.findIndex(t => t.id === ticketId);
@@ -1298,11 +1316,13 @@ async function triggerAnalysis(ticketId, ticket) {
         console.log(`🔍 Phase 1: Analyzing ticket ${ticketId} (Visit #${visitNumber})`);
 
         // ── Phase 1: Core audio analysis (no comparison) ──
-        const analysis = await analyzeAudio(ticketId, {
+        // Mask any phone numbers the model quoted before anything is saved (same
+        // rule as presales calls: customer numbers never reach the database).
+        const analysis = maskNumbersDeep(await analyzeAudio(ticketId, {
             client_id: ticket.client_id,
             client_name: ticket.client_name || ticket.clientname,
             visit_number: visitNumber
-        });
+        }));
 
         // Normalize scores
         const normalizedScores = {
@@ -1337,7 +1357,9 @@ async function triggerAnalysis(ticketId, ticket) {
             }, { onConflict: 'ticketid' });
 
         if (analysisError) {
-            console.error('Failed to store analysis results:', analysisError);
+            // Without the analysis row the dashboard would show an "analyzed" visit
+            // with nothing in it; fail so it can be re-analysed.
+            throw new Error(`Failed to store analysis results: ${analysisError.message}`);
         }
 
         // Update ticket status
@@ -1363,6 +1385,7 @@ async function triggerAnalysis(ticketId, ticket) {
                     .from('tickets')
                     .select('id, visitnumber')
                     .eq('client_id', ticket.client_id)
+                    .neq('source', 'telecmi')
                     .neq('id', ticketId)
                     .order('visitnumber', { ascending: false })
                     .limit(1);
@@ -1424,7 +1447,7 @@ async function triggerAnalysis(ticketId, ticket) {
             .update({
                 status: 'analysis_failed',
                 analysis_error: error.message,
-                analysiserror: error.message // Save in both formats if needed
+                analysiserror: error.message // both columns exist on tickets
             })
             .eq('id', ticketId);
     }
@@ -1460,8 +1483,8 @@ router.post('/init', authMiddleware, requireEmployee, async (req, res) => {
                 id: ticketId,
                 clientname: client_name.trim(),
                 client_name: client_name.trim(),
-                visittype: visit_type || 'site_visit',
-                visit_type: visit_type || 'site_visit',
+                visittype: (visit_type && visit_type !== 'telecmi_call') ? visit_type : 'site_visit',
+                visit_type: (visit_type && visit_type !== 'telecmi_call') ? visit_type : 'site_visit',
                 visitnumber: visitNumber,
                 visit_number: visitNumber,
                 previousvisitticketid: previousTicketId,
@@ -1513,6 +1536,24 @@ router.post('/:id/upload-complete', authMiddleware, requireEmployee, async (req,
     try {
         const { id } = req.params;
 
+        // Only the employee who owns the ticket (or an admin) may complete its
+        // upload, and only while it is waiting for audio; otherwise anyone could
+        // re-run (and overwrite) the analysis of an already analysed visit.
+        const { data: existing, error: existingError } = await supabaseAdmin
+            .from('tickets')
+            .select('id, createdby, status')
+            .eq('id', id)
+            .maybeSingle();
+        if (existingError) return res.status(500).json({ error: 'Failed to load ticket' });
+        if (!existing) return res.status(404).json({ error: 'Ticket not found' });
+        const isAdmin = ['admin', 'superadmin'].includes(req.user.role);
+        if (!isAdmin && existing.createdby !== req.user.id) {
+            return res.status(403).json({ error: 'Not your ticket' });
+        }
+        if (!['draft', 'pending', 'uploading', 'uploaded', 'analysis_failed'].includes(existing.status)) {
+            return res.status(409).json({ error: `Ticket is already ${existing.status}` });
+        }
+
         // Verify audio exists in GCS
         const { exists, extension, path } = await checkAudioExists(id);
 
@@ -1542,7 +1583,7 @@ router.post('/:id/upload-complete', authMiddleware, requireEmployee, async (req,
         console.log(`✅ Upload complete for ticket: ${id}`);
 
         // Trigger analysis asynchronously
-        triggerAnalysis(id, ticket);
+        triggerAnalysis(id, ticket).catch(err => console.error(`triggerAnalysis failed for ${id}:`, err.message));
 
         res.json({
             success: true,
@@ -2315,7 +2356,7 @@ router.get('/:id/audio', async (req, res) => {
         const { id }    = req.params;
         const { token } = req.query;
 
-        if (!token) return res.status(401).json({ error: 'Missing audio token' });
+        if (!token || typeof token !== 'string') return res.status(401).json({ error: 'Missing audio token' });
 
         const [expiresStr, hmac] = token.split('.');
         const expires = Number(expiresStr);
@@ -2326,7 +2367,9 @@ router.get('/:id/audio', async (req, res) => {
         const secret    = process.env.SUPABASE_SERVICE_KEY || process.env.SCHEDULER_SECRET || 'audio-proxy-key';
         const payload   = `${id}:${expires}`;
         const expected  = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-        if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expected))) {
+        const hmacBuffer = Buffer.from(hmac);
+        const expectedBuffer = Buffer.from(expected);
+        if (hmacBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(hmacBuffer, expectedBuffer)) {
             return res.status(401).json({ error: 'Audio token invalid' });
         }
 
@@ -2350,21 +2393,37 @@ router.get('/:id/audio', async (req, res) => {
         const telecmiUrl = `https://rest.telecmi.com/v2/play?appid=${appid}&secret=${secret_k}&file=${encodeURIComponent(ticket.telecmi_filename)}`;
 
 
-        const upstream = await fetch(telecmiUrl);
+        // Pass the browser's Range request through so seeking works without
+        // re-downloading the whole recording.
+        const upstream = await fetch(telecmiUrl, {
+            headers: req.headers.range ? { Range: req.headers.range } : {}
+        });
         if (!upstream.ok) {
             console.error(`TeleCMI proxy: upstream returned ${upstream.status} for ${ticket.telecmi_filename}`);
             return res.status(502).json({ error: 'Could not fetch recording from TeleCMI' });
         }
 
         // Forward audio headers and stream body
+        res.status(upstream.status === 206 ? 206 : 200);
         res.setHeader('Content-Type', upstream.headers.get('content-type') || 'audio/mpeg');
         const cl = upstream.headers.get('content-length');
         if (cl) res.setHeader('Content-Length', cl);
-        res.setHeader('Accept-Ranges', 'bytes');
+        const contentRange = upstream.headers.get('content-range');
+        if (contentRange) res.setHeader('Content-Range', contentRange);
+        // Only promise byte ranges when TeleCMI actually serves them.
+        if (upstream.status === 206 || upstream.headers.get('accept-ranges') === 'bytes') {
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
         res.setHeader('Cache-Control', 'private, max-age=900');
 
-        const { Readable } = await import('stream');
-        Readable.fromWeb(upstream.body).pipe(res);
+        // pipeline() handles a dropped TeleCMI connection or a closed browser tab;
+        // a bare .pipe() left the source's 'error' event unhandled, which crashes Node.
+        const { Readable, pipeline } = await import('stream');
+        pipeline(Readable.fromWeb(upstream.body), res, (streamErr) => {
+            if (streamErr && streamErr.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+                console.warn(`TeleCMI audio proxy stream ended early for ${id}:`, streamErr.message);
+            }
+        });
 
     } catch (error) {
         console.error('TeleCMI audio proxy error:', error);
@@ -2787,6 +2846,7 @@ router.post('/:id/promote', authMiddleware, requireAdmin, async (req, res) => {
  * Role: admin
  */
 router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
+    let siteVisitClaimed = false;
     let presalesTempUploaded = false;
     let analysisTicketId = null;
     try {
@@ -2802,6 +2862,10 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
 
         if (ticketError || !ticket) {
             return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        if (isInFlight(id)) {
+            return res.status(409).json({ error: 'This ticket is already being analysed. Wait for it to finish.' });
         }
 
         const presalesTicket = isPresalesTicket(ticket);
@@ -2853,6 +2917,10 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
         }
 
         // ── Site visit (non-presales): synchronous path ───────────────────────────
+        if (!claimInFlight(id)) {
+            return res.status(409).json({ error: 'This ticket is already being analysed. Wait for it to finish.' });
+        }
+        siteVisitClaimed = true;
         await supabaseAdmin
             .from('tickets')
             .update({
@@ -2872,6 +2940,7 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 .from('tickets')
                 .select('id')
                 .eq('client_id', ticket.client_id)
+                .neq('source', 'telecmi') // presales phone calls are not site visits
                 .order('createdat', { ascending: true });
             if (clientTickets && clientTickets.length > 0) {
                 const idx = clientTickets.findIndex(t => t.id === id);
@@ -2898,11 +2967,11 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
                 lead_id: ticket.telecmi_lead_id || null,
                 team_name: ticket.selldo_team_name || null
             })
-            : await analyzeAudio(id, {
+            : maskNumbersDeep(await analyzeAudio(id, {
                 client_id: ticket.client_id,
                 client_name: ticket.clientname,
                 visit_number: visitNumber
-            });
+            }));
 
         // Normalize scores — presales and site-visit paths share this block;
         // presales-specific fields are only added when the ticket is a presales ticket.
@@ -3012,6 +3081,8 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             ? 'Recording no longer available on TeleCMI — the file may have expired. Re-analysis is only possible within TeleCMI\'s retention window.'
             : 'Analysis failed: ' + error.message;
         res.status(statusCode).json({ error: userMessage });
+    } finally {
+        if (siteVisitClaimed && analysisTicketId) releaseInFlight(analysisTicketId);
     }
 });
 

@@ -10,6 +10,7 @@ import { sendNumberRequestAlert } from './numberRequestAlert.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { claimInFlight, releaseInFlight } from './inFlight.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, '../../.env') });
@@ -295,6 +296,18 @@ and return minimum valid values — do not return null for any required field.`)
  *   3. No Phase 2 comparison (each phone call is independent)
  */
 export async function triggerPresalesAnalysis(ticketId, ticket) {
+    if (!claimInFlight(ticketId)) {
+        console.warn(`⏭️  Presales analysis already running for ${ticketId} — not starting a second one`);
+        return;
+    }
+    try {
+        await runPresalesAnalysis(ticketId, ticket);
+    } finally {
+        releaseInFlight(ticketId);
+    }
+}
+
+async function runPresalesAnalysis(ticketId, ticket) {
     try {
         await supabaseAdmin
             .from('tickets')

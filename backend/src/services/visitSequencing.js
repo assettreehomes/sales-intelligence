@@ -20,6 +20,9 @@ export async function getVisitSequence(clientId) {
         .from('tickets')
         .select('id, visitnumber, client_id')
         .eq('client_id', clientId.trim())
+        // Presales phone calls carry the Sell.Do lead id as client_id too; they are
+        // not site visits and must not make a first visit count as visit #2.
+        .neq('source', 'telecmi')
         .order('visitnumber', { ascending: false })
         .limit(1);
 
