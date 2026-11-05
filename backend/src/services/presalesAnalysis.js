@@ -8,6 +8,7 @@ import { maskNumbersDeep } from '../utils/maskPhone.js';
 import { dropWhatsAppGreetings } from '../utils/numberRequests.js';
 import { cleanIntroName } from '../utils/agentIntroName.js';
 import { sendNumberRequestAlert } from './numberRequestAlert.js';
+import { assignAgentFromIntro } from './agentIdentity.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -367,6 +368,21 @@ async function runPresalesAnalysis(ticketId, ticket) {
         if (!ticketCheck) {
             console.warn(`⚠️ Presales: ticket ${ticketId} no longer exists — skipping save (deleted during analysis)`);
             return;
+        }
+
+        // No Sell.Do agent: name the agent from their intro (or their TeleCMI extension)
+        const agentMatch = await assignAgentFromIntro({
+            ticketId,
+            ticket: enrichedTicket,
+            introName: normalizedScores.agent_intro_name
+        });
+        if (agentMatch.agentId) {
+            normalizedScores.agent_match = agentMatch.method;
+            enrichedTicket = {
+                ...enrichedTicket,
+                presales_agent_id: agentMatch.agentId,
+                presales_team_id: agentMatch.teamId
+            };
         }
 
         // Upsert into analysisresults — same table, same columns as site visit analysis

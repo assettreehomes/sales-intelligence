@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { normalizeBranch, loadBranchDirectory, ticketBranch } from '../services/branches.js';
 import { istDayStart, istDateKey } from '../utils/istDate.js';
+import { buildIntroReport } from '../utils/introReport.js';
 
 const router = Router();
 
@@ -574,6 +575,67 @@ router.get('/presales-performance', authMiddleware, requireAdmin, async (req, re
  * Composite = rating (40%) + completion (20%) + volume (20%) + skill_avg (20%)
  * Query: ?period=7d|30d|90d|all
  */
+/**
+ * GET /analytics/presales-introductions
+ * Which presales agents say their name at the start of real calls, how calls got their agent
+ * (Sell.Do, spoken intro, TeleCMI extension) and the intro names nobody on the list matches.
+ * Query: ?period=today|7d|30d (default 7d), ?branch=chrompet|pammal
+ */
+router.get('/presales-introductions', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const periodKey = ['today', '7d', '30d'].includes(req.query.period) ? req.query.period : '7d';
+        const fromDate = periodKey === TODAY_KEY ? istDayStart() : new Date(Date.now() - PERIOD_DAYS[periodKey] * 86400000);
+        const branch = normalizeBranch(req.query.branch);
+
+        const [{ data: employees, error: employeesError }, { data: teams, error: teamsError }, branchDir] = await Promise.all([
+            supabaseAdmin.from('presales_employees').select('id, full_name, team_id, telecmi_agent_id'),
+            supabaseAdmin.from('presales_teams').select('id, name'),
+            loadBranchDirectory()
+        ]);
+        if (employeesError) throw employeesError;
+        if (teamsError) throw teamsError;
+
+        const tickets = [];
+        for (let rangeFrom = 0; ; rangeFrom += 1000) {
+            const { data: page, error } = await supabaseAdmin
+                .from('tickets')
+                .select('id, createdat, presales_agent_id, presales_team_id, selldo_enriched_at, telecmi_user, call_authenticity')
+                .eq('source', 'telecmi')
+                .eq('status', 'analyzed')
+                .eq('call_authenticity', 'real')
+                .is('deletedat', null)
+                .gte('createdat', fromDate.toISOString())
+                .order('createdat', { ascending: false })
+                .range(rangeFrom, rangeFrom + 999);
+            if (error) throw error;
+            if (!page?.length) break;
+            tickets.push(...(branch ? page.filter((t) => ticketBranch({ ...t, source: 'telecmi' }, branchDir) === branch) : page));
+            if (page.length < 1000) break;
+        }
+
+        const scoresByTicket = new Map();
+        for (let i = 0; i < tickets.length; i += 200) {
+            const { data, error } = await supabaseAdmin
+                .from('analysisresults')
+                .select('ticketid, scores')
+                .in('ticketid', tickets.slice(i, i + 200).map((t) => t.id));
+            if (error) throw error;
+            for (const row of data || []) scoresByTicket.set(row.ticketid, row.scores || {});
+        }
+
+        const report = buildIntroReport(
+            tickets,
+            scoresByTicket,
+            new Map((employees || []).map((e) => [e.id, e])),
+            new Map((teams || []).map((t) => [t.id, t]))
+        );
+        res.json({ period: periodKey, from: fromDate.toISOString(), branch: branch || 'all', ...report });
+    } catch (error) {
+        console.error('Presales introductions error:', error);
+        res.status(500).json({ error: 'Failed to load the introductions report' });
+    }
+});
+
 router.get('/leaderboard', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const periodKey = PERIOD_DAYS[req.query.period] ? req.query.period : '30d';

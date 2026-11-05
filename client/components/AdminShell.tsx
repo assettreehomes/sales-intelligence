@@ -22,6 +22,7 @@ import {
     Mail,
     Menu,
     MessageSquare,
+    Mic,
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
@@ -45,6 +46,7 @@ type AdminSection =
     | 'activity'
     | 'performance'
     | 'presalesPerformance'
+    | 'presalesIntro'
     | 'live'
     | 'queue'
     | 'imou'
@@ -279,6 +281,7 @@ export function AdminShell({ activeSection, children }: AdminShellProps) {
         return [
             { id: 'performance' as const, label: 'Sales Performance', icon: BarChart3, group: 'analytics', href: '/admin/performance' },
             { id: 'presalesPerformance' as const, label: 'Presales Performance', icon: TrendingUp, group: 'analytics', href: '/admin/presales-performance' },
+            { id: 'presalesIntro' as const, label: 'Caller Introductions', icon: Mic, group: 'analytics', href: '/admin/presales-intro' },
             { id: 'tickets' as const, label: 'Tickets', icon: Radio, group: 'operations', href: '/admin/tickets' },
             // { id: 'queue' as const, label: 'Analysis Queue', icon: Layers, group: 'operations', href: '/admin/queue' },
             { id: 'excuses' as const, label: 'Excuses', icon: AlertCircle, group: 'operations', href: '/admin/excuses' },

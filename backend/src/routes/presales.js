@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { getPresalesDirectorySnapshot } from '../services/presalesDirectory.js';
 import { normalizeBranch, clearBranchCache } from '../services/branches.js';
+import { clearRosterCache } from '../services/agentIdentity.js';
 
 const router = Router();
 
@@ -89,6 +90,7 @@ router.post('/employees', async (req, res) => {
 
         if (error) throw error;
         clearBranchCache();
+        clearRosterCache();
         res.status(201).json({ success: true, employee: data });
     } catch (error) {
         console.error('Presales employee create error:', error);
@@ -125,6 +127,7 @@ router.patch('/employees/:id', async (req, res) => {
 
         if (error) throw error;
         clearBranchCache();
+        clearRosterCache();
         res.json({ success: true, employee: data });
     } catch (error) {
         console.error('Presales employee update error:', error);
