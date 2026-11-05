@@ -210,8 +210,14 @@ export function TicketDetailWorkspace({
             : maskPhone(ticket.client_id)
         : ticket.clientname || ticket.client_id;
 
-    const agentLabel = isPresales && agentName === 'Unknown Agent' && ticket.telecmi_user
-        ? `Ext. ${ticket.telecmi_user.split('_')[0]}`
+    // Name the agent said in their intro ("This is Nisha from Asset Tree Homes"),
+    // used only when Sell.Do / the roster gave no name for the call.
+    const introNameRaw = isPresales ? (analysis?.scores as Record<string, unknown> | null | undefined)?.agent_intro_name : null;
+    const introName = typeof introNameRaw === 'string' && introNameRaw.trim() ? introNameRaw.trim() : null;
+    const agentLabel = isPresales && agentName === 'Unknown Agent' && (ticket.telecmi_user || introName)
+        ? [ticket.telecmi_user ? `Ext. ${ticket.telecmi_user.split('_')[0]}` : null, introName ? `said "${introName}"` : null]
+            .filter(Boolean)
+            .join(' · ')
         : agentName;
 
     const presalesAgentName = isPresales ? derivePresalesAgentName(ticket) : null;

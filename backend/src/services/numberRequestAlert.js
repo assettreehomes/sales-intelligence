@@ -15,6 +15,7 @@ import { sendEmail, isMailConfigured } from './mailer.js';
 import { isFcmEnabled, notifyAdminsNumberRequest } from './fcm.js';
 import { postSynologyChat, isSynologyChatConfigured } from './synologyChat.js';
 import { loadBranchDirectory, ticketBranch } from './branches.js';
+import { labelWithIntroName } from '../utils/agentIntroName.js';
 import { buildNumberRequestEmail, buildNumberRequestPush, buildNumberRequestChat, parseExcludeList, isExcludedFromChat } from '../utils/numberRequestEmail.js';
 
 const isMissingColumn = err => err && (err.code === '42703' || err.code === 'PGRST204' || /number_alert_claimed_at|hr_email_sent_at/.test(err.message || ''));
@@ -29,7 +30,8 @@ async function resolveAgentName(ticket) {
         const { data } = await supabaseAdmin.from('users').select('fullname').eq('id', ticket.createdby).maybeSingle();
         if (data?.fullname) return data.fullname;
     }
-    return ticket.telecmi_user || ticket.telecmi_agent_id || null;
+    const ext = ticket.telecmi_user || ticket.telecmi_agent_id || null;
+    return labelWithIntroName(ext ? `Ext. ${String(ext).split('_')[0]}` : null, ticket.agent_intro_name);
 }
 
 async function resolveTeamName(ticket) {

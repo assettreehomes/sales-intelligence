@@ -101,6 +101,9 @@ Not flagged: "மேடம், வாட்ஸ்அப்ல ஒரு Hi அ�
 If none detected: {"detected":false,"instances":[]}.
 Never write out a full phone number anywhere in the output. Replace every digit with X (e.g. XXXXXXXXXX).
 
+## Agent Name
+agent_intro_name: the name the AGENT gives for themselves when introducing, e.g. "This is Nisha from Asset Tree Homes", "நான் நிஷா பேசுறேன்", "Naan Priya pesuren" -> "Nisha" / "Nisha" / "Priya". Write it in English letters, as spoken, first name only, no titles. Never the prospect's name, never a name the agent only mentions (a manager, a colleague). If the agent never says their own name, use null.
+
 ## Rules
 1. JSON only. No markdown fences.
 2. key_moments: min 3 for calls >2min, min 1 otherwise. Never empty.
