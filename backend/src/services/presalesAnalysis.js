@@ -6,6 +6,7 @@ import { getPresalesAnalysisPrompt } from '../prompts/analysis.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { maskNumbersDeep } from '../utils/maskPhone.js';
 import { dropWhatsAppGreetings } from '../utils/numberRequests.js';
+import { cleanIntroName } from '../utils/agentIntroName.js';
 import { sendNumberRequestAlert } from './numberRequestAlert.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -99,6 +100,7 @@ const presalesResponseSchema = {
             enum: ['real', 'fake']
         },
         speakers_detected: { type: SchemaType.INTEGER },
+        agent_intro_name: { type: SchemaType.STRING, nullable: true },
         number_requests: {
             type: SchemaType.OBJECT,
             required: ['detected', 'instances'],
@@ -351,7 +353,8 @@ async function runPresalesAnalysis(ticketId, ticket) {
             confidence: analysis.scores?.confidence ?? null,
             interest:   analysis.scores?.interest   ?? null,
             speakers:   analysis.scores?.speakers   ?? null,
-            number_requests: numberRequests
+            number_requests: numberRequests,
+            agent_intro_name: cleanIntroName(analysis.agent_intro_name)
         };
 
         // Guard: ticket may have been deleted while analysis was in flight
@@ -412,7 +415,7 @@ async function runPresalesAnalysis(ticketId, ticket) {
 
         // Email HR when the agent asked the customer for a number (once per call)
         await sendNumberRequestAlert({
-            ticket: { ...enrichedTicket, id: ticketId },
+            ticket: { ...enrichedTicket, id: ticketId, agent_intro_name: normalizedScores.agent_intro_name },
             summary: analysis.summary,
             instances: numberRequests.instances
         });
