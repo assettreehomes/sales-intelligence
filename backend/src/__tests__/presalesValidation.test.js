@@ -212,3 +212,19 @@ describe('validatePresalesAnalysis: general validation (Task #14 — re-analyze 
         assert.deepEqual(result.number_requests, { detected: false, instances: [] });
     });
 });
+
+describe('validatePresalesAnalysis: no_conversation calls', () => {
+    it('accepts no_conversation and keeps a valid skip_reason', () => {
+        const r = validatePresalesAnalysis(validAnalysis({ call_authenticity: 'no_conversation', skip_reason: 'voicemail', overall_score: 1 }));
+        assert.equal(r.call_authenticity, 'no_conversation');
+        assert.equal(r.skip_reason, 'voicemail');
+    });
+    it('falls back to network_message when the skip_reason is unknown', () => {
+        const r = validatePresalesAnalysis(validAnalysis({ call_authenticity: 'no_conversation', skip_reason: 'something', overall_score: 1 }));
+        assert.equal(r.skip_reason, 'network_message');
+    });
+    it('clears skip_reason on real calls', () => {
+        const r = validatePresalesAnalysis(validAnalysis({ skip_reason: 'music' }));
+        assert.equal(r.skip_reason, null);
+    });
+});

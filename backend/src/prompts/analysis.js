@@ -80,8 +80,13 @@ export function getPresalesAnalysisPrompt(context = {}) {
 
   return `Pre-sales call analyst, real estate.${agent_name ? ` Agent: ${agent_name}.` : ''} Return one JSON object — no markdown, no text outside JSON.
 
-## Fake/Silent Calls
-Fake = hangup, silence, wrong number, agent monologue, no real prospect interaction.
+## No Conversation (skip)
+No real person answered: only ringing or ringback tone, only a caller tune or hold music, a voicemail greeting or voicemail box (including iPhone/Android voicemail), an IVR or robotic/automated voice, or a network message ("switched off", "not reachable", "busy", "does not exist", "not answering").
+Set: call_authenticity:"no_conversation", skip_reason: one of "ringing","music","voicemail","ivr_or_robot","network_message", call_outcome:"not_interested", overall_score:1, politeness:0, confidence:0, interest:"low", speakers:1, number_requests:{"detected":false,"instances":[]}. Summary: one sentence saying what was heard. Populate all fields.
+If any real person speaks with the agent, even for a few seconds (a quick "busy, call later", a wrong number, a cut call), it is NOT no_conversation: analyse it as a real call.
+
+## Fake Calls
+Fake = agent talking to nobody or pretending to talk (monologue, dead silence on the other side while the agent speaks), a colleague or test call instead of a prospect.
 Set: call_authenticity:"fake", call_outcome:"not_interested", overall_score:1, politeness:0, confidence:0, interest:"low", speakers:1. Populate all fields.
 
 ## Scores
@@ -107,9 +112,9 @@ agent_intro_name: the name the AGENT gives for themselves when introducing, e.g.
 ## Rules
 1. JSON only. No markdown fences.
 2. key_moments: min 3 for calls >2min, min 1 otherwise. Never empty.
-3. start_time_ms: realistic ms. Fake calls use 0.
+3. start_time_ms: realistic ms. Fake and no_conversation calls use 0.
 4. objections=[]: if none raised.
-5. call_outcome + call_authenticity: top-level, never null, never inside scores.
+5. call_outcome + call_authenticity: top-level, never null, never inside scores. skip_reason only for no_conversation, else null.
 6. action_items: max 2.
 7. number_requests: always present at top level.`;
 }

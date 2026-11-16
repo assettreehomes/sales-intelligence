@@ -128,7 +128,7 @@ POST /integrations/mail|chat/test   Send a test email / chat post through the co
 **Site visit scores (1-10):** `rapport_building`, `needs_discovery`, `objection_handling`, `closing_techniques`, `product_knowledge`, `professionalism`
 **Additional scores:** `politeness` (0-100), `confidence` (0-100), `interest` (low|medium|high), `speakers` (count)
 
-**Presales extras:** `lead_qualification` object (budget, timeline, purpose, appointment details, lead_quality: hot|warm|cold|unknown), `call_authenticity` (real|fake), `language_detected`, `mobile_number_alert` ({ detected: boolean, moment: string excerpt })
+**Presales extras:** `lead_qualification` object (budget, timeline, purpose, appointment details, lead_quality: hot|warm|cold|unknown), `call_authenticity` (real|fake|no_conversation), `language_detected`, `mobile_number_alert` ({ detected: boolean, moment: string excerpt })
 
 **Call outcomes:** `interested` | `not_interested` | `follow_up_required`
 
@@ -220,5 +220,5 @@ The reconciliation block in `processCdr()` (`telecmi.js:135–207`) is wrapped i
 - **`vertexQueue.js`** — factory (`createVertexQueue()`) for in-memory job queues with sliding RPM limiter and configurable concurrency
 - **`queues.js`** — creates two independent queue instances: `proQueue` (Pro model, site visits, `maxConcurrent=1`, `maxRpm=2`) and `flashQueue` (Flash model, presales, `maxConcurrent=3`, `maxRpm=5`); Pro and Flash have separate Vertex AI quota pools so a slow site-visit analysis never blocks presales calls; single Cloud Run instance keeps both queues coherent
 - **`autoRetry.js`** — background service (20min interval) retries `analysis_failed` tickets; blacklist approach (skips `permanent_failed`); re-downloads audio from TeleCMI before retrying (fixes GCS-deleted-on-failure bug); 1 ticket/cycle (RETRY_BATCH_SIZE=1), 20s stagger, 10 attempt cap per session; also resets tickets stuck at `processing` for >10 min back to `analysis_failed`
-- **TeleCMI CDR filtering** — `MIN_DURATION_SECONDS = 20` in `telecmi.js`; calls under 20s are skipped at CDR stage (`reason: too_short`) — no ticket created, no GCS download, no Vertex quota spent; covers hangups, wrong numbers, and instant rejections
+- **TeleCMI CDR filtering** — every answered, recorded call is analysed. `MIN_DURATION_SECONDS` in `telecmi.js` defaults to 3 (override with `TELECMI_MIN_DURATION_SECONDS`); only near-empty recordings are skipped at CDR stage (`reason: too_short`). The presales prompt marks calls where nobody real answered (ringing, caller tune/hold music, voicemail, IVR/robot voice, network message) as `call_authenticity: no_conversation` with `scores.skip_reason`; those get no rating, no number-request alert and are never training calls. `fake` now means the agent talked to nobody or a colleague/test call
 - The client (`/client`) is a Next.js app — frontend pages in `client/app/admin/` (tickets, queue, performance, presales-performance, employees, live, etc.)

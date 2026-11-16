@@ -13,7 +13,12 @@ const router = Router();
 
 const TELECMI_APP_ID     = process.env.TELECMI_APP_ID;
 const TELECMI_SECRET     = process.env.TELECMI_SECRET;
-const MIN_DURATION_SECONDS = 20;
+// Every answered, recorded call is analysed; the AI marks ringing / music / voicemail / IVR / network messages
+// as no_conversation. Only near-empty recordings (a second or two) are dropped here.
+const MIN_DURATION_SECONDS = Number.isFinite(Number(process.env.TELECMI_MIN_DURATION_SECONDS))
+    && process.env.TELECMI_MIN_DURATION_SECONDS !== ''
+    ? Number(process.env.TELECMI_MIN_DURATION_SECONDS)
+    : 3;
 const SYNC_STAGGER_MS    = Number(process.env.VERTEX_SYNC_STAGGER_MS) || 1500;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));

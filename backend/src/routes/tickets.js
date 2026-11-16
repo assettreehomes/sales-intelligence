@@ -2997,13 +2997,17 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             })
         };
 
+        // A presales call where nobody real answered (ringing, music, voicemail, IVR) gets no score
+        const noConversation = presalesTicket && analysis.call_authenticity === 'no_conversation';
+        if (noConversation) normalizedScores.skip_reason = analysis.skip_reason || null;
+
         // Store Phase 1 results
         const { error: analysisError } = await supabaseAdmin
             .from('analysisresults')
             .upsert({
                 ticketid: id,
                 status: 'completed',
-                rating: analysis.overall_score || null,
+                rating: noConversation ? null : (analysis.overall_score || null),
                 summary: analysis.summary || null,
                 keymoments: analysis.key_moments ? analysis.key_moments.map(m => ({
                     ...m,
@@ -3029,9 +3033,9 @@ router.post('/:id/analyze', authMiddleware, requireAdmin, async (req, res) => {
             .from('tickets')
             .update({
                 status: 'analyzed',
-                rating: analysis.overall_score || null,
+                rating: noConversation ? null : (analysis.overall_score || null),
                 analysiscompletedat: new Date().toISOString(),
-                istrainingcall: (analysis.overall_score || 0) >= 4.0,
+                istrainingcall: !noConversation && (analysis.overall_score || 0) >= 4.0,
                 ...(presalesTicket && {
                     call_outcome:      normalizeCallOutcome(analysis.call_outcome) || null,
                     call_authenticity: analysis.call_authenticity || null
