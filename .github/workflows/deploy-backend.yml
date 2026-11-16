@@ -50,6 +50,6 @@ jobs:
           service_account: gha-deployer@mystical-melody-486113-p0.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v2
       - name: Build and deploy to Cloud Run
-        run: gcloud builds submit --config cloudbuild.yaml --project mystical-melody-486113-p0 --suppress-logs .
+        run: gcloud builds submit --config cloudbuild.yaml --project mystical-melody-486113-p0 --gcs-source-staging-dir gs://mystical-melody-486113-p0_cloudbuild/source --suppress-logs .
       - name: Check the service answers
         run: curl -sf https://sales-intelligence-123251903795.asia-south1.run.app/health
