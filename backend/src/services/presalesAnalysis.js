@@ -30,7 +30,10 @@ const mimeTypes = {
 };
 
 const VALID_OUTCOMES = new Set(['interested', 'not_interested', 'follow_up_required']);
-const VALID_AUTHENTICITY = new Set(['real', 'fake']);
+// no_conversation: nobody real was talked to (ringing, caller tune or hold music, voicemail, IVR/robot voice,
+// network message). Kept apart from 'fake' so it does not count against the agent; no score, no alerts.
+const VALID_AUTHENTICITY = new Set(['real', 'fake', 'no_conversation']);
+const VALID_SKIP_REASONS = new Set(['ringing', 'music', 'voicemail', 'ivr_or_robot', 'network_message']);
 const VALID_INTEREST = new Set(['low', 'medium', 'high']);
 const REQUIRED_SCORE_KEYS = [
     'politeness',
@@ -98,7 +101,12 @@ const presalesResponseSchema = {
         },
         call_authenticity: {
             type: SchemaType.STRING,
-            enum: ['real', 'fake']
+            enum: ['real', 'fake', 'no_conversation']
+        },
+        skip_reason: {
+            type: SchemaType.STRING,
+            nullable: true,
+            enum: ['ringing', 'music', 'voicemail', 'ivr_or_robot', 'network_message']
         },
         speakers_detected: { type: SchemaType.INTEGER },
         agent_intro_name: { type: SchemaType.STRING, nullable: true },
@@ -207,10 +215,14 @@ export function validatePresalesAnalysis(analysis) {
         throw new Error(`Gemini returned invalid presales JSON: missing/invalid ${missing.join(', ')}`);
     }
 
+    const skipReason = String(analysis?.skip_reason || '').trim().toLowerCase();
     return {
         ...analysis,
         call_outcome: callOutcome,
-        call_authenticity: callAuthenticity
+        call_authenticity: callAuthenticity,
+        skip_reason: callAuthenticity === 'no_conversation'
+            ? (VALID_SKIP_REASONS.has(skipReason) ? skipReason : 'network_message')
+            : null
     };
 }
 
@@ -279,11 +291,12 @@ FIELD COMPLETENESS:
 
 MANDATORY TOP-LEVEL ENUM FIELDS (never null, never inside scores):
 - call_outcome: exactly one of: interested, not_interested, follow_up_required
-- call_authenticity: exactly one of: real, fake
+- call_authenticity: exactly one of: real, fake, no_conversation
+- skip_reason: ringing, music, voicemail, ivr_or_robot or network_message when call_authenticity is no_conversation; otherwise null
 
 - number_requests: must always be present. Minimum: { "detected": false, "instances": [] }. Never omit.
 
-If this was a fake or silent call, follow the FAKE / INVALID CALL HANDLING section above
+If this was a fake, silent or no-conversation call (ringing, music, voicemail, IVR, network message), follow the Fake Calls or No Conversation section above
 and return minimum valid values — do not return null for any required field.`);
     }
 
@@ -348,14 +361,21 @@ async function runPresalesAnalysis(ticketId, ticket) {
         const analysis = maskNumbersDeep(await analyzePresalesAudio(ticketId, ticketInfo));
 
         // Normalize scores — matches the existing analysisresults schema
-        const numberRequests = dropWhatsAppGreetings(analysis.number_requests || { detected: false, instances: [] });
+        // No conversation (ringing, music, voicemail, IVR/robot, network message): kept for the record, but no score,
+        // no number-request alert and never a training call.
+        const noConversation = analysis.call_authenticity === 'no_conversation';
+        const numberRequests = noConversation
+            ? { detected: false, instances: [] }
+            : dropWhatsAppGreetings(analysis.number_requests || { detected: false, instances: [] });
+        const rating = noConversation ? null : (analysis.overall_score ?? null);
         const normalizedScores = {
             politeness: analysis.scores?.politeness ?? null,
             confidence: analysis.scores?.confidence ?? null,
             interest:   analysis.scores?.interest   ?? null,
             speakers:   analysis.scores?.speakers   ?? null,
             number_requests: numberRequests,
-            agent_intro_name: cleanIntroName(analysis.agent_intro_name)
+            agent_intro_name: noConversation ? null : cleanIntroName(analysis.agent_intro_name),
+            skip_reason: analysis.skip_reason || null
         };
 
         // Guard: ticket may have been deleted while analysis was in flight
@@ -391,7 +411,7 @@ async function runPresalesAnalysis(ticketId, ticket) {
             .upsert({
                 ticketid:              ticketId,
                 status:                'completed',
-                rating:                analysis.overall_score ?? null,
+                rating:                rating,
                 summary:               analysis.summary ?? null,
                 keymoments:            (analysis.key_moments || []).map(m => ({
                     ...m,
@@ -418,9 +438,9 @@ async function runPresalesAnalysis(ticketId, ticket) {
             .from('tickets')
             .update({
                 status:               'analyzed',
-                rating:               analysis.overall_score ?? null,
+                rating:               rating,
                 analysiscompletedat:  new Date().toISOString(),
-                istrainingcall:       (analysis.overall_score || 0) >= 8.0,
+                istrainingcall:       !noConversation && (analysis.overall_score || 0) >= 8.0,
                 call_outcome:         analysis.call_outcome || null,
                 call_authenticity:    analysis.call_authenticity || null,
                 asked_mobile_number:  numberRequests.instances.length > 0,
