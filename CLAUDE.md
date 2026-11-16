@@ -156,6 +156,10 @@ PORT (default 3001)
 
 - **Production backend:** `https://sales-intelligence-123251903795.asia-south1.run.app`
 - Cloud Build (`cloudbuild.yaml`): builds Docker image → pushes to Artifact Registry → deploys to Cloud Run `asia-south1`
+- **Auto-deploy:** `.github/workflows/deploy-backend.yml` runs on every push to `main` that touches `backend/**`, `cloudbuild.yaml` or the workflow itself (also runnable by hand: Actions → Deploy backend → Run workflow). It runs `npm test`, then `gcloud builds submit --config cloudbuild.yaml`, then checks `/health`. Takes ~2½ min
+- GitHub signs in to GCP keylessly via Workload Identity Federation (pool/provider `github`, limited to this repo's `main`) as `gha-deployer@mystical-melody-486113-p0.iam.gserviceaccount.com`; no service-account key is stored anywhere. GCP side is set up by `scripts/setup-github-deploy.sh` (idempotent)
+- Source is uploaded to `gs://mystical-melody-486113-p0_cloudbuild/source` via `--gcs-source-staging-dir`: the default bucket path makes gcloud list all project buckets, which `gha-deployer` is deliberately not allowed to do
+- The old Cloud Build GitHub trigger is broken (GitHub link lost; no builds since 29/07) and can be deleted. Manual fallback: Cloud Shell → `gcloud builds submit --config cloudbuild.yaml .` from a checkout of `main`
 - Cloud Run is behind a load balancer; `trust proxy` is set on Express
 - Cloud Run set to `min-instances=1` (prevents scale-to-zero killing in-flight analysis jobs) and `max-instances=1` (single instance keeps the in-memory Vertex queue coherent)
 - Sensitive env vars (TOTP key, hCaptcha) are pre-set in Cloud Run — do NOT pass via cloudbuild.yaml (shell escaping issues)
