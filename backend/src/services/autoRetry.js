@@ -19,6 +19,7 @@
 
 import { supabaseAdmin } from '../config/supabase.js';
 import { storeTelecmiRecordingForAnalysis } from './telecmiRecording.js';
+import { storeMcubeRecordingForAnalysis, isMcubePermanentFailure } from './mcubeRecording.js';
 import { triggerPresalesAnalysis } from './presalesAnalysis.js';
 import { isInFlight } from './inFlight.js';
 import { resetStuckTickets } from './stuckTickets.js';
@@ -68,10 +69,11 @@ async function runRetryBatch() {
         // Blacklist approach: retry everything that isn't permanently failed
         const { data: candidates, error } = await supabaseAdmin
             .from('tickets')
-            .select('id, telecmi_filename, client_id, clientname, createdby, durationseconds, selldo_agent_name, selldo_agent_email, telecmi_lead_id, selldo_team_name')
+            .select('id, source, telecmi_filename, mcube_recording_url, client_id, clientname, createdby, durationseconds, selldo_agent_name, selldo_agent_email, telecmi_lead_id, selldo_team_name')
             .eq('status', 'analysis_failed')
-            .eq('source', 'telecmi')
-            .not('telecmi_filename', 'is', null)
+            .in('source', ['telecmi', 'mcube'])
+            // TeleCMI rows need a TeleCMI filename, MCube rows an MCube recording URL
+            .or('and(source.eq.telecmi,telecmi_filename.not.is.null),and(source.eq.mcube,mcube_recording_url.not.is.null)')
             .not('analysiserror', 'ilike', 'permanent_failed%')
             .order('createdat', { ascending: true })
             .limit(CANDIDATE_POOL);
@@ -105,11 +107,15 @@ async function runRetryBatch() {
 
             // Re-download recording from TeleCMI — GCS file was deleted on original failure
             try {
-                await storeTelecmiRecordingForAnalysis(ticket.telecmi_filename, ticket.id, true);
+                if (ticket.source === 'mcube') {
+                    await storeMcubeRecordingForAnalysis(ticket.mcube_recording_url, ticket.id, true);
+                } else {
+                    await storeTelecmiRecordingForAnalysis(ticket.telecmi_filename, ticket.id, true);
+                }
             } catch (downloadErr) {
-                if (isTelecmiPermanentFailure(downloadErr)) {
+                if (ticket.source === 'mcube' ? isMcubePermanentFailure(downloadErr) : isTelecmiPermanentFailure(downloadErr)) {
                     // TeleCMI no longer has this recording — mark permanent, never retry again
-                    await markPermanentFailed(ticket.id, 'TeleCMI recording unavailable');
+                    await markPermanentFailed(ticket.id, `${ticket.source === 'mcube' ? 'MCube' : 'TeleCMI'} recording unavailable`);
                     retryAttempts.delete(ticket.id);
                 } else {
                     // Transient network/timeout error — skip this cycle, try next time
